@@ -1,13 +1,13 @@
-# render.yaml — مخطط نشر Render (Blueprint)
+# render.yaml — مخطط نشر Render (Blueprint) — متوافق مع الباقة المجانية
 # ارفع المشروع على GitHub ثم: Render Dashboard > New > Blueprint واختر المستودع.
 # املأ قيم OPENROUTER_API_KEY (و TAVILY_API_KEY اختيارياً) من لوحة Render.
 
 services:
-  # 1) خدمة الويب (واجهة Streamlit + جدولة داخلية للرادار)
+  # خدمة الويب (واجهة Streamlit + جدولة داخلية للرادار)
   - type: web
     name: personal-ai-oracle
     runtime: docker
-    plan: free            # ملاحظة: الخطة المجانية تنام عند الخمول → الجدولة الداخلية تتوقف مؤقتاً
+    plan: free            # الخطة المجانية تنام عند الخمول → الجدولة الداخلية تتوقف مؤقتاً
     healthCheckPath: /_stcore/health
     envVars:
       - key: OPENROUTER_API_KEY
@@ -21,30 +21,4 @@ services:
       - key: ENABLE_RADAR
         value: "1"
       - key: ORACLE_DB_PATH
-        value: /data/oracle.db
-    # القرص الدائم يتطلّب خطة مدفوعة. على المجانية احذف هذا القسم (ستكون البيانات مؤقتة).
-    disk:
-      name: oracle-data
-      mountPath: /data
-      sizeGB: 1
-
-  # 2) (اختياري — موصى به للعمل 24/7 الحقيقي) عامل خلفي مستقل لا ينام
-  # فعّله بإزالة التعليق واستخدم خطة مدفوعة. اربطه بنفس القرص الدائم.
-  # - type: worker
-  #   name: oracle-radar-worker
-  #   runtime: docker
-  #   plan: starter
-  #   dockerCommand: python worker.py
-  #   envVars:
-  #     - key: OPENROUTER_API_KEY
-  #       sync: false
-  #     - key: TAVILY_API_KEY
-  #       sync: false
-  #     - key: SCAN_INTERVAL_HOURS
-  #       value: "12"
-  #     - key: ORACLE_DB_PATH
-  #       value: /data/oracle.db
-  #   disk:
-  #     name: oracle-data
-  #     mountPath: /data
-  #     sizeGB: 1
+        value: /data/oracle.db   # ملاحظة: على المجانية البيانات مؤقتة (تُمسح عند إعادة النشر)
