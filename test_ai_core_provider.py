@@ -106,6 +106,32 @@ def test_legacy_system_prompt_behavior():
     assert ai_core.system_prompt("unknown") == ai_core.BASE + ai_core.PERSONAS["friendly"]
 
 
+def test_legacy_openrouter_url_symbol():
+    assert ai_core.OPENROUTER_URL == OpenRouterProvider.DEFAULT_URL
+    assert ai_core.OPENROUTER_URL == "https://openrouter.ai/api/v1/chat/completions"
+
+
+def test_legacy_llm_forwards_arguments(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
+        result = ai_core.llm("do this", "  user input  ", "coach", 0.5)
+
+    assert result == "answer"
+    chat.assert_called_once_with(
+        [
+            {"role": "system", "content": ai_core.system_prompt("coach", "do this")},
+            {"role": "user", "content": "user input"},
+        ],
+        temperature=0.5,
+    )
+
+
+def test_legacy_llm_missing_key_behavior(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    result = ai_core.llm("instruction", "input", "friendly", 0.7)
+    assert result == "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
+
+
 def test_legacy_llm_returns_string(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
@@ -121,3 +147,15 @@ def test_legacy_stream_remains_iterable(monkeypatch):
         result = ai_core.stream([{"role": "user", "content": "hi"}])
         assert hasattr(result, "__iter__")
         assert list(result) == ["a", "b"]
+
+
+def test_legacy_stream_provider_error_behavior(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def raise_provider_error(*args, **kwargs):
+        raise OracleProviderError("provider failed")
+
+    with patch.object(ai_core.OpenRouterProvider, "stream", side_effect=raise_provider_error):
+        result = ai_core.stream([{"role": "user", "content": "hi"}])
+        assert hasattr(result, "__iter__")
+        assert list(result) == ["\n\n(تعذّر البثّ: provider failed)"]
