@@ -1,7 +1,7 @@
 """
-ai_core.py — النواة المشتركة: System Prompts مرنة + استدعاء النموذج
-Shared core for all advanced modules: a flexible persona system prompt that shifts
-tone by task, plus a single OpenRouter LLM helper.
+ai_core.py — النواة المشتركة: System Prompts مرنة + طبقة مزوّد LLM
+Shared core for all advanced modules: persona prompts plus a provider-backed
+OpenRouter LLM helper. Legacy public APIs remain unchanged.
 
 أوضاع الشخصية (mode):
   friendly     → ودّي ومرح بالعامية المصرية (شات العلاقات والسعادة)
@@ -11,11 +11,8 @@ tone by task, plus a single OpenRouter LLM helper.
 """
 
 import os
-import json
 
-import requests
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+from llm_provider import OpenRouterProvider, OracleProviderError
 
 PERSONAS = {
     "friendly": (
@@ -49,61 +46,36 @@ def has_key() -> bool:
     return bool(os.environ.get("OPENROUTER_API_KEY"))
 
 
+def _provider() -> OpenRouterProvider:
+    """Return the current configured provider without changing legacy config."""
+    return OpenRouterProvider()
+
+
 def llm(instruction: str, user_input: str, mode: str = "friendly",
         temperature: float = 0.7) -> str:
     """استدعاء عام للنموذج بشخصية مرنة. لا يرمي استثناءً."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
+    provider = _provider()
+    if not provider.api_key:
         return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
+
     messages = [
         {"role": "system", "content": system_prompt(mode, instruction)},
         {"role": "user", "content": user_input.strip() or
          "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
     ]
     try:
-        r = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            data=json.dumps({"model": model, "messages": messages,
-                             "temperature": temperature}),
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
+        return provider.chat(messages, temperature=temperature)
+    except OracleProviderError as e:
         return f"(تعذّر التشغيل: {e})"
 
 
 def stream(messages: list, temperature: float = 0.8):
     """بثّ متعدد الرسائل (للشات المرن)."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
+    provider = _provider()
+    if not provider.api_key:
         yield "⚠️ أضف مفتاح OpenRouter الأول."
         return
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    payload = {"model": model, "messages": messages, "stream": True,
-               "temperature": temperature}
     try:
-        with requests.post(OPENROUTER_URL,
-                           headers={"Authorization": f"Bearer {key}",
-                                    "Content-Type": "application/json"},
-                           data=json.dumps(payload), stream=True, timeout=180) as resp:
-            resp.raise_for_status()
-            for raw in resp.iter_lines():
-                if not raw:
-                    continue
-                line = raw.decode("utf-8", errors="ignore")
-                if not line.startswith("data: "):
-                    continue
-                chunk = line[6:].strip()
-                if chunk == "[DONE]":
-                    break
-                try:
-                    delta = json.loads(chunk)["choices"][0]["delta"].get("content")
-                    if delta:
-                        yield delta
-                except Exception:
-                    continue
-    except Exception as e:
+        yield from provider.stream(messages, temperature=temperature)
+    except OracleProviderError as e:
         yield f"\n\n(تعذّر البثّ: {e})"
