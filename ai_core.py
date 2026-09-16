@@ -12,6 +12,7 @@ OpenRouter LLM helper. Legacy public APIs remain unchanged.
 
 import os
 
+from ai_request import AIRequest
 from llm_provider import OpenRouterProvider, OracleProviderError
 from model_router import ModelRouter
 
@@ -69,14 +70,17 @@ def llm(instruction: str, user_input: str, mode: str = "friendly",
     if not provider.api_key:
         return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
 
-    messages = [
-        {"role": "system", "content": system_prompt(mode, instruction)},
-        {"role": "user", "content": user_input.strip() or
-         "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
-    ]
-    decision = _router().route()
+    request = AIRequest(
+        messages=(
+            {"role": "system", "content": system_prompt(mode, instruction)},
+            {"role": "user", "content": user_input.strip() or
+             "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
+        ),
+        temperature=temperature,
+    )
+    decision = _router().route(request)
     try:
-        return provider.chat(messages, temperature=temperature, model=decision.model)
+        return provider.chat(request.messages, temperature=request.temperature, model=decision.model)
     except OracleProviderError as e:
         return f"(تعذّر التشغيل: {e})"
 
@@ -87,8 +91,18 @@ def stream(messages: list, temperature: float = 0.8):
     if not provider.api_key:
         yield "⚠️ أضف مفتاح OpenRouter الأول."
         return
-    decision = _router().route()
+
+    request = AIRequest(
+        messages=tuple(messages),
+        temperature=temperature,
+        streaming=True,
+    )
+    decision = _router().route(request)
     try:
-        yield from provider.stream(messages, temperature=temperature, model=decision.model)
+        yield from provider.stream(
+            request.messages,
+            temperature=request.temperature,
+            model=decision.model,
+        )
     except OracleProviderError as e:
         yield f"\n\n(تعذّر البثّ: {e})"
