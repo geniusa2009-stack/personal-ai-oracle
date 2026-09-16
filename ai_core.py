@@ -35,6 +35,10 @@ PERSONAS = {
 BASE = ("إنت مساعد ذكي مصري بتفهم الثقافة والسياق المصري كويس جداً، "
         "بترد بدقة وبتدّي قيمة حقيقية وخطوات عملية. ")
 
+# Preserve the original module-level public symbol while keeping the provider
+# as the canonical owner of the endpoint configuration.
+OPENROUTER_URL = OpenRouterProvider.DEFAULT_URL
+
 
 def system_prompt(mode: str = "friendly", instruction: str = "") -> str:
     persona = PERSONAS.get(mode, PERSONAS["friendly"])
