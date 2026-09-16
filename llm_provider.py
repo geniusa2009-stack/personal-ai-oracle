@@ -18,11 +18,21 @@ import requests
 class LLMProvider(Protocol):
     """Minimal provider contract shared by normal and streaming chat calls."""
 
-    def chat(self, messages: Sequence[dict], temperature: float = 0.7) -> str:
+    def chat(
+        self,
+        messages: Sequence[dict],
+        temperature: float = 0.7,
+        model: str | None = None,
+    ) -> str:
         """Return the completed assistant message as text."""
         ...
 
-    def stream(self, messages: Sequence[dict], temperature: float = 0.8) -> Iterator[str]:
+    def stream(
+        self,
+        messages: Sequence[dict],
+        temperature: float = 0.8,
+        model: str | None = None,
+    ) -> Iterator[str]:
         """Yield assistant text chunks from a streaming response."""
         ...
 
@@ -57,13 +67,18 @@ class OpenRouterProvider:
             "Content-Type": "application/json",
         }
 
-    def chat(self, messages: Sequence[dict], temperature: float = 0.7) -> str:
+    def chat(
+        self,
+        messages: Sequence[dict],
+        temperature: float = 0.7,
+        model: str | None = None,
+    ) -> str:
         """Execute a non-streaming OpenRouter chat completion."""
         if not self.api_key:
             raise OracleProviderError("missing OpenRouter API key")
 
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": list(messages),
             "temperature": temperature,
         }
@@ -81,13 +96,18 @@ class OpenRouterProvider:
         except Exception as exc:
             raise OracleProviderError(str(exc)) from exc
 
-    def stream(self, messages: Sequence[dict], temperature: float = 0.8) -> Iterator[str]:
+    def stream(
+        self,
+        messages: Sequence[dict],
+        temperature: float = 0.8,
+        model: str | None = None,
+    ) -> Iterator[str]:
         """Execute a streaming OpenRouter chat completion and yield text chunks."""
         if not self.api_key:
             raise OracleProviderError("missing OpenRouter API key")
 
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": list(messages),
             "stream": True,
             "temperature": temperature,
