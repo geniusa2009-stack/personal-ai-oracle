@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import ai_core
 from llm_provider import OpenRouterProvider, OracleProviderError
+from model_router import ModelRouter, RouteDecision
 
 
 class FakeStreamResponse:
@@ -57,6 +58,23 @@ def test_provider_chat_builds_request_and_parses_response(monkeypatch):
     assert payload["messages"] == [{"role": "user", "content": "hi"}]
 
 
+def test_provider_request_scoped_model_override_does_not_mutate_configuration(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "default/model")
+    provider = OpenRouterProvider()
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"choices": [{"message": {"content": "answer"}}]}
+
+    with patch("llm_provider.requests.post", return_value=response) as post:
+        assert provider.chat([], model="request/model") == "answer"
+
+    payload = json.loads(post.call_args.kwargs["data"])
+    assert payload["model"] == "request/model"
+    assert provider.model == "default/model"
+    assert __import__("os").environ["OPENROUTER_MODEL"] == "default/model"
+
+
 def test_provider_stream_parses_sse_and_uses_timeout(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     provider = OpenRouterProvider()
@@ -92,6 +110,67 @@ def test_provider_requires_api_key(monkeypatch):
         raise AssertionError("Expected OracleProviderError")
 
 
+def test_model_router_default_route(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
+    router = ModelRouter(default_provider="openrouter", default_model="deepseek/deepseek-chat")
+    decision = router.route()
+    assert decision == RouteDecision(
+        provider="openrouter",
+        model="deepseek/deepseek-chat",
+        reason="default",
+    )
+
+
+def test_model_router_is_deterministic():
+    router = ModelRouter(
+        default_provider="openrouter",
+        default_model="default/model",
+        category_models={"reasoning": "reasoning/model"},
+    )
+    first = router.route(task_type="reasoning")
+    second = router.route(task_type="reasoning")
+    assert first == second
+
+
+def test_model_router_explicit_model_selection():
+    router = ModelRouter(default_provider="openrouter", default_model="default/model")
+    decision = router.route(requested_model="requested/model")
+    assert decision == RouteDecision(
+        provider="openrouter",
+        model="requested/model",
+        reason="explicit_model",
+    )
+
+
+def test_model_router_rule_based_category():
+    router = ModelRouter(
+        default_provider="openrouter",
+        default_model="default/model",
+        category_models={"reasoning": "reasoning/model"},
+    )
+    decision = router.route(task_type="reasoning")
+    assert decision.model == "reasoning/model"
+    assert decision.reason == "reasoning"
+
+
+def test_model_router_unknown_category_uses_default():
+    router = ModelRouter(
+        default_provider="openrouter",
+        default_model="default/model",
+        category_models={"reasoning": "reasoning/model"},
+    )
+    decision = router.route(task_type="unknown")
+    assert decision.model == "default/model"
+    assert decision.reason == "default"
+
+
+def test_model_router_has_no_http_dependency():
+    router = ModelRouter(default_provider="openrouter", default_model="default/model")
+    with patch("llm_provider.requests.post") as post:
+        router.route()
+        post.assert_not_called()
+
+
 def test_legacy_has_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert ai_core.has_key() is False
@@ -123,6 +202,7 @@ def test_legacy_llm_forwards_arguments(monkeypatch):
             {"role": "user", "content": "user input"},
         ],
         temperature=0.5,
+        model="deepseek/deepseek-chat",
     )
 
 
