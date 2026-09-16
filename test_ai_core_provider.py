@@ -1,7 +1,9 @@
 import json
+import os
 from unittest.mock import Mock, patch
 
 import ai_core
+from ai_request import AIRequest, Context
 from llm_provider import OpenRouterProvider, OracleProviderError
 from model_router import ModelRouter, RouteDecision
 
@@ -72,7 +74,7 @@ def test_provider_request_scoped_model_override_does_not_mutate_configuration(mo
     payload = json.loads(post.call_args.kwargs["data"])
     assert payload["model"] == "request/model"
     assert provider.model == "default/model"
-    assert __import__("os").environ["OPENROUTER_MODEL"] == "default/model"
+    assert os.environ["OPENROUTER_MODEL"] == "default/model"
 
 
 def test_provider_stream_parses_sse_and_uses_timeout(monkeypatch):
@@ -108,6 +110,59 @@ def test_provider_requires_api_key(monkeypatch):
         assert "missing OpenRouter API key" in str(exc)
     else:
         raise AssertionError("Expected OracleProviderError")
+
+
+def test_ai_request_construction():
+    request = AIRequest(
+        messages=({"role": "user", "content": "hello"},),
+        temperature=0.7,
+        task_type="reasoning",
+        streaming=False,
+    )
+    assert request.messages == ({"role": "user", "content": "hello"},)
+    assert request.temperature == 0.7
+    assert request.task_type == "reasoning"
+    assert request.streaming is False
+    assert isinstance(request.context, Context)
+
+
+def test_ai_request_is_frozen_and_copies_messages():
+    messages = [{"role": "user", "content": "hello"}]
+    request = AIRequest(messages=messages, temperature=0.7)
+    messages[0]["content"] = "changed outside request"
+    messages.append({"role": "user", "content": "second"})
+
+    assert request.messages == ({"role": "user", "content": "hello"},)
+    try:
+        request.temperature = 0.2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("AIRequest should be immutable")
+
+
+def test_context_construction_is_deterministic_and_isolated():
+    metadata = {"source": "legacy"}
+    context = Context(metadata=metadata, constraints=["short"])
+    metadata["source"] = "changed outside context"
+
+    assert context.metadata["source"] == "legacy"
+    assert context.constraints == ("short",)
+    assert context.metadata == {"source": "legacy"}
+
+
+def test_model_router_routes_ai_request():
+    router = ModelRouter(
+        default_provider="openrouter",
+        default_model="default/model",
+        category_models={"reasoning": "reasoning/model"},
+    )
+    request = AIRequest(messages=(), temperature=0.7, task_type="reasoning")
+    assert router.route(request) == RouteDecision(
+        provider="openrouter",
+        model="reasoning/model",
+        reason="reasoning",
+    )
 
 
 def test_model_router_default_route(monkeypatch):
@@ -169,6 +224,22 @@ def test_model_router_has_no_http_dependency():
     with patch("llm_provider.requests.post") as post:
         router.route()
         post.assert_not_called()
+
+
+def test_model_router_does_not_mutate_environment():
+    previous = os.environ.get("OPENROUTER_MODEL")
+    os.environ["OPENROUTER_MODEL"] = "default/model"
+    try:
+        router = ModelRouter(default_provider="openrouter", default_model="default/model")
+        request = AIRequest(messages=(), temperature=0.7, requested_model="request/model")
+        decision = router.route(request)
+        assert decision.model == "request/model"
+        assert os.environ["OPENROUTER_MODEL"] == "default/model"
+    finally:
+        if previous is None:
+            os.environ.pop("OPENROUTER_MODEL", None)
+        else:
+            os.environ["OPENROUTER_MODEL"] = previous
 
 
 def test_legacy_has_key(monkeypatch):
