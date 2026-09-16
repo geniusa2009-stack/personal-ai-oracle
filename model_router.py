@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from ai_request import AIRequest
+
 
 @dataclass(frozen=True)
 class RouteDecision:
@@ -33,13 +35,13 @@ class ModelRouter:
         self.default_model = default_model
         self.category_models = dict(category_models or {})
 
-    def route(
-        self,
-        *,
-        task_type: str | None = None,
-        requested_model: str | None = None,
-    ) -> RouteDecision:
-        """Select a model without making a provider/API call."""
+    def route(self, request: AIRequest | None = None, *, task_type: str | None = None,
+              requested_model: str | None = None) -> RouteDecision:
+        """Select a model from a request without making a provider/API call."""
+        if request is not None:
+            task_type = request.task_type
+            requested_model = request.requested_model
+
         if requested_model:
             return RouteDecision(
                 provider=self.default_provider,
