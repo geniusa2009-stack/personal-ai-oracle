@@ -13,6 +13,7 @@ OpenRouter LLM helper. Legacy public APIs remain unchanged.
 import os
 
 from llm_provider import OpenRouterProvider, OracleProviderError
+from model_router import ModelRouter
 
 PERSONAS = {
     "friendly": (
@@ -55,6 +56,12 @@ def _provider() -> OpenRouterProvider:
     return OpenRouterProvider()
 
 
+def _router() -> ModelRouter:
+    """Build a request-local router from the current configured default model."""
+    provider = _provider()
+    return ModelRouter(default_provider="openrouter", default_model=provider.model)
+
+
 def llm(instruction: str, user_input: str, mode: str = "friendly",
         temperature: float = 0.7) -> str:
     """استدعاء عام للنموذج بشخصية مرنة. لا يرمي استثناءً."""
@@ -67,8 +74,9 @@ def llm(instruction: str, user_input: str, mode: str = "friendly",
         {"role": "user", "content": user_input.strip() or
          "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
     ]
+    decision = _router().route()
     try:
-        return provider.chat(messages, temperature=temperature)
+        return provider.chat(messages, temperature=temperature, model=decision.model)
     except OracleProviderError as e:
         return f"(تعذّر التشغيل: {e})"
 
@@ -79,7 +87,8 @@ def stream(messages: list, temperature: float = 0.8):
     if not provider.api_key:
         yield "⚠️ أضف مفتاح OpenRouter الأول."
         return
+    decision = _router().route()
     try:
-        yield from provider.stream(messages, temperature=temperature)
+        yield from provider.stream(messages, temperature=temperature, model=decision.model)
     except OracleProviderError as e:
         yield f"\n\n(تعذّر البثّ: {e})"
