@@ -226,6 +226,19 @@ def init_database():
             status  TEXT DEFAULT 'issued',  -- issued | done | skipped
             note    TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS memories (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            content            TEXT NOT NULL,
+            normalized_content TEXT NOT NULL,
+            memory_type        TEXT NOT NULL,
+            scope              TEXT NOT NULL,
+            source             TEXT NOT NULL,
+            created_at         TEXT NOT NULL,
+            UNIQUE(normalized_content, memory_type, scope)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memories_scope_created
+            ON memories(scope, created_at DESC, id DESC);
         """
     )
     conn.commit()
@@ -905,7 +918,7 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log",
+    "feature_log", "memories",
 ]
 
 

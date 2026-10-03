@@ -13,6 +13,7 @@ OpenRouter LLM helper. Legacy public APIs remain unchanged.
 import os
 
 from ai_request import AIRequest
+from ai_executor import AIExecutionError, AIExecutor
 from llm_provider import OpenRouterProvider, OracleProviderError
 from model_router import ModelRouter
 
@@ -57,10 +58,15 @@ def _provider() -> OpenRouterProvider:
     return OpenRouterProvider()
 
 
-def _router() -> ModelRouter:
+def _router(provider: OpenRouterProvider | None = None) -> ModelRouter:
     """Build a request-local router from the current configured default model."""
-    provider = _provider()
+    provider = provider or _provider()
     return ModelRouter(default_provider="openrouter", default_model=provider.model)
+
+
+def _executor(provider: OpenRouterProvider) -> AIExecutor:
+    """Build a request-local executor without changing legacy configuration."""
+    return AIExecutor(router=_router(provider), provider=provider)
 
 
 def llm(instruction: str, user_input: str, mode: str = "friendly",
@@ -78,9 +84,8 @@ def llm(instruction: str, user_input: str, mode: str = "friendly",
         ),
         temperature=temperature,
     )
-    decision = _router().route(request)
     try:
-        return provider.chat(request.messages, temperature=request.temperature, model=decision.model)
+        return _executor(provider).execute(request).content
     except OracleProviderError as e:
         return f"(تعذّر التشغيل: {e})"
 
@@ -97,12 +102,7 @@ def stream(messages: list, temperature: float = 0.8):
         temperature=temperature,
         streaming=True,
     )
-    decision = _router().route(request)
     try:
-        yield from provider.stream(
-            request.messages,
-            temperature=request.temperature,
-            model=decision.model,
-        )
-    except OracleProviderError as e:
+        yield from _executor(provider).execute_stream(request)
+    except (OracleProviderError, AIExecutionError) as e:
         yield f"\n\n(تعذّر البثّ: {e})"

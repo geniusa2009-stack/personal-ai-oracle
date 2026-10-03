@@ -3,6 +3,7 @@ import os
 from unittest.mock import Mock, patch
 
 import ai_core
+from ai_executor import AIExecutionError, AIExecutor, AIResult
 from ai_request import AIRequest, Context
 from llm_provider import OpenRouterProvider, OracleProviderError
 from model_router import ModelRouter, RouteDecision
@@ -23,6 +24,111 @@ class FakeStreamResponse:
 
     def iter_lines(self):
         return self.lines
+
+
+def _executor(provider, router=None):
+    return AIExecutor(
+        router=router or ModelRouter("openrouter", "default/model"),
+        provider=provider,
+    )
+
+
+def test_executor_normalizes_chat_result_and_propagates_route():
+    provider = Mock()
+    provider.chat.return_value = "answer"
+    router = ModelRouter("openrouter", "default/model")
+    request = AIRequest(messages=({"role": "user", "content": "hello"},), temperature=0.4)
+
+    result = _executor(provider, router).execute(request)
+
+    assert result == AIResult("answer", "default/model", "openrouter", "default")
+    provider.chat.assert_called_once_with(
+        [{"role": "user", "content": "hello"}], temperature=0.4, model="default/model"
+    )
+
+
+def test_executor_uses_requested_model_without_global_mutation(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "global/model")
+    provider = Mock()
+    provider.chat.return_value = "answer"
+    request = AIRequest(
+        messages=({"role": "user", "content": "hello"},),
+        temperature=0.7,
+        requested_model="request/model",
+    )
+
+    result = _executor(provider).execute(request)
+
+    assert result.model == "request/model"
+    assert os.environ["OPENROUTER_MODEL"] == "global/model"
+    provider.chat.assert_called_once_with(
+        [{"role": "user", "content": "hello"}], temperature=0.7, model="request/model"
+    )
+
+
+def test_executor_propagates_provider_errors_without_fallback():
+    provider = Mock()
+    provider.chat.side_effect = OracleProviderError("provider failed")
+    request = AIRequest(messages=({"role": "user", "content": "hello"},), temperature=0.7)
+
+    try:
+        _executor(provider).execute(request)
+    except OracleProviderError as exc:
+        assert str(exc) == "provider failed"
+    else:
+        raise AssertionError("Expected OracleProviderError")
+
+    provider.chat.assert_called_once()
+
+
+def test_executor_streams_incrementally():
+    provider = Mock()
+    provider.stream.return_value = iter(["first", " second"])
+    request = AIRequest(
+        messages=({"role": "user", "content": "hello"},), temperature=0.8, streaming=True
+    )
+
+    result = _executor(provider).execute_stream(request)
+
+    assert hasattr(result, "__iter__")
+    assert next(result) == "first"
+    assert list(result) == [" second"]
+    provider.stream.assert_called_once_with(
+        [{"role": "user", "content": "hello"}], temperature=0.8, model="default/model"
+    )
+
+
+def test_executor_rejects_invalid_request_or_route():
+    provider = Mock()
+    executor = _executor(provider)
+
+    for request in (None, AIRequest(messages=(), temperature=0.7)):
+        try:
+            executor.execute(request)  # type: ignore[arg-type]
+        except AIExecutionError:
+            pass
+        else:
+            raise AssertionError("Expected AIExecutionError")
+
+    invalid_router = Mock()
+    invalid_router.route.return_value = RouteDecision("other", "model", "default")
+    request = AIRequest(messages=({"role": "user", "content": "hello"},), temperature=0.7)
+    try:
+        _executor(provider, invalid_router).execute(request)
+    except AIExecutionError:
+        pass
+    else:
+        raise AssertionError("Expected AIExecutionError")
+
+
+def test_executor_has_no_http_dependency():
+    provider = Mock()
+    provider.chat.return_value = "answer"
+    request = AIRequest(messages=({"role": "user", "content": "hello"},), temperature=0.7)
+
+    with patch("llm_provider.requests.post") as post:
+        _executor(provider).execute(request)
+        post.assert_not_called()
 
 
 def test_provider_reads_existing_configuration(monkeypatch):
@@ -310,3 +416,18 @@ def test_legacy_stream_provider_error_behavior(monkeypatch):
         result = ai_core.stream([{"role": "user", "content": "hi"}])
         assert hasattr(result, "__iter__")
         assert list(result) == ["\n\n(تعذّر البثّ: provider failed)"]
+
+
+def test_legacy_stream_empty_messages_yields_controlled_error(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch.object(ai_core.OpenRouterProvider, "stream") as provider_stream:
+        result = ai_core.stream([])
+        assert hasattr(result, "__iter__")
+        try:
+            chunks = list(result)
+        except AIExecutionError as exc:
+            raise AssertionError("stream([]) leaked AIExecutionError") from exc
+
+    assert chunks == ["\n\n(تعذّر البثّ: request requires messages)"]
+    provider_stream.assert_not_called()
