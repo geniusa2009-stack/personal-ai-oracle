@@ -267,9 +267,13 @@ def stream(
     try:
         if agent_role:
             import agent_profiles
+            caller_key_provider = (provider_name or default_provider_name()).strip().lower()
             profile = agent_profiles.resolve_profile(agent_role)
-            provider_name = provider_name or profile.get("provider")
-            requested_model = requested_model or profile.get("model")
+            profile_provider = profile.get("provider")
+            if profile_provider and profile_provider.strip().lower() != caller_key_provider:
+                api_key = None
+            provider_name = profile_provider or provider_name
+            requested_model = profile.get("model") or requested_model
             if profile.get("temperature") is not None:
                 temperature = profile["temperature"]
         executor = _multi_executor(provider_name=provider_name, api_key=api_key)
