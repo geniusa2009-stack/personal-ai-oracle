@@ -19,8 +19,10 @@ WhatsApp Automation Module — built on the OFFICIAL WhatsApp Cloud API (Meta).
 الإنتاج (gunicorn): gunicorn "whatsapp_agent:create_app()" --bind 0.0.0.0:$PORT
 """
 
-import os
+import hashlib
+import hmac
 import json
+import os
 
 import requests
 
@@ -65,6 +67,19 @@ def build_system_prompt(contact: dict) -> str:
 
 def _headers(api_key):
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+
+def verify_meta_signature(raw_body: bytes, signature_header: str, app_secret: str) -> bool:
+    """Verify Meta's X-Hub-Signature-256 header against the exact raw request body."""
+    if not isinstance(raw_body, bytes) or not signature_header or not app_secret:
+        return False
+    if not signature_header.startswith("sha256="):
+        return False
+    supplied_digest = signature_header.removeprefix("sha256=")
+    expected_digest = hmac.new(
+        app_secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(supplied_digest, expected_digest)
 
 
 def generate_reply(text: str, contact: dict, history: list = None) -> str:
@@ -213,13 +228,29 @@ def create_app():
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-        if mode == "subscribe" and token == os.environ.get("WA_VERIFY_TOKEN"):
+        expected_token = os.environ.get("WA_VERIFY_TOKEN", "")
+        if (
+            mode == "subscribe"
+            and expected_token
+            and token
+            and hmac.compare_digest(token, expected_token)
+        ):
             return challenge or "", 200
         return "forbidden", 403
 
     @flask_app.post("/webhook")
     def receive():
-        payload = request.get_json(silent=True) or {}
+        # Reject unsigned requests before parsing, storing, or acting on their contents.
+        app_secret = os.environ.get("WA_APP_SECRET", "")
+        raw_body = request.get_data(cache=True)
+        signature = request.headers.get("X-Hub-Signature-256", "")
+        if not verify_meta_signature(raw_body, signature, app_secret):
+            return jsonify({"received": False, "error": "invalid webhook signature"}), 403
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"received": False, "error": "invalid JSON payload"}), 400
+
         actions = handle_incoming(payload)
         return jsonify({"received": True, "actions": actions}), 200
 
