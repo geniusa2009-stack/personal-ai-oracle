@@ -42,11 +42,13 @@ class AIExecutor:
         decision = self._decision_for(request)
         if request.streaming:
             raise AIExecutionError("streaming request must use execute_stream")
-        content = self.provider.chat(
-            request.to_messages(),
-            temperature=request.temperature,
-            model=decision.model,
-        )
+        chat_options = {
+            "temperature": request.temperature,
+            "model": decision.model,
+        }
+        if request.response_format is not None:
+            chat_options["response_format"] = dict(request.response_format)
+        content = self.provider.chat(request.to_messages(), **chat_options)
         return AIResult(
             content=content,
             model=decision.model,
