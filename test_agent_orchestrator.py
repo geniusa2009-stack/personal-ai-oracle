@@ -15,12 +15,13 @@ def _plan(feature_id=None, user_input="safe input", question=""):
     return json.dumps({"steps": steps, "clarifying_question": question})
 
 
-def test_available_tools_excludes_external_side_effect_kinds():
+def test_available_tools_includes_mac_local_capabilities():
     tools = agent_orchestrator.available_tools()
 
     assert tools
-    assert all(tool["kind"] in agent_orchestrator.ALLOWED_KINDS for tool in tools)
-    assert all(tool["kind"] not in {"content", "scheduler", "scaffold"} for tool in tools)
+    assert any(tool["tool_id"] == "local.run_command" for tool in tools)
+    assert any(tool["tool_id"] == "local.read_file" for tool in tools)
+    assert all(tool["kind"] != "scaffold" for tool in tools)
 
 
 def test_agent_replans_after_observing_each_tool_result(monkeypatch):
@@ -58,7 +59,7 @@ def test_agent_replans_after_observing_each_tool_result(monkeypatch):
     second_planner_prompt = planner_calls.call_args_list[1].args[0][1]["content"]
     assert f"result-{first_id}" in second_planner_prompt
     available_catalog = second_planner_prompt.split("نتائج الخطوات السابقة", 1)[0]
-    assert not re.search(rf'"id":\s*{first_id}(?!\d)', available_catalog)
+    assert f'"tool_id": "feature:{first_id}"' not in available_catalog
 
 
 def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
@@ -100,12 +101,15 @@ def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
     assert result["answer"] == "Final answer"
 
 
-def test_agent_enforces_three_step_limit_before_model_call(monkeypatch):
+def test_agent_enforces_hard_step_limit_before_model_call(monkeypatch):
     chat = Mock()
     monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
 
     with pytest.raises(agent_orchestrator.AgentError):
-        agent_orchestrator.run("task", max_steps=4)
+        agent_orchestrator.run(
+            "task",
+            max_steps=agent_orchestrator.MAX_AGENT_STEPS_HARD_LIMIT + 1,
+        )
 
     chat.assert_not_called()
 
