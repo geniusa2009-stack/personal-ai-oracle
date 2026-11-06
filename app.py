@@ -1138,6 +1138,7 @@ with tab_oracle:
 
     oracle_scope = (
         os.environ.get("ORACLE_MEMORY_SCOPE")
+        or os.environ.get("ORACLE_WORKFLOW_SCOPE")
         or "user:oracle-owner"
     ).strip()
     st.markdown("### 🔮 Oracle Control Center")

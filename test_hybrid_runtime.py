@@ -170,25 +170,29 @@ def test_cloud_result_body_expires_after_retention_window(tmp_path, monkeypatch)
     with cloud_control._db_connection() as connection:
         connection.execute(
             """INSERT INTO jobs(
-                job_id,tool_id,tool_input,task,status,created_at,updated_at,result_json
-            ) VALUES(?,?,?,?,?,?,?,?)""",
+                job_id,tool_id,tool_input,task,status,created_at,updated_at,result_json,error
+            ) VALUES(?,?,?,?,?,?,?,?,?)""",
             (
                 "retention-test",
                 "local.read_file",
-                "{}",
-                "retention test",
+                '{"path":"/private/notes.txt"}',
+                "retention test includes private context",
                 "success",
                 now - 3600,
                 now - 25 * 3600,
                 '{"private":"example"}',
+                "sensitive remote error",
             ),
         )
     cloud_control.init_db()
     with cloud_control._db_connection() as connection:
         row = connection.execute(
-            "SELECT result_json FROM jobs WHERE job_id='retention-test'"
+            "SELECT result_json,task,tool_input,error FROM jobs WHERE job_id='retention-test'
         ).fetchone()
     assert row["result_json"] is None
+    assert row["task"] == ""
+    assert row["tool_input"] == "{}"
+    assert row["error"] is None
 
 
 def test_cloud_agent_bounds_oversized_tool_output():

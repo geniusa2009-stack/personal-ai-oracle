@@ -520,10 +520,15 @@ def _run_core(
                     },
                     checkpoint_id=resume_checkpoint_id,
                 )
-                execution_policy.link_checkpoint(
+                linked = execution_policy.link_checkpoint(
                     result.get("approval_id", ""), checkpoint_id,
                     scope=workflow_scope or "user:oracle-owner",
                 )
+                if not linked:
+                    workflow_checkpoints.delete_checkpoint(
+                        workflow_scope or "user:oracle-owner", checkpoint_id
+                    )
+                    checkpoint_id = None
             except Exception:
                 checkpoint_id = None
             pending_result = dict(result)

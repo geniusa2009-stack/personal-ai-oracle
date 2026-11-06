@@ -7,7 +7,7 @@ API over HTTPS and receives bounded, allow-listed jobs. Tokens are stored hashed
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 import hashlib
 import json
 import os
@@ -36,12 +36,19 @@ ALLOWED_REMOTE_TOOLS = {
     "web.open_browser",
 }
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Personal AI Oracle Control Plane",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=_lifespan,
 )
 
 
@@ -122,9 +129,10 @@ def init_db() -> None:
         result_hours = _bounded_setting("ORACLE_CLOUD_RESULT_RETENTION_HOURS", 24, 1, 168)
         job_days = _bounded_setting("ORACLE_CLOUD_JOB_RETENTION_DAYS", 7, 1, 90)
         connection.execute(
-            """UPDATE jobs SET result_json=NULL
-               WHERE result_json IS NOT NULL AND status IN ('success','error','blocked')
-               AND updated_at < ?""",
+            """UPDATE jobs
+               SET result_json=NULL, task='', tool_input='{}', error=NULL
+               WHERE status IN ('success','error','blocked')
+                 AND updated_at < ?""",
             (now - result_hours * 3600,),
         )
         connection.execute(
@@ -215,11 +223,6 @@ async def request_size_guard(request: Request, call_next):
         except ValueError:
             return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
     return await call_next(request)
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
 
 
 @app.get("/healthz")
