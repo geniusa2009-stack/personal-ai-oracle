@@ -56,9 +56,8 @@ def test_agent_replans_after_observing_each_tool_result(monkeypatch):
 
     second_planner_prompt = planner_calls.call_args_list[1].args[0][1]["content"]
     assert f"result-{first_id}" in second_planner_prompt
-    catalog_json = second_planner_prompt.split("الأدوات المتاحة الآن:\\n", 1)[1].split("\\n\\n", 1)[0]
-    next_available_ids = [tool["id"] for tool in json.loads(catalog_json)]
-    assert first_id not in next_available_ids
+    available_catalog = second_planner_prompt.split("نتائج الخطوات السابقة", 1)[0]
+    assert f'"id": {first_id}' not in available_catalog
 
 
 def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
