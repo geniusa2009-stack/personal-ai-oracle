@@ -141,8 +141,14 @@ FEATURE_BY_ID = {f["id"]: f for f in FEATURES}
 # --------------------------------------------------------------------------
 # منفّذ عام للذكاء الاصطناعي (بالعامية المصرية)
 # --------------------------------------------------------------------------
-def llm_feature(name: str, instruction: str, user_input: str) -> str:
-    """Run a feature through the shared provider and task-routing layer."""
+def llm_feature(
+    name: str,
+    instruction: str,
+    user_input: str,
+    *,
+    agent_role: str = "assistant",
+) -> str:
+    """Run a feature using its specialist agent model profile."""
     system = (
         "إنت مساعد مصري ذكي بترد بالعامية المصرية الطبيعية، عملي ومباشر "
         "وبتدّي خطوات واضحة. " + instruction
@@ -152,6 +158,7 @@ def llm_feature(name: str, instruction: str, user_input: str) -> str:
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.7,
         task_type="reasoning",
+        agent_role=agent_role,
     )
 
 
@@ -167,12 +174,24 @@ def run_feature(feature_id: int, user_input: str = "") -> dict:
     result = ""
     try:
         if kind == "llm":
-            result = llm_feature(f["name"], f["instruction"], user_input)
+            specialist_role = {
+                "search": "researcher",
+                "money": "researcher",
+                "social": "writer",
+                "life": "assistant",
+                "health": "assistant",
+            }.get(f["cat"], "assistant")
+            result = llm_feature(
+                f["name"], f["instruction"], user_input,
+                agent_role=specialist_role,
+            )
 
         elif kind == "content":
             import content_factory
             ctype = "كابشن ميمز" if "ميمز" in f["name"] else "كومنت جروب"
-            result = content_factory.generate_content(ctype, user_input or f["name"], save=True)
+            result = content_factory.generate_content(
+                ctype, user_input or f["name"], save=True
+            )
 
         elif kind == "search":
             from search import web_search
