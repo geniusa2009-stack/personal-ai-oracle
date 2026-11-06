@@ -189,8 +189,8 @@ def chat(
         if agent_role:
             import agent_profiles
             profile = agent_profiles.resolve_profile(agent_role)
-            provider_name = provider_name or profile.get("provider")
-            requested_model = requested_model or profile.get("model")
+            provider_name = profile.get("provider") or provider_name
+            requested_model = profile.get("model") or requested_model
             if profile.get("temperature") is not None:
                 temperature = profile["temperature"]
 
