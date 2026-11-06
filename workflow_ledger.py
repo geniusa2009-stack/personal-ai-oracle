@@ -104,7 +104,14 @@ def begin_step(
     workflow_id = _workflow_id(workflow_id)
     if isinstance(step_index, bool) or not isinstance(step_index, int) or not 0 <= step_index < MAX_STEPS_PER_RUN:
         raise WorkflowLedgerError("step_index is outside the supported range")
-    if not isinstance(tool_id, str) or not tool_id.strip() or len(tool_id) > MAX_TOOL_ID_LENGTH:
+    if (
+        not isinstance(tool_id, str)
+        or len(tool_id) > MAX_TOOL_ID_LENGTH
+        or not re.fullmatch(
+            r"(?:local|web)\\.[a-z][a-z0-9_]*|feature:[1-9][0-9]*",
+            tool_id.strip(),
+        )
+    ):
         raise WorkflowLedgerError("tool_id is invalid")
     input_digest, input_length = _digest(tool_input)
     now = _now()

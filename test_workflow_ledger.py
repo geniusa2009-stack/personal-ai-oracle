@@ -30,9 +30,13 @@ def test_workflow_trace_stores_only_digests_and_step_metadata(monkeypatch, tmp_p
     step = workflow_ledger.list_steps("owner:one", workflow_id)[0]
     conn = db.get_conn()
     try:
-        raw = " ".join(str(row) for row in conn.execute(
-            "SELECT * FROM oracle_workflow_runs UNION ALL SELECT * FROM oracle_workflow_steps"
+        run_raw = " ".join(str(row) for row in conn.execute(
+            "SELECT * FROM oracle_workflow_runs"
         ).fetchall())
+        step_raw = " ".join(str(row) for row in conn.execute(
+            "SELECT * FROM oracle_workflow_steps"
+        ).fetchall())
+        raw = run_raw + " " + step_raw
     finally:
         conn.close()
 
@@ -59,8 +63,8 @@ def test_workflow_ledger_enforces_scope_ownership(monkeypatch, tmp_path):
         workflow_ledger.complete_step(
             "owner:two", workflow_id, 0, {"status": "success"}, duration_ms=1
         )
-    with pytest.raises(workflow_ledger.WorkflowLedgerError):
-        workflow_ledger.finish_run("owner:two", workflow_id, "completed")
+    assert workflow_ledger.finish_run("owner:two", workflow_id, "completed") is False
+    assert workflow_ledger.list_runs("owner:one")[0]["status"] == "running"
     assert workflow_ledger.finish_run("owner:one", workflow_id, "failed", error_code="AgentError")
 
 
