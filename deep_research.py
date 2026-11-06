@@ -335,6 +335,43 @@ def _synthesize(
     return answer, findings, limitations, valid, invalid
 
 
+def map_claim_evidence(answer: str, valid_source_ids: list[str], *, max_claims: int = 80) -> list[dict[str, Any]]:
+    """Map answer sentences to citations they explicitly contain.
+
+    This is a citation-presence index, not a semantic entailment or truth check.
+    """
+    if not isinstance(answer, str):
+        raise ResearchError("answer must be text")
+    if not isinstance(valid_source_ids, list) or any(
+        not isinstance(item, str) or not re.fullmatch(r"S[1-9][0-9]*", item)
+        for item in valid_source_ids
+    ):
+        raise ResearchError("valid_source_ids must contain source IDs")
+    if isinstance(max_claims, bool) or not isinstance(max_claims, int) or not 1 <= max_claims <= 200:
+        raise ResearchError("max_claims must be between 1 and 200")
+
+    valid = set(valid_source_ids)
+    chunks = re.split(r"(?<=[.!?؟])\s+|\n+", answer.strip())
+    claims: list[dict[str, Any]] = []
+    for chunk in chunks:
+        claim = chunk.strip(" \t•-*")
+        if not claim:
+            continue
+        mentioned = list(dict.fromkeys(re.findall(r"\[(S[1-9][0-9]*)\]", claim)))
+        supported = [item for item in mentioned if item in valid]
+        invalid = [item for item in mentioned if item not in valid]
+        status = "invalid_reference" if invalid else ("cited" if supported else "uncited")
+        claims.append({
+            "claim": claim[:700],
+            "source_ids": supported[:6],
+            "invalid_source_ids": invalid[:6],
+            "citation_status": status,
+        })
+        if len(claims) >= max_claims:
+            break
+    return claims
+
+
 def run_research(
     query: str,
     *,
@@ -422,6 +459,7 @@ def run_research(
             "valid_source_ids": cited_ids,
             "invalid_source_ids": invalid_ids,
         },
+        "claim_evidence": map_claim_evidence(answer, list(source_map)),
         "stats": {
             "query_count": len(queries),
             "source_count": len(sources),
@@ -450,6 +488,15 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "valid_source_ids": list(report.get("citation_validation", {}).get("valid_source_ids", []))[:8],
             "invalid_source_ids": list(report.get("citation_validation", {}).get("invalid_source_ids", []))[:8],
         },
+        "claim_evidence": [
+            {
+                "claim": str(item.get("claim") or "")[:240],
+                "source_ids": list(item.get("source_ids", []))[:4],
+                "invalid_source_ids": list(item.get("invalid_source_ids", []))[:4],
+                "citation_status": str(item.get("citation_status") or "uncited")[:30],
+            }
+            for item in report.get("claim_evidence", [])[:8] if isinstance(item, dict)
+        ],
         "stats": report.get("stats", {}),
     }
     source_by_id = {}

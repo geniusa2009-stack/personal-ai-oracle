@@ -47,7 +47,7 @@ class AIExecutor:
             scope = (
                 os.environ.get("ORACLE_MEMORY_SCOPE")
                 or os.environ.get("ORACLE_WORKFLOW_SCOPE")
-                or "local:owner"
+                or "user:oracle-owner"
             )
             model_observability.record_event(
                 scope=scope,

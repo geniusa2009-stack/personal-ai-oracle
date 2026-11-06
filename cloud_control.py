@@ -28,12 +28,7 @@ LEASE_SECONDS = 600
 ALLOWED_REMOTE_TOOLS = {
     "local.list_directory",
     "local.read_file",
-    "local.write_file",
-    "local.move_path",
-    "local.delete_path",
     "local.find_files",
-    "local.run_command",
-    "local.open_app",
     "web.search",
     "web.navigate",
     "web.extract",

@@ -303,6 +303,31 @@ def init_database():
         );
         CREATE INDEX IF NOT EXISTS idx_oracle_workflow_steps_scope_run
             ON oracle_workflow_steps(scope, workflow_id, step_index);
+
+        CREATE TABLE IF NOT EXISTS oracle_execution_approvals (
+            approval_id TEXT PRIMARY KEY, scope TEXT NOT NULL, tool_id TEXT NOT NULL,
+            action_digest TEXT NOT NULL, preview_json TEXT NOT NULL, status TEXT NOT NULL,
+            created_at REAL NOT NULL, expires_at REAL NOT NULL, decided_at REAL,
+            checkpoint_id TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_approvals_scope_status
+            ON oracle_execution_approvals(scope, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_checkpoints (
+            checkpoint_id TEXT PRIMARY KEY, scope TEXT NOT NULL, ciphertext TEXT NOT NULL,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL, expires_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_checkpoints_scope_expiry
+            ON oracle_workflow_checkpoints(scope, expires_at);
+
+        CREATE TABLE IF NOT EXISTS oracle_model_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, provider TEXT NOT NULL,
+            model TEXT NOT NULL, route_reason TEXT NOT NULL, latency_ms INTEGER NOT NULL,
+            outcome TEXT NOT NULL, output_chars INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_model_events_scope_id
+            ON oracle_model_events(scope, id DESC);
         """
     )
     conn.commit()
@@ -1077,7 +1102,8 @@ SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
     "feature_log", "memories", "knowledge_relations", "knowledge_entities",
-    "oracle_workflow_steps", "oracle_workflow_runs", "wa_processed_messages",
+    "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
+    "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
 ]
 
 

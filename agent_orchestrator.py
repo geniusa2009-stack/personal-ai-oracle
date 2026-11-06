@@ -323,6 +323,36 @@ def _execute_step(
 
     if tool_id.startswith(("local.", "web.")):
         is_cloud_runtime = os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud"
+        if tool_id.startswith("local."):
+            import execution_policy
+            if is_cloud_runtime and tool_id in execution_policy.APPROVAL_TOOLS:
+                return {
+                    "tool_id": tool_id, "name": step["tool"]["name"],
+                    "status": "blocked", "input": "",
+                    "result": "Remote mutation is disabled until a paired-Mac approval capability is implemented. Run this action in local Mac mode.",
+                }
+            policy_scope = (
+                memory_scope or os.environ.get("ORACLE_MEMORY_SCOPE")
+                or os.environ.get("ORACLE_WORKFLOW_SCOPE") or "user:oracle-owner"
+            )
+            authorization = execution_policy.authorize_action(
+                tool_id, step["input"], scope=policy_scope
+            )
+            if not authorization.get("allowed") and authorization.get("reason") != "human_approval_required":
+                return {
+                    "tool_id": tool_id, "name": step["tool"]["name"],
+                    "status": "blocked", "input": "",
+                    "result": "This local tool is not recognized by the deterministic execution policy.",
+                }
+            if not authorization.get("allowed"):
+                return {
+                    "tool_id": tool_id, "name": step["tool"]["name"],
+                    "status": "awaiting_approval", "input": "",
+                    "result": "Paused before the local action. Review and approve this exact operation in Oracle Control Center.",
+                    "approval_id": authorization.get("approval_id", ""),
+                    "action_digest": authorization.get("action_digest", ""),
+                    "preview": authorization.get("preview", {}),
+                }
         review = (
             _preflight_local_action(task, step, memory_scope)
             if tool_id.startswith("local.") and not is_cloud_runtime
@@ -406,6 +436,9 @@ def _run_core(
     max_steps: int | None = None,
     workflow_id: str | None = None,
     workflow_scope: str | None = None,
+    initial_results: list[dict[str, Any]] | None = None,
+    initial_used_tool_calls: set[str] | None = None,
+    resume_checkpoint_id: str | None = None,
 ) -> dict[str, Any]:
     """Plan, execute, observe and re-plan using the current local user account."""
     if not isinstance(task, str) or not task.strip():
@@ -424,11 +457,16 @@ def _run_core(
             )
         allowed_steps = max_steps
 
-    results: list[dict[str, Any]] = []
-    used_tool_calls: set[str] = set()
+    results: list[dict[str, Any]] = [
+        dict(item) for item in (initial_results or []) if isinstance(item, dict)
+    ]
+    used_tool_calls: set[str] = set(initial_used_tool_calls or set())
     clarifying_question = ""
 
-    for step_index in range(allowed_steps):
+    if len(results) > allowed_steps:
+        raise AgentError("Checkpoint contains more completed steps than the configured task limit.")
+
+    for step_index in range(len(results), allowed_steps):
         plan = _build_next_step(
             task,
             allowed_steps - step_index,
@@ -459,19 +497,51 @@ def _run_core(
             task=task,
             memory_scope=memory_scope,
         )
-        results.append(result)
         if workflow_id and workflow_scope:
             try:
                 import workflow_ledger
                 workflow_ledger.complete_step(
-                    workflow_scope,
-                    workflow_id,
-                    step_index,
-                    result,
+                    workflow_scope, workflow_id, step_index, result,
                     duration_ms=int((time.monotonic() - step_started) * 1000),
                 )
             except Exception:
                 pass
+
+        if result.get("status") == "awaiting_approval":
+            checkpoint_id = resume_checkpoint_id
+            try:
+                import workflow_checkpoints, execution_policy
+                checkpoint_id = workflow_checkpoints.save_checkpoint(
+                    workflow_scope or "user:oracle-owner",
+                    {
+                        "task": task, "memory_scope": memory_scope,
+                        "max_steps": allowed_steps, "results": results,
+                        "used_tool_calls": sorted(used_tool_calls),
+                    },
+                    checkpoint_id=resume_checkpoint_id,
+                )
+                execution_policy.link_checkpoint(
+                    result.get("approval_id", ""), checkpoint_id,
+                    scope=workflow_scope or "user:oracle-owner",
+                )
+            except Exception:
+                checkpoint_id = None
+            pending_result = dict(result)
+            pending_result["checkpoint_id"] = checkpoint_id or ""
+            answer = (
+                "وقفت قبل تنفيذ الإجراء المحلي. راجع العملية ووافق عليها من Oracle Control Center؛ "
+                "وبعد الموافقة اضغط Resume لاستكمال نفس المهمة."
+            )
+            if not checkpoint_id:
+                answer += " لم يتوفر Checkpoint مشفّر؛ بعد الموافقة أعد إرسال المهمة يدوياً."
+            return {
+                "answer": answer, "clarifying_question": "",
+                "steps": results + [pending_result], "approval_pending": True,
+                "approval_id": result.get("approval_id", ""),
+                "checkpoint_id": checkpoint_id or "",
+            }
+
+        results.append(result)
         used_tool_calls.add(step["call_signature"])
 
     if not results:
@@ -540,18 +610,43 @@ def _run_core(
 
 
 
+
 def run(
-    task: str,
-    *,
-    memory_scope: str | None = None,
-    max_steps: int | None = None,
+    task: str | None = None, *, memory_scope: str | None = None,
+    max_steps: int | None = None, checkpoint_id: str | None = None,
+    workflow_scope: str | None = None,
 ) -> dict[str, Any]:
-    """Execute a task and expose a privacy-preserving durable workflow trace."""
-    workflow_scope = (
-        memory_scope
-        or os.environ.get("ORACLE_WORKFLOW_SCOPE", "local:owner").strip()
-        or "local:owner"
+    """Execute a task or resume a scope-checked encrypted checkpoint."""
+    resolved_scope = (
+        workflow_scope or memory_scope
+        or os.environ.get("ORACLE_WORKFLOW_SCOPE", "user:oracle-owner").strip()
+        or "user:oracle-owner"
     )
+    initial_results: list[dict[str, Any]] = []
+    initial_used_tool_calls: set[str] = set()
+    if checkpoint_id:
+        if task is not None:
+            raise AgentError("Pass either a new task or a checkpoint identifier, not both.")
+        try:
+            import workflow_checkpoints
+            state = workflow_checkpoints.load_checkpoint(resolved_scope, checkpoint_id)
+        except Exception as exc:
+            raise AgentError(f"Could not safely resume this workflow: {type(exc).__name__}.") from exc
+        task = state.get("task")
+        memory_scope = state.get("memory_scope")
+        max_steps = state.get("max_steps")
+        initial_results = state.get("results", [])
+        initial_used_tool_calls = set(state.get("used_tool_calls", []))
+        if not isinstance(task, str) or not task.strip():
+            raise AgentError("Encrypted checkpoint does not contain a valid task.")
+    if not isinstance(task, str) or not task.strip():
+        raise AgentError("A non-empty task is required.")
+    if max_steps is not None and (
+        isinstance(max_steps, bool) or not isinstance(max_steps, int)
+        or not 1 <= max_steps <= MAX_AGENT_STEPS_HARD_LIMIT
+    ):
+        raise AgentError(f"max_steps must be between 1 and {MAX_AGENT_STEPS_HARD_LIMIT}.")
+
     workflow_id = None
     ledger_enabled = os.environ.get("ORACLE_ENABLE_WORKFLOW_LEDGER", "true").strip().lower() not in {
         "0", "false", "no", "off"
@@ -560,8 +655,7 @@ def run(
         try:
             import workflow_ledger
             workflow_id = workflow_ledger.start_run(
-                workflow_scope,
-                task,
+                resolved_scope, task,
                 max_steps if max_steps is not None else _step_limit(),
             )
         except Exception:
@@ -569,21 +663,18 @@ def run(
 
     try:
         result = _run_core(
-            task,
-            memory_scope=memory_scope,
-            max_steps=max_steps,
-            workflow_id=workflow_id,
-            workflow_scope=workflow_scope,
+            task, memory_scope=memory_scope, max_steps=max_steps,
+            workflow_id=workflow_id, workflow_scope=resolved_scope,
+            initial_results=initial_results,
+            initial_used_tool_calls=initial_used_tool_calls,
+            resume_checkpoint_id=checkpoint_id,
         )
     except Exception as exc:
         if workflow_id:
             try:
                 import workflow_ledger
                 workflow_ledger.finish_run(
-                    workflow_scope,
-                    workflow_id,
-                    "failed",
-                    error_code=type(exc).__name__,
+                    resolved_scope, workflow_id, "failed", error_code=type(exc).__name__
                 )
             except Exception:
                 pass
@@ -592,14 +683,28 @@ def run(
     if workflow_id:
         try:
             import workflow_ledger
-            failures = {"error", "failed", "blocked_by_executor"}
+            failures = {"error", "failed", "blocked", "blocked_by_executor", "awaiting_approval", "timeout"}
             status = (
-                "partial"
-                if any(str(item.get("status", "")).lower() in failures for item in result.get("steps", []))
+                "partial" if result.get("approval_pending")
+                or any(str(item.get("status", "")).lower() in failures for item in result.get("steps", []))
                 else "completed"
             )
-            workflow_ledger.finish_run(workflow_scope, workflow_id, status)
+            workflow_ledger.finish_run(resolved_scope, workflow_id, status)
             result["workflow_id"] = workflow_id
         except Exception:
             pass
+
+    if checkpoint_id and not result.get("approval_pending"):
+        try:
+            import workflow_checkpoints
+            workflow_checkpoints.delete_checkpoint(resolved_scope, checkpoint_id)
+        except Exception:
+            pass
     return result
+
+
+def resume(checkpoint_id: str, *, scope: str) -> dict[str, Any]:
+    """Resume a paused task after the exact one-time action approval is consumed."""
+    if not isinstance(checkpoint_id, str) or not checkpoint_id:
+        raise AgentError("A checkpoint identifier is required.")
+    return run(None, checkpoint_id=checkpoint_id, workflow_scope=scope)

@@ -2,7 +2,7 @@
 
 Personal AI Oracle is a private hybrid personal-agent system:
 - A private cloud dashboard and control plane remain available when the MacBook is offline.
-- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes approved Mac-local tasks.
+- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes the current read-only remote Mac tasks; consequential mutations are gated locally until a signed approval exchange is implemented.
 - Multi-provider models can be assigned independently to the assistant, planner, researcher, coder, writer, executor and reviewer.
 - An isolated Playwright browser on the Mac can search, navigate, read webpages and list links.
 - The local Mac remains the execution endpoint for local files, local apps, developer tools and browser sessions.
@@ -103,7 +103,7 @@ Hosted model requests are sent to the selected provider. Ollama model requests r
 - Cloud dashboard login and control API credentials are separate.
 - Device credentials are random, stored hashed in the control-plane database, and returned only once at pairing.
 - Jobs have bounded payloads, an allow-listed tool identifier, a lease token and a result size limit.
-- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac.
+- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac. The remote API allowlist currently exposes read-only Mac tools only; cloud-originated write/move/delete/command/app-launch jobs are rejected until a one-time approval capability can be verified independently by the Mac agent.
 - Browser automation uses an isolated profile and blocks non-global destinations by default to reduce SSRF and local-network exposure.
 - Local tools run as the currently logged-in macOS user and use normal OS permissions. The agent does not escalate to root or bypass macOS privacy and safety protections.
 - The system does not extract credentials from the user's ordinary browser profile. Sign in manually in the dedicated Oracle browser.

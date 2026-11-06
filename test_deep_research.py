@@ -249,3 +249,23 @@ def test_research_stops_repeated_remote_waits_when_mac_agent_is_offline(monkeypa
     assert len(calls) == 1
     assert sources[0]["page_status"] == "unavailable:CloudAgentUnavailable"
     assert all(item["page_status"] == "unavailable:MacAgentOffline" for item in sources[1:])
+
+
+def test_claim_evidence_maps_valid_invalid_and_missing_citations():
+    claims = deep_research.map_claim_evidence(
+        "Claim A is supported [S1]. Claim B has no citation. Claim C refers to [S99].",
+        ["S1", "S2"],
+    )
+    assert [item["citation_status"] for item in claims] == [
+        "cited", "uncited", "invalid_reference"
+    ]
+    assert claims[0]["source_ids"] == ["S1"]
+    assert claims[1]["source_ids"] == []
+    assert claims[2]["invalid_source_ids"] == ["S99"]
+
+
+def test_claim_evidence_rejects_invalid_source_ids_and_limits():
+    with pytest.raises(deep_research.ResearchError):
+        deep_research.map_claim_evidence("claim", ["not-a-source"])
+    with pytest.raises(deep_research.ResearchError):
+        deep_research.map_claim_evidence("claim", ["S1"], max_claims=0)

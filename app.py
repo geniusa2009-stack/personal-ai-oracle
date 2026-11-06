@@ -1133,6 +1133,8 @@ with tab_oracle:
     import knowledge_graph
     import workflow_ledger
     import deep_research
+    import execution_policy
+    import model_observability
 
     oracle_scope = (
         os.environ.get("ORACLE_MEMORY_SCOPE")
@@ -1140,9 +1142,88 @@ with tab_oracle:
     ).strip()
     st.markdown("### 🔮 Oracle Control Center")
     st.caption(
-        "لوحة تشغيل وذاكرة وبحث. السجلات هنا مرتبطة بنطاق المالك الحالي، "
-        "ومحتوى البحث لا يُحفظ تلقائياً في قاعدة البيانات."
+        "لوحة تشغيل وذاكرة وبحث وموافقات صريحة. الإجراءات المحلية الحساسة تتوقف حتى تراجعها بنفسك."
     )
+
+    st.divider()
+    st.markdown("#### 🛡️ صندوق موافقات التنفيذ المحلي")
+    try:
+        approval_items = execution_policy.list_approvals(oracle_scope, include_decided=True, limit=50)
+    except Exception as exc:
+        approval_items = []
+        st.error(f"تعذّر تحميل طلبات الموافقة: {type(exc).__name__}")
+
+    pending_items = [item for item in approval_items if item["status"] == "pending"]
+    approved_items = [item for item in approval_items if item["status"] == "approved"]
+    ap1, ap2 = st.columns(2)
+    ap1.metric("تحتاج موافقتك", len(pending_items))
+    ap2.metric("موافقات جاهزة للاستكمال", len(approved_items))
+    if not approval_items:
+        st.info("لا توجد إجراءات محلية معلّقة. Oracle سيطلب موافقتك قبل أول كتابة أو حذف أو أمر محلي.")
+    for item in approval_items:
+        approval_label = f"{item['tool_id']} · {item['approval_id'][:10]} · {item['status']}"
+        with st.expander(approval_label, expanded=item["status"] == "pending"):
+            st.json(item["preview"])
+            expires = datetime.fromtimestamp(item["expires_at"]).strftime("%Y-%m-%d %H:%M:%S")
+            st.caption(f"بصمة العملية: {item['action_digest'][:16]} · تنتهي: {expires}")
+            if item["status"] == "pending":
+                approve_col, deny_col = st.columns(2)
+                if approve_col.button("أوافق على العملية دي فقط", key=f"oracle_approve_{item['approval_id']}"):
+                    changed = execution_policy.decide_approval(item["approval_id"], scope=oracle_scope, approve=True)
+                    if changed:
+                        st.success("تمت الموافقة على العملية المحددة لمرة واحدة.")
+                        st.rerun()
+                    else:
+                        st.warning("انتهت صلاحية الطلب أو تم اتخاذ قرار بشأنه بالفعل.")
+                if deny_col.button("ارفض العملية", key=f"oracle_deny_{item['approval_id']}"):
+                    changed = execution_policy.decide_approval(item["approval_id"], scope=oracle_scope, approve=False)
+                    if changed:
+                        st.warning("تم رفض العملية.")
+                        st.rerun()
+                    else:
+                        st.info("الطلب لم يعد في حالة انتظار.")
+            elif item["status"] == "approved":
+                checkpoint = item.get("checkpoint_id") or ""
+                if checkpoint:
+                    if st.button("Resume — استكمال المهمة", key=f"oracle_resume_{item['approval_id']}"):
+                        try:
+                            with st.spinner("يتم استكمال المهمة من Checkpoint مشفّر…"):
+                                resumed = agent_orchestrator.resume(checkpoint, scope=oracle_scope)
+                            st.markdown(resumed.get("answer", ""))
+                            st.success("انتهى استكمال سير العمل.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"تعذّر استكمال المهمة: {type(exc).__name__}")
+                else:
+                    st.info("تمت الموافقة، لكن لا يوجد Checkpoint صالح؛ أعد إرسال المهمة من وضع Mac المحلي.")
+    st.caption(
+        "الموافقة مربوطة ببصمة SHA-256 للمدخلات الدقيقة، وتُستهلك مرة واحدة. "
+        "محتوى الملف المراد كتابته لا يظهر داخل معاينة الموافقة."
+    )
+
+    st.divider()
+    st.markdown("#### 📈 أداء النماذج والمزوّدين")
+    try:
+        model_rows = model_observability.summary(oracle_scope, limit=1000)
+        if model_rows:
+            st.dataframe(
+                [{
+                    "المزوّد": row["provider"],
+                    "النموذج": row["model"],
+                    "الطلبات": row["requests"],
+                    "نسبة النجاح": f"{row['success_rate']:.1%}",
+                    "الأخطاء": row["errors"],
+                    "P50 ms": row["p50_latency_ms"],
+                    "P95 ms": row["p95_latency_ms"],
+                } for row in model_rows],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("ستظهر إحصائيات الأداء بعد أول استدعاء لنموذج.")
+    except Exception as exc:
+        st.warning(f"تعذّر تحميل إحصائيات النماذج: {type(exc).__name__}")
+    st.caption("المقاييس لا تحتوي على نصوص الطلبات أو الردود أو محتوى الملفات.")
 
     try:
         graph_entities = knowledge_graph.list_entities(oracle_scope, limit=100)

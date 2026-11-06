@@ -16,6 +16,19 @@ def _plan(feature_id=None, user_input="safe input", question=""):
     return json.dumps({"steps": steps, "clarifying_question": question})
 
 
+def _approve_local_action(monkeypatch, tmp_path, tool_id, payload):
+    import db
+    import execution_policy
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "execution-approval-test.db"))
+    request = execution_policy.authorize_action(tool_id, payload, scope="user:oracle-owner")
+    assert request["allowed"] is False
+    assert request["reason"] == "human_approval_required"
+    assert execution_policy.decide_approval(
+        request["approval_id"], scope="user:oracle-owner", approve=True
+    ) is True
+
+
 def test_available_tools_includes_mac_local_capabilities():
     tools = agent_orchestrator.available_tools()
 
@@ -225,14 +238,16 @@ def test_agent_answers_directly_when_no_tool_is_needed(monkeypatch):
     assert chat.call_count == 2
 
 
-def test_executor_reviews_destructive_local_actions_before_execution(monkeypatch):
+def test_executor_reviews_destructive_local_actions_before_execution(monkeypatch, tmp_path):
     tool = next(
         item for item in agent_orchestrator.available_tools()
         if item["tool_id"] == "local.delete_path"
     )
+    payload = {"path": "/tmp/example", "recursive": True}
+    _approve_local_action(monkeypatch, tmp_path, "local.delete_path", payload)
     step = {
         "tool_id": "local.delete_path",
-        "input": json.dumps({"path": "/tmp/example", "recursive": True}),
+        "input": json.dumps(payload),
         "tool": tool,
     }
     monkeypatch.setattr(
@@ -263,9 +278,11 @@ def test_executor_approved_local_action_runs_with_current_user_tool(monkeypatch,
         if item["tool_id"] == "local.write_file"
     )
     target = tmp_path / "oracle.txt"
+    payload = {"path": str(target), "content": "approved"}
+    _approve_local_action(monkeypatch, tmp_path, "local.write_file", payload)
     step = {
         "tool_id": "local.write_file",
-        "input": json.dumps({"path": str(target), "content": "approved"}),
+        "input": json.dumps(payload),
         "tool": tool,
     }
     monkeypatch.setattr(
@@ -288,14 +305,16 @@ def test_executor_approved_local_action_runs_with_current_user_tool(monkeypatch,
     assert "executor_review" in result
 
 
-def test_coder_agent_diagnoses_failed_local_build_command(monkeypatch):
+def test_coder_agent_diagnoses_failed_local_build_command(monkeypatch, tmp_path):
     tool = next(
         item for item in agent_orchestrator.available_tools()
         if item["tool_id"] == "local.run_command"
     )
+    payload = {"command": ["git", "status"]}
+    _approve_local_action(monkeypatch, tmp_path, "local.run_command", payload)
     step = {
         "tool_id": "local.run_command",
-        "input": json.dumps({"command": ["git", "status"]}),
+        "input": json.dumps(payload),
         "tool": tool,
     }
     chat = Mock(side_effect=[
@@ -324,3 +343,59 @@ def test_coder_agent_diagnoses_failed_local_build_command(monkeypatch):
     assert "coder_diagnosis" in result
     assert "missing" in result["coder_diagnosis"]
     assert chat.call_count == 2
+
+
+def test_agent_pauses_then_resumes_after_exact_owner_approval(monkeypatch, tmp_path):
+    from cryptography.fernet import Fernet
+    import db
+    import execution_policy
+    import workflow_checkpoints
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "agent-resume.db"))
+    monkeypatch.setenv("ORACLE_CHECKPOINT_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    monkeypatch.setenv("ORACLE_AUDIT_DIR", str(tmp_path / "audit"))
+    monkeypatch.delenv("ORACLE_RUNTIME_MODE", raising=False)
+    monkeypatch.delenv("ORACLE_MEMORY_SCOPE", raising=False)
+    target = tmp_path / "owner-approved.txt"
+    payload = {"path": str(target), "content": "written only after approval"}
+    write_plan = json.dumps({
+        "steps": [{
+            "tool_id": "local.write_file",
+            "input": json.dumps(payload),
+        }],
+        "clarifying_question": "",
+    })
+    executor_approval = json.dumps({
+        "approved": True,
+        "reason": "The requested single-file write is narrowly scoped.",
+    })
+    chat = Mock(side_effect=[
+        write_plan,          # Initial planner pauses before execution.
+        write_plan,          # Resume planner proposes the same exact payload.
+        executor_approval,   # Advisory model review after deterministic grant.
+        "Task completed.",   # Final reviewer.
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+
+    paused = agent_orchestrator.run(
+        "Create the requested note", memory_scope="user:oracle-owner", max_steps=1
+    )
+    assert paused["approval_pending"] is True
+    assert paused["checkpoint_id"]
+    assert not target.exists()
+
+    approval = execution_policy.list_approvals("user:oracle-owner", include_decided=False)
+    assert len(approval) == 1
+    assert approval[0]["checkpoint_id"] == paused["checkpoint_id"]
+    assert execution_policy.decide_approval(
+        paused["approval_id"], scope="user:oracle-owner", approve=True
+    ) is True
+
+    resumed = agent_orchestrator.resume(
+        paused["checkpoint_id"], scope="user:oracle-owner"
+    )
+    assert target.read_text(encoding="utf-8") == payload["content"]
+    assert resumed["answer"] == "Task completed."
+    assert not resumed.get("approval_pending", False)
+    with pytest.raises(workflow_checkpoints.CheckpointError):
+        workflow_checkpoints.load_checkpoint("user:oracle-owner", paused["checkpoint_id"])

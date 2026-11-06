@@ -10,10 +10,15 @@ import cloud_control
 import web_browser
 
 
-def test_cloud_control_only_accepts_known_remote_tools():
+def test_cloud_control_only_accepts_read_only_remote_tools():
     assert "local.read_file" in cloud_control.ALLOWED_REMOTE_TOOLS
+    assert "local.list_directory" in cloud_control.ALLOWED_REMOTE_TOOLS
     assert "web.navigate" in cloud_control.ALLOWED_REMOTE_TOOLS
-    assert "local.run_command" in cloud_control.ALLOWED_REMOTE_TOOLS
+    for tool_id in (
+        "local.write_file", "local.move_path", "local.delete_path",
+        "local.run_command", "local.open_app",
+    ):
+        assert tool_id not in cloud_control.ALLOWED_REMOTE_TOOLS
     assert "os.exec" not in cloud_control.ALLOWED_REMOTE_TOOLS
     assert "shell" not in cloud_control.ALLOWED_REMOTE_TOOLS
 
@@ -119,6 +124,24 @@ def test_cloud_job_round_trip_and_device_pairing(tmp_path, monkeypatch):
         assert final.status_code == 200
         assert final.json()["status"] == "success"
         assert final.json()["result"]["result"] == "done"
+
+
+def test_cloud_api_rejects_remote_mutation_until_mac_approval_exchange_exists(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("ORACLE_CLOUD_DB_PATH", str(tmp_path / "remote-mutation.db"))
+    monkeypatch.setenv("ORACLE_CLOUD_CONTROL_TOKEN", "c" * 48)
+    with TestClient(cloud_control.app) as client:
+        response = client.post(
+            "/v1/jobs",
+            headers={"Authorization": "Bearer " + "c" * 48},
+            json={
+                "tool_id": "local.delete_path",
+                "input": {"path": "/tmp/example", "recursive": True},
+                "task": "delete one path",
+            },
+        )
+        assert response.status_code == 422
 
 
 def test_cloud_api_rejects_unknown_remote_tool(tmp_path, monkeypatch):

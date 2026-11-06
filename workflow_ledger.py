@@ -25,7 +25,7 @@ MAX_STEPS_PER_RUN = 30
 RUN_STATUSES = frozenset({"running", "completed", "partial", "failed", "cancelled"})
 _STEP_STATUSES = frozenset({
     "running", "success", "active", "completed", "failed", "error",
-    "blocked_by_executor", "skipped", "unknown",
+    "blocked_by_executor", "awaiting_approval", "skipped", "unknown",
 })
 _ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
