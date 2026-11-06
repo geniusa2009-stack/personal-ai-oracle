@@ -41,16 +41,22 @@ def resolve_profile(role: str) -> dict[str, Any]:
         f"ORACLE_PROVIDER_{task_type.upper()}",
         "ORACLE_DEFAULT_PROVIDER",
     ) or "openrouter"
+    provider_model_env = {
+        "openrouter": "OPENROUTER_MODEL",
+        "openai": "OPENAI_MODEL",
+        "gemini": "GEMINI_MODEL",
+        "ollama": "OLLAMA_MODEL",
+    }.get(provider, "")
+    default_model_env = (
+        "ORACLE_DEFAULT_MODEL"
+        if provider == (os.environ.get("ORACLE_DEFAULT_PROVIDER", "openrouter").strip().lower())
+        else ""
+    )
     model = _env_first(
         f"{prefix}_MODEL",
         f"ORACLE_MODEL_{task_type.upper()}",
-        "ORACLE_DEFAULT_MODEL",
-        {
-            "openrouter": "OPENROUTER_MODEL",
-            "openai": "OPENAI_MODEL",
-            "gemini": "GEMINI_MODEL",
-            "ollama": "OLLAMA_MODEL",
-        }.get(provider, ""),
+        provider_model_env,
+        default_model_env,
     )
     temperature_value = _env_first(f"{prefix}_TEMPERATURE")
     try:
