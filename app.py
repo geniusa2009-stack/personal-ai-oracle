@@ -47,7 +47,31 @@ PROVIDER_KEY_ENV = {
 st.set_page_config(page_title="الوكيل الذكي الشخصي", page_icon="🔮",
                    layout="wide", initial_sidebar_state="expanded")
 
-# Local mode: no public login gate. The LaunchAgent binds this app to 127.0.0.1.
+# Cloud mode is private: authenticate before rendering any personal data.
+if os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
+    import secrets as _secrets
+    _dashboard_password = os.environ.get("ORACLE_CLOUD_DASHBOARD_PASSWORD", "")
+    if len(_dashboard_password) < 16:
+        st.error("Cloud dashboard is not configured with a strong dashboard password.")
+        st.stop()
+    if not st.session_state.get("oracle_cloud_authenticated", False):
+        st.title("Personal AI Oracle")
+        st.caption("Private cloud workspace")
+        with st.form("oracle_cloud_login"):
+            _entered_password = st.text_input("Dashboard password", type="password")
+            _submitted = st.form_submit_button("Sign in")
+        if _submitted:
+            if _secrets.compare_digest(_entered_password, _dashboard_password):
+                st.session_state["oracle_cloud_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+    if st.sidebar.button("Sign out"):
+        st.session_state.pop("oracle_cloud_authenticated", None)
+        st.rerun()
+
+# Local mode remains private to 127.0.0.1; cloud mode uses the authenticated dashboard.
 
 def render_report(content):
     """Render untrusted model/data output as Markdown, never raw HTML."""

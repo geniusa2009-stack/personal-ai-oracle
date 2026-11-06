@@ -15,6 +15,7 @@ import ai_core
 import agent_profiles
 import features
 import local_tools
+import web_browser
 
 
 MAX_AGENT_STEPS = 12
@@ -61,6 +62,13 @@ def available_tools() -> list[dict[str, Any]]:
             "category": "mac_local",
             "kind": "local",
             "execution_scope": "current_macos_user",
+        })
+    for tool in web_browser.available_tools():
+        tools.append({
+            **tool,
+            "category": "web_browser",
+            "kind": "browser",
+            "execution_scope": "oracle_isolated_browser",
         })
     return tools
 
@@ -284,7 +292,7 @@ def _execute_step(
 ) -> dict[str, Any]:
     """Review and execute a validated Oracle feature or native Mac-local tool."""
     tool_id = step["tool_id"]
-    if tool_id.startswith("local."):
+    if tool_id.startswith(("local.", "web.")):
         review = _preflight_local_action(task, step, memory_scope)
         if review is not None and not review["approved"]:
             return {
@@ -294,7 +302,13 @@ def _execute_step(
                 "input": step["input"][:2000],
                 "result": review["reason"],
             }
-        result = local_tools.execute(tool_id, step["input"])
+        if os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
+            from cloud_client import execute_remote_tool
+            result = execute_remote_tool(tool_id, step["input"], task=task)
+        elif tool_id.startswith("local."):
+            result = local_tools.execute(tool_id, step["input"])
+        else:
+            result = web_browser.execute(tool_id, step["input"])
         result["tool_id"] = tool_id
         result["input"] = step["input"][:2000]
         if review is not None:

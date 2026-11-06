@@ -1,0 +1,187 @@
+"""Outbound-polling Mac agent that connects the private cloud to local tools."""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import requests
+
+from local_config import load_local_environment
+
+REMOTE_TOOLS = {
+    "local.list_directory",
+    "local.read_file",
+    "local.write_file",
+    "local.move_path",
+    "local.delete_path",
+    "local.find_files",
+    "local.run_command",
+    "local.open_app",
+    "web.search",
+    "web.navigate",
+    "web.extract",
+    "web.links",
+    "web.open_browser",
+}
+STOPPING = False
+
+
+def _on_signal(_signum, _frame) -> None:
+    global STOPPING
+    STOPPING = True
+
+
+def _base_url() -> str:
+    value = os.environ.get("ORACLE_CLOUD_API_URL", "").strip().rstrip("/")
+    if not value:
+        raise RuntimeError("ORACLE_CLOUD_API_URL is required to run the cloud-connected Mac agent.")
+    if not value.startswith("https://") and not value.startswith(
+        ("http://127.0.0.1", "http://localhost")
+    ):
+        raise RuntimeError("The Mac agent requires HTTPS for non-local cloud endpoints.")
+    return value
+
+
+def _device_token_path() -> Path:
+    return Path(
+        os.environ.get(
+            "ORACLE_DEVICE_TOKEN_FILE",
+            str(Path.home() / ".personal_ai_oracle" / "device-token.json"),
+        )
+    ).expanduser()
+
+
+def _pair_if_needed(base_url: str, session: requests.Session) -> str:
+    token = os.environ.get("ORACLE_DEVICE_TOKEN", "").strip()
+    if token:
+        return token
+    path = _device_token_path()
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            token = data.get("device_token", "")
+            if isinstance(token, str) and len(token) > 30:
+                return token
+        except (OSError, ValueError):
+            pass
+
+    enrollment = os.environ.get("ORACLE_CLOUD_ENROLLMENT_TOKEN", "")
+    if len(enrollment) < 32:
+        raise RuntimeError(
+            "Pair this Mac once by setting ORACLE_CLOUD_ENROLLMENT_TOKEN, or provide "
+            "ORACLE_DEVICE_TOKEN from the private cloud pairing response."
+        )
+    response = session.post(
+        f"{base_url}/v1/devices/pair",
+        headers={"X-Enrollment-Token": enrollment},
+        json={"name": os.environ.get("ORACLE_DEVICE_NAME", "Personal MacBook")},
+        timeout=(10, 30),
+    )
+    response.raise_for_status()
+    data = response.json()
+    token = data.get("device_token")
+    if not isinstance(token, str) or len(token) < 30:
+        raise RuntimeError("Cloud API returned an invalid device token.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"device_token": token}), encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(path)
+    return token
+
+
+def _execute(job: dict[str, Any]) -> dict[str, Any]:
+    tool_id = job.get("tool_id")
+    if tool_id not in REMOTE_TOOLS:
+        return {"name": str(tool_id), "status": "blocked", "result": "Tool is not in the Mac agent allowlist."}
+    payload = job.get("input")
+    if not isinstance(payload, dict):
+        return {"name": tool_id, "status": "error", "result": "Invalid remote tool payload."}
+
+    if tool_id.startswith("local."):
+        if tool_id in {
+            "local.write_file", "local.move_path", "local.delete_path", "local.run_command"
+        }:
+            try:
+                import agent_orchestrator
+                review = agent_orchestrator._preflight_local_action(
+                    str(job.get("task") or "Remote cloud task"),
+                    {
+                        "tool_id": tool_id,
+                        "input": json.dumps(payload, ensure_ascii=False),
+                        "tool": {"name": tool_id},
+                    },
+                    os.environ.get("ORACLE_MEMORY_SCOPE"),
+                )
+            except Exception as exc:
+                return {"name": tool_id, "status": "blocked", "result": f"Executor review unavailable: {type(exc).__name__}"}
+            if review is not None and not review.get("approved"):
+                return {
+                    "name": tool_id,
+                    "status": "blocked",
+                    "result": str(review.get("reason") or "Executor did not approve this action.")[:1000],
+                }
+        import local_tools
+        return local_tools.execute(tool_id, payload)
+
+    import web_browser
+    return web_browser.execute(tool_id, payload)
+
+
+def run_forever() -> int:
+    global STOPPING
+    load_local_environment()
+    base_url = _base_url()
+    session = requests.Session()
+    session.headers.update({"User-Agent": "PersonalAIOracle-MacAgent/1.0"})
+    session.verify = True
+    token = _pair_if_needed(base_url, session)
+    session.headers.update({"Authorization": f"Bearer {token}"})
+    print("[Oracle Mac Agent] Connected to private cloud control plane.", flush=True)
+
+    while not STOPPING:
+        try:
+            session.post(f"{base_url}/v1/agent/heartbeat", timeout=(10, 20)).raise_for_status()
+            response = session.get(
+                f"{base_url}/v1/agent/jobs/next",
+                params={"wait_seconds": 20},
+                timeout=(10, 35),
+            )
+            response.raise_for_status()
+            job = response.json()
+            if not job.get("job_id"):
+                continue
+            lease_token = job.get("lease_token")
+            result = _execute(job)
+            status = result.get("status", "error")
+            if status not in {"success", "error", "blocked"}:
+                status = "error"
+            session.post(
+                f"{base_url}/v1/agent/jobs/{job['job_id']}/result",
+                json={
+                    "lease_token": lease_token,
+                    "status": status,
+                    "result": result,
+                },
+                timeout=(10, 30),
+            ).raise_for_status()
+        except requests.RequestException as exc:
+            print(f"[Oracle Mac Agent] Cloud connection error: {type(exc).__name__}", file=sys.stderr, flush=True)
+            time.sleep(5)
+        except Exception as exc:
+            print(f"[Oracle Mac Agent] Agent loop error: {type(exc).__name__}: {str(exc)[:300]}", file=sys.stderr, flush=True)
+            time.sleep(3)
+    session.close()
+    return 0
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+    raise SystemExit(run_forever())

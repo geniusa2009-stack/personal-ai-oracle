@@ -1,187 +1,128 @@
-# Personal AI Oracle — Local Mac Edition
+# Personal AI Oracle — Hybrid Cloud + Mac Agent
 
-Personal AI Oracle is a private, local-first AI workspace that runs on the owner's MacBook. It is **not a public website and is not configured for cloud deployment**.
+Personal AI Oracle is a private hybrid personal-agent system:
+- A private cloud dashboard and control plane remain available when the MacBook is offline.
+- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes approved Mac-local tasks.
+- Multi-provider models can be assigned independently to the assistant, planner, researcher, coder, writer, executor and reviewer.
+- An isolated Playwright browser on the Mac can search, navigate, read webpages and list links.
+- The local Mac remains the execution endpoint for local files, local apps, developer tools and browser sessions.
 
-The MacBook runs two supervised processes:
-- A local Streamlit dashboard bound only to `127.0.0.1`.
-- A background worker that runs the opportunity radar on a schedule.
+The cloud does not open an inbound port on the Mac. Device communication is Mac-initiated HTTPS polling with short-lived task leases and one-time result submission.
 
-A per-user macOS LaunchAgent starts Oracle when the owner logs in and restarts the runtime if it exits. On AC power, Oracle can use `caffeinate -s` to prevent idle system sleep. A MacBook that is powered off, logged out, asleep, or closed in a way that triggers sleep cannot run a 24/7 process.
+## Architecture
 
-## Local architecture
+| Component | Runs where | Responsibility |
+|---|---|---|
+| Cloud dashboard | Private cloud web service | Authenticated workspace, Oracle features, chat, job status |
+| Cloud control API | Private cloud web service | Device pairing, authenticated job queue, leases, results |
+| Mac agent | Logged-in Mac user session | Outbound connection, local actions, browser execution |
+| Playwright browser | Mac | Dedicated browser profile, public website navigation and extraction |
+| Model router | Cloud and Mac | Provider/model selection by task and agent role |
+| Local state | Mac | Device token, browser profile, local DB and audit records |
+| Cloud state | Cloud persistent disk/DB | Device registry, job queue and job results |
 
-| File | Responsibility |
-|---|---|
-| `app.py` | Local Streamlit dashboard and chat |
-| `local_runtime.py` | Supervises the UI and background worker |
-| `manage_launch_agent.py` | Installs or removes the macOS LaunchAgent |
-| `local_config.py` | Loads the private environment file from the user's home directory |
-| `local_tools.py` | Local file, app and command tools for the agent |
-| `agent_orchestrator.py` | Adaptive tool planning, execution and review |
-| `agent_profiles.py` | Independent provider/model profiles for specialist agents |
-| `ai_core.py` | Shared AI request, memory, routing and provider execution |
-| `llm_provider.py` | OpenRouter, OpenAI, Gemini and Ollama provider adapters |
-| `model_router.py` | Chooses a provider/model pair for each task |
-| `memory.py` | Explicit, scope-isolated long-term memory |
-| `db.py`, `database.py` | Local SQLite storage |
-| `worker.py`, `radar.py` | Background opportunity discovery |
+## Cloud deployment
 
-## Install on macOS
+A two-service Render Blueprint is provided in `render.yaml`:
+- `personal-ai-oracle-control`: FastAPI control plane with persistent storage.
+- `personal-ai-oracle-web`: Streamlit private dashboard.
 
-From the repository directory:
+The services use Dockerfiles dedicated to their roles. You can use another Docker-capable host by deploying `Dockerfile.cloud-api` and `Dockerfile.cloud-web` separately.
+
+### Required secrets
+
+Set these in the cloud provider's secret/environment settings. Use randomly generated values, at least 32 characters for the API tokens and at least 16 characters for the dashboard password.
+
+| Variable | Control API | Cloud dashboard | Mac |
+|---|---:|---:|---:|
+| `ORACLE_CLOUD_CONTROL_TOKEN` | Yes | Same exact value | No |
+| `ORACLE_CLOUD_ENROLLMENT_TOKEN` | Yes | No | Same exact value for first pairing |
+| `ORACLE_CLOUD_DASHBOARD_PASSWORD` | No | Yes | No |
+| `ORACLE_CLOUD_API_URL` | No | Internal API URL | Public HTTPS API URL |
+| `OPENROUTER_API_KEY` | No | Optional | Optional |
+| `OPENAI_API_KEY` | No | Optional | Optional |
+| `GEMINI_API_KEY` | No | Optional | Optional |
+| `TAVILY_API_KEY` | No | Optional | Optional |
+
+Use a different dashboard password and API tokens. Never put secrets in source files, GitHub commits, screenshots, or chat logs.
+
+Configure the cloud web service with:
+- `ORACLE_RUNTIME_MODE=cloud`
+- `ORACLE_CLOUD_API_URL` pointing at the private/internal URL of the control API when the host supports it.
+- `ORACLE_CLOUD_CONTROL_TOKEN` matching the API service value.
+- `ORACLE_CLOUD_DASHBOARD_PASSWORD` set to a strong private password.
+- `ORACLE_DB_PATH` on persistent storage if Oracle's feature data must survive redeploys.
+
+The dashboard login is independent from the control API token. The control token is only used server-side by the dashboard and is not rendered into the browser UI.
+
+For genuine 24/7 cloud availability, use an always-on service plan and persistent storage. Free tiers may sleep, restart or discard local container storage; do not rely on them for continuous background operation or durable state.
+
+## Pair the MacBook
+
+1. Deploy the API and web services and copy their HTTPS URLs.
+2. In the Mac's private file `~/.personal_ai_oracle/.env`, set:
+
+```dotenv
+ORACLE_CLOUD_API_URL=https://YOUR-CONTROL-API.example.com
+ORACLE_CLOUD_ENROLLMENT_TOKEN=THE_SAME_ENROLLMENT_SECRET_FROM_CLOUD
+ORACLE_DEVICE_NAME=Personal MacBook
+ORACLE_BROWSER_HEADLESS=1
+ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=0
+```
+
+3. Restart the LaunchAgent. The Mac agent pairs once, stores its device token in `~/.personal_ai_oracle/device-token.json` with mode 0600, and begins polling for jobs.
+4. The dashboard at the cloud web URL can now request Mac-local tools. If the Mac is asleep, powered off or disconnected, those tasks remain queued until the agent reconnects.
+
+To install Chromium for the isolated browser once:
+
+```bash
+cd /path/to/personal-ai-oracle
+.venv/bin/python -m playwright install chromium
+```
+
+For a visible browser window on the logged-in Mac desktop, set `ORACLE_BROWSER_HEADLESS=0`. The Oracle browser uses a separate profile under `~/.personal_ai_oracle/browser-profile`; it does not read or reuse the user's everyday Chrome/Safari profile. Any site sign-in should be performed manually in that dedicated browser window.
+
+Private LAN and localhost destinations are blocked by default by the browser URL guard. Set `ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=1` only when you deliberately need to access a local development site or trusted LAN service.
+
+## Multi-model routing
+
+Supported providers in this revision:
+- OpenRouter
+- OpenAI
+- Google Gemini
+- Local Ollama
+
+Configure defaults and per-role overrides using `ORACLE_DEFAULT_PROVIDER`, `ORACLE_AGENT_<ROLE>_PROVIDER`, `ORACLE_AGENT_<ROLE>_MODEL` and task-level `ORACLE_PROVIDER_<TASK>` / `ORACLE_MODEL_<TASK>`.
+
+Roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, `reviewer`.
+
+Hosted model requests are sent to the selected provider. Ollama model requests remain on the device where Ollama runs. The Mac agent needs an available local provider/model for its second review of consequential local write, move, delete and command operations.
+
+## Security boundaries
+
+- Cloud dashboard login and control API credentials are separate.
+- Device credentials are random, stored hashed in the control-plane database, and returned only once at pairing.
+- Jobs have bounded payloads, an allow-listed tool identifier, a lease token and a result size limit.
+- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac.
+- Browser automation uses an isolated profile and blocks non-global destinations by default to reduce SSRF and local-network exposure.
+- Local tools run as the currently logged-in macOS user and use normal OS permissions. The agent does not escalate to root or bypass macOS privacy and safety protections.
+- The system does not extract credentials from the user's ordinary browser profile. Sign in manually in the dedicated Oracle browser.
+- Use HTTPS in production. Keep API tokens, model keys and device tokens out of source control.
+
+## Local operation
+
+Local-only mode remains supported:
 
 ```bash
 python3 install_local.py
 ```
 
-The installer creates a project virtual environment, installs Python dependencies, creates the private local state directory, and registers the LaunchAgent.
+Dashboard: `http://127.0.0.1:8765`
 
-Dashboard:
-
-```
-http://127.0.0.1:8765
-```
-
-To check the service, inspect the LaunchAgent and logs under:
-
-```
-~/.personal_ai_oracle/logs/
-```
-
-To stop and remove automatic startup (the database and keys are kept):
-
-```bash
-.venv/bin/python manage_launch_agent.py uninstall
-```
-
-To run Oracle manually without installing the LaunchAgent:
-
-```bash
-.venv/bin/python local_runtime.py
-```
-
-## Private configuration
-
-Secrets and local settings live outside Git at:
-
-```
-~/.personal_ai_oracle/.env
-```
-
-The file should be readable only by the current user:
-
-```bash
-chmod 600 ~/.personal_ai_oracle/.env
-```
-
-Example configuration:
-
-```dotenv
-# Default assistant provider/model
-ORACLE_DEFAULT_PROVIDER=openrouter
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=deepseek/deepseek-chat
-
-# Other hosted providers
-OPENAI_API_KEY=
-OPENAI_MODEL=
-GEMINI_API_KEY=
-GEMINI_MODEL=
-
-# Local model server (Ollama)
-ORACLE_OLLAMA_ENABLED=1
-OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
-OLLAMA_MODEL=
-
-# Specialist agent profiles can use different providers and models
-# Optional specialist overrides. Leave blank to inherit the default provider/model.
-ORACLE_AGENT_PLANNER_PROVIDER=
-ORACLE_AGENT_PLANNER_MODEL=
-ORACLE_AGENT_EXECUTOR_PROVIDER=
-ORACLE_AGENT_EXECUTOR_MODEL=
-ORACLE_AGENT_RESEARCHER_PROVIDER=
-ORACLE_AGENT_RESEARCHER_MODEL=
-ORACLE_AGENT_CODER_PROVIDER=
-ORACLE_AGENT_CODER_MODEL=
-ORACLE_AGENT_WRITER_PROVIDER=
-ORACLE_AGENT_WRITER_MODEL=
-ORACLE_AGENT_REVIEWER_PROVIDER=
-ORACLE_AGENT_REVIEWER_MODEL=
-# Example: ORACLE_AGENT_PLANNER_PROVIDER=ollama
-# Example: ORACLE_AGENT_PLANNER_MODEL=qwen2.5:14b
-
-# Optional per-task provider/model routing
-ORACLE_PROVIDER_FAST=
-ORACLE_MODEL_FAST=
-ORACLE_PROVIDER_REASONING=
-ORACLE_MODEL_REASONING=
-ORACLE_PROVIDER_CODING=
-ORACLE_MODEL_CODING=
-ORACLE_PROVIDER_RESEARCH=
-ORACLE_MODEL_RESEARCH=
-ORACLE_PROVIDER_WRITING=
-ORACLE_MODEL_WRITING=
-ORACLE_PROVIDER_CREATIVE=
-ORACLE_MODEL_CREATIVE=
-
-# Agent, storage and background task settings
-ORACLE_MAX_AGENT_STEPS=12
-ORACLE_MEMORY_SCOPE=user:oracle-owner
-ORACLE_LOCAL_PORT=8765
-ORACLE_PREVENT_IDLE_SLEEP=1
-SCAN_INTERVAL_HOURS=12
-TAVILY_API_KEY=
-WA_ACCESS_TOKEN=
-WA_PHONE_NUMBER_ID=
-WA_AUTO_REPLY=draft
-```
-
-Do not commit this file or paste real keys into source code. Oracle loads it at startup; restart the LaunchAgent after editing it.
-
-## Multi-model and multi-agent routing
-
-Oracle supports four provider adapters:
-- **OpenRouter** — hosted models through one provider key.
-- **OpenAI** — direct OpenAI API access.
-- **Google Gemini** — Gemini through Google's OpenAI-compatible endpoint.
-- **Ollama** — models running on the Mac at `127.0.0.1:11434`; local requests do not need a cloud key.
-
-The dashboard has a default provider/model selector. Specialist agents can independently select a provider and model using `ORACLE_AGENT_<ROLE>_PROVIDER` and `ORACLE_AGENT_<ROLE>_MODEL`.
-
-Current roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, and `reviewer`.
-
-The roles are used in the actual flow: Planner selects tools; Executor reviews local write/move/delete/command actions; Researcher handles scholarship and opportunity analysis; Writer handles content and application documents; Coder diagnoses failed development commands; Reviewer synthesizes the final result; Assistant handles direct answers. Different roles can use different model providers. Their chosen settings are visible in the dashboard's sidebar.
-
-Leave a role's provider/model blank to inherit the selected default. Set `ORACLE_AGENT_<ROLE>_PROVIDER` and `ORACLE_AGENT_<ROLE>_MODEL` only for roles that should use a different model.
-
-Ollama must be installed and a model must be present locally before selecting it. Hosted providers still send their prompts to their respective services; selecting local hosting does not make a cloud provider's requests local.
-
-## Local agent capabilities
-
-Agent Mode is enabled by default. The agent can use Oracle features plus local file and application tools, and can run supported developer commands under the currently logged-in macOS user account. It does not run as root and does not bypass macOS privacy permissions or system protections. Local tool activity is recorded in a content-free audit file at:
-
-```
-~/.personal_ai_oracle/logs/local-actions.jsonl
-```
-
-The agent has a configurable step budget (`ORACLE_MAX_AGENT_STEPS`, default 12) to prevent a planning loop from running forever. Set a value up to 30 for longer workflows.
-
-## Storage and backups
-
-The SQLite database is stored at:
-
-```
-~/.personal_ai_oracle/oracle.db
-```
-
-The encrypted password vault uses `ORACLE_VAULT_KEY`. Back up the database and that key together. Losing the key means encrypted vault values cannot be recovered. Legacy Fernet/Base64 records are migrated transactionally when the vault is revealed after the new key is configured.
-
-## WhatsApp note
-
-The current project has WhatsApp Cloud API outbound/draft functionality and a signed Flask webhook implementation. A localhost-only service cannot receive Meta webhook events directly from the public internet. Incoming WhatsApp events need a separate local bridge or a deliberately configured inbound connection; Oracle does not expose a public webhook service in this local edition.
+If `ORACLE_CLOUD_API_URL` is configured in the Mac's private environment file, the LaunchAgent also starts the outbound cloud bridge automatically.
 
 ## Validation
 
-The repository CI runs:
-- Python bytecode compilation.
-- The full pytest suite, including provider routing, memory, local tools, agent planning, webhook validation and vault migration.
+CI runs Python compilation and the pytest suite, including cloud job validation, token hashing, browser URL validation, provider routing, local tools, agent planning, webhook validation and vault migration.
+
+A successful CI run validates the code and API contracts; it does not by itself prove deployment credentials, cloud-provider configuration, browser binaries, or the user's physical Mac hardware are configured.

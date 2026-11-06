@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: personal-ai-oracle-control
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.cloud-api
+    dockerContext: .
+    healthCheckPath: /healthz
+    disk:
+      name: oracle-control-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: ORACLE_CLOUD_DB_PATH
+        value: /var/data/control.db
+      - key: ORACLE_CLOUD_CONTROL_TOKEN
+        sync: false
+      - key: ORACLE_CLOUD_ENROLLMENT_TOKEN
+        sync: false
+
+  - type: web
+    name: personal-ai-oracle-web
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.cloud-web
+    dockerContext: .
+    healthCheckPath: /_stcore/health
+    disk:
+      name: oracle-web-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: ORACLE_RUNTIME_MODE
+        value: cloud
+      - key: ORACLE_DB_PATH
+        value: /var/data/oracle.db
+      - key: ORACLE_CLOUD_API_URL
+        sync: false
+      - key: ORACLE_CLOUD_CONTROL_TOKEN
+        sync: false
+      - key: ORACLE_CLOUD_DASHBOARD_PASSWORD
+        sync: false
+      - key: ORACLE_DEFAULT_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false

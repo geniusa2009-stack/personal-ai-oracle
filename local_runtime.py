@@ -104,6 +104,12 @@ def main() -> int:
         "streamlit": (ui_args, LOG_DIR / "streamlit.log"),
         "worker": (worker_args, LOG_DIR / "worker.log"),
     }
+    # The Mac initiates the outbound cloud connection; no inbound port is opened.
+    if os.environ.get("ORACLE_CLOUD_API_URL", "").strip():
+        commands["cloud-agent"] = (
+            [sys.executable, str(ROOT / "cloud_agent.py")],
+            LOG_DIR / "cloud-agent.log",
+        )
 
     caffeinate = None
     if (

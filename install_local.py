@@ -54,6 +54,14 @@ ORACLE_PREVENT_IDLE_SLEEP=1
 SCAN_INTERVAL_HOURS=12
 TAVILY_API_KEY=
 
+# Optional private cloud connection. Leave blank for local-only operation.
+ORACLE_CLOUD_API_URL=
+ORACLE_CLOUD_ENROLLMENT_TOKEN=
+ORACLE_DEVICE_NAME=Personal MacBook
+ORACLE_BROWSER_HEADLESS=1
+# Set to 0 only when you intentionally need private LAN website access.
+ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=0
+
 # WhatsApp outbound/draft integration (optional).
 WA_ACCESS_TOKEN=
 WA_PHONE_NUMBER_ID=
