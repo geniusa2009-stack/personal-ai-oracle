@@ -10,6 +10,12 @@ services:
     plan: free            # الخطة المجانية تنام عند الخمول → الجدولة الداخلية تتوقف مؤقتاً
     healthCheckPath: /_stcore/health
     envVars:
+      - key: ORACLE_APP_PASSWORD
+        sync: false        # كلمة مرور المالك (16 حرفاً على الأقل)
+      - key: ORACLE_VAULT_KEY
+        sync: false        # مفتاح Fernet مستقل للخزنة
+      - key: WA_APP_SECRET
+        sync: false        # App Secret للتحقق من توقيع Webhook من Meta
       - key: OPENROUTER_API_KEY
         sync: false        # تُدخَل يدوياً (سرّية)
       - key: TAVILY_API_KEY
