@@ -136,3 +136,24 @@ def test_corrupt_legacy_vault_row_rolls_back_migration(monkeypatch, tmp_path):
 
     assert key_row["value"] == legacy_key.decode("ascii")
     assert stored == "f:not-a-valid-fernet-token"
+
+
+def test_legacy_base64_vault_rows_migrate_without_database_fernet_key(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    legacy_base64 = base64.b64encode(b"base64-only-secret").decode("ascii")
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO password_vault(label, username, secret_enc, created_at) "
+            "VALUES(?,?,?,?)",
+            ("legacy-base64", "owner", "b:" + legacy_base64, "2026-01-01T00:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    new_key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("ORACLE_VAULT_KEY", new_key)
+
+    assert database.migrate_legacy_vault_key() == 1
+    assert database.list_vault(reveal=True)[0]["secret"] == "base64-only-secret"
