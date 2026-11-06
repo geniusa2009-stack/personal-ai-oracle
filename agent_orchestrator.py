@@ -213,10 +213,33 @@ def run(
         used_feature_ids.add(step["feature_id"])
 
     if not results:
-        question = clarifying_question or "محتاج توضيحاً إضافياً قبل اختيار أداة مناسبة."
+        if clarifying_question:
+            return {
+                "answer": clarifying_question,
+                "clarifying_question": clarifying_question,
+                "steps": [],
+            }
+        direct_answer = ai_core.chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "أنت Personal AI Oracle. أجب عن طلب المستخدم مباشرة بالعامية المصرية الطبيعية "
+                        "عندما لا تحتاج المهمة إلى أدوات. لا تدّعِ أنك بحثت أو نفّذت إجراءً. "
+                        "اذكر عدم اليقين بوضوح، ولا تخترع مصادر أو نتائج."
+                    ),
+                },
+                {"role": "user", "content": task},
+            ],
+            temperature=0.4,
+            task_type="reasoning",
+            memory_scope=memory_scope,
+        )
+        if not direct_answer or direct_answer.startswith(("⚠️", "(تعذّر")):
+            direct_answer = "لم أحتج إلى أداة لهذه المهمة، لكن تعذّر توليد الإجابة. جرّب مرة أخرى."
         return {
-            "answer": question,
-            "clarifying_question": clarifying_question,
+            "answer": direct_answer,
+            "clarifying_question": "",
             "steps": [],
         }
 
