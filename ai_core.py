@@ -194,6 +194,13 @@ def chat(
             if profile.get("temperature") is not None:
                 temperature = profile["temperature"]
 
+        selected_provider = (provider_name or default_provider_name()).strip().lower()
+        selected_key = api_key
+        if selected_provider == "openrouter":
+            selected_key = selected_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if selected_provider == "openrouter" and not selected_key:
+            return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
+
         executor = _multi_executor(provider_name=provider_name, api_key=api_key)
         request = AIRequest(
             messages=tuple(_messages_with_memory(messages, memory_scope)),
