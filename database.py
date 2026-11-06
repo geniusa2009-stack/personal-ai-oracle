@@ -12,7 +12,7 @@ Local SQLite module managing two core tables:
 from datetime import datetime
 
 # نعيد استخدام نفس الاتصال/المسار/الإعدادات من db.py لضمان قاعدة بيانات واحدة
-from db import get_conn, DB_PATH, get_setting, set_setting  # noqa: F401
+from db import get_conn, init_db, DB_PATH, get_setting, set_setting  # noqa: F401
 
 
 # --------------------------------------------------------------------------
@@ -536,68 +536,160 @@ def list_wellbeing(limit: int = 60) -> list:
 
 
 # --------------------------------------------------------------------------
-# password_vault — خزنة كلمات السر (تشفير محلي)
+# password_vault — خزنة كلمات السر
 # --------------------------------------------------------------------------
+class VaultConfigurationError(RuntimeError):
+    """Raised when the external encryption key is missing or invalid."""
+
+
+class VaultMigrationError(RuntimeError):
+    """Raised when an existing vault cannot be safely re-encrypted."""
+
+
 def _fernet():
-    """يُرجع كائن Fernet إن أمكن (تشفير حقيقي)، وإلا None."""
+    """Build Fernet only from an environment secret, never from the database."""
     try:
         from cryptography.fernet import Fernet
-    except Exception:
-        return None
-    key = get_setting("vault_key", None)
+    except ImportError as exc:
+        raise VaultConfigurationError(
+            "cryptography is required to use the password vault"
+        ) from exc
+
+    key = os.environ.get("ORACLE_VAULT_KEY", "").strip()
     if not key:
-        key = Fernet.generate_key().decode()
-        set_setting("vault_key", key)
-    try:
-        return Fernet(key.encode())
-    except Exception:
         return None
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, UnicodeEncodeError) as exc:
+        raise VaultConfigurationError(
+            "ORACLE_VAULT_KEY must be a valid Fernet key"
+        ) from exc
 
 
 def _enc(secret: str) -> str:
-    f = _fernet()
-    if f:
-        return "f:" + f.encrypt(secret.encode()).decode()
-    # fallback أساسي (إن لم تكن cryptography مثبّتة) — base64 فقط
-    import base64
-    return "b:" + base64.b64encode(secret.encode()).decode()
+    fernet = _fernet()
+    if fernet is None:
+        raise VaultConfigurationError(
+            "Set ORACLE_VAULT_KEY before saving passwords; plaintext/Base64 fallback is disabled"
+        )
+    if not isinstance(secret, str):
+        raise TypeError("vault secret must be text")
+    return "f:" + fernet.encrypt(secret.encode("utf-8")).decode("ascii")
 
 
 def _dec(blob: str) -> str:
+    if not isinstance(blob, str) or not blob.startswith("f:"):
+        return "🔒(تحتاج ترحيلاً إلى مفتاح الخزنة الخارجي)"
+    fernet = _fernet()
+    if fernet is None:
+        return "🔒(اضبط ORACLE_VAULT_KEY لعرض الأسرار)"
     try:
-        if blob.startswith("f:"):
-            f = _fernet()
-            return f.decrypt(blob[2:].encode()).decode() if f else "🔒(مشفّر)"
-        if blob.startswith("b:"):
-            import base64
-            return base64.b64decode(blob[2:].encode()).decode()
+        return fernet.decrypt(blob[2:].encode("ascii")).decode("utf-8")
     except Exception:
-        return "🔒(تعذّر فك التشفير)"
-    return blob
+        return "🔒(مفتاح الخزنة غير مطابق أو البيانات تالفة)"
+
+
+def migrate_legacy_vault_key() -> int:
+    """Re-encrypt legacy DB-key/Base64 rows with ORACLE_VAULT_KEY, then remove the DB key."""
+    fernet = _fernet()
+    if fernet is None:
+        return 0
+
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+    except ImportError as exc:  # pragma: no cover - guarded by _fernet
+        raise VaultConfigurationError("cryptography is required") from exc
+
+    init_db()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        key_row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'vault_key'"
+        ).fetchone()
+        if key_row is None:
+            conn.commit()
+            return 0
+
+        try:
+            legacy_fernet = Fernet(key_row["value"].encode("ascii"))
+        except Exception as exc:
+            raise VaultMigrationError(
+                "The legacy vault key is invalid; no records were changed"
+            ) from exc
+
+        rows = conn.execute(
+            "SELECT id, secret_enc FROM password_vault ORDER BY id"
+        ).fetchall()
+        migrated = 0
+        for row in rows:
+            blob = row["secret_enc"] or ""
+            try:
+                if blob.startswith("f:"):
+                    token = blob[2:].encode("ascii")
+                    try:
+                        plaintext = fernet.decrypt(token)
+                    except InvalidToken:
+                        plaintext = legacy_fernet.decrypt(token)
+                elif blob.startswith("b:"):
+                    import base64
+                    plaintext = base64.b64decode(blob[2:].encode("ascii"), validate=True)
+                else:
+                    raise VaultMigrationError(
+                        f"Vault record {row['id']} has an unsupported legacy format"
+                    )
+                encrypted = "f:" + fernet.encrypt(plaintext).decode("ascii")
+            except (InvalidToken, ValueError, UnicodeEncodeError) as exc:
+                raise VaultMigrationError(
+                    f"Vault record {row['id']} could not be migrated; no records were changed"
+                ) from exc
+
+            conn.execute(
+                "UPDATE password_vault SET secret_enc = ? WHERE id = ?",
+                (encrypted, row["id"]),
+            )
+            migrated += 1
+
+        conn.execute("DELETE FROM settings WHERE key = 'vault_key'")
+        conn.commit()
+        return migrated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def add_vault_entry(label: str, username: str, secret: str) -> int:
     init_database()
+    encrypted = _enc(secret)
     conn = get_conn()
-    cur = conn.execute(
-        "INSERT INTO password_vault(label, username, secret_enc, created_at) VALUES(?,?,?,?)",
-        (label, username, _enc(secret), datetime.now().isoformat(timespec="seconds")),
-    )
-    conn.commit(); rid = cur.lastrowid; conn.close()
-    return rid
+    try:
+        cur = conn.execute(
+            "INSERT INTO password_vault(label, username, secret_enc, created_at) VALUES(?,?,?,?)",
+            (label, username, encrypted, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
 
 
 def list_vault(reveal: bool = False) -> list:
+    if reveal:
+        migrate_legacy_vault_key()
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM password_vault ORDER BY id DESC").fetchall()
-    conn.close()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["secret"] = _dec(d["secret_enc"]) if reveal else "••••••••"
-        d.pop("secret_enc", None)
-        out.append(d)
-    return out
+    try:
+        rows = conn.execute("SELECT * FROM password_vault ORDER BY id DESC").fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            item["secret"] = _dec(item["secret_enc"]) if reveal else "••••••••"
+            item.pop("secret_enc", None)
+            out.append(item)
+        return out
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------
