@@ -293,7 +293,12 @@ def _execute_step(
     """Review and execute a validated Oracle feature or native Mac-local tool."""
     tool_id = step["tool_id"]
     if tool_id.startswith(("local.", "web.")):
-        review = _preflight_local_action(task, step, memory_scope)
+        is_cloud_runtime = os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud"
+        review = (
+            _preflight_local_action(task, step, memory_scope)
+            if tool_id.startswith("local.") and not is_cloud_runtime
+            else None
+        )
         if review is not None and not review["approved"]:
             return {
                 "tool_id": tool_id,

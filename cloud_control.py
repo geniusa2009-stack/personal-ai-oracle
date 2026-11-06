@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 MAX_JOB_BYTES = 32_768
 MAX_RESULT_BYTES = 65_536
 MAX_WAIT_SECONDS = 20
-LEASE_SECONDS = 90
+LEASE_SECONDS = 600
 ALLOWED_REMOTE_TOOLS = {
     "local.list_directory",
     "local.read_file",
@@ -177,6 +178,18 @@ def _job_public(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+@app.middleware("http")
+async def request_size_guard(request: Request, call_next):
+    length = request.headers.get("content-length")
+    if length:
+        try:
+            if int(length) > MAX_RESULT_BYTES + 4096:
+                return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
+    return await call_next(request)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
@@ -287,6 +300,48 @@ def get_job(
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return _job_public(row)
+
+
+@app.get("/v1/devices")
+def list_devices(
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_control(authorization)
+    init_db()
+    now = time.time()
+    with _connect() as connection:
+        rows = connection.execute(
+            "SELECT device_id,name,created_at,last_seen,disabled FROM devices ORDER BY created_at"
+        ).fetchall()
+    return {
+        "devices": [
+            {
+                "device_id": row["device_id"],
+                "name": row["name"],
+                "created_at": row["created_at"],
+                "last_seen": row["last_seen"],
+                "online": not bool(row["disabled"]) and now - row["last_seen"] < 90,
+                "disabled": bool(row["disabled"]),
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.post("/v1/devices/{device_id}/disable")
+def disable_device(
+    device_id: str,
+    authorization: str | None = Header(default=None),
+) -> dict[str, str]:
+    _require_control(authorization)
+    init_db()
+    with _connect() as connection:
+        changed = connection.execute(
+            "UPDATE devices SET disabled=1 WHERE device_id=?", (device_id,)
+        ).rowcount
+    if not changed:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return {"status": "disabled"}
 
 
 @app.post("/v1/agent/heartbeat")

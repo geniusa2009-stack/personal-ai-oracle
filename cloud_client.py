@@ -19,7 +19,7 @@ def execute_remote_tool(
     tool_input: dict[str, Any] | str,
     *,
     task: str = "",
-    timeout_seconds: int = 180,
+    timeout_seconds: int = 360,
 ) -> dict[str, Any]:
     base_url = os.environ.get("ORACLE_CLOUD_API_URL", "").rstrip("/")
     token = os.environ.get("ORACLE_CLOUD_CONTROL_TOKEN", "")
