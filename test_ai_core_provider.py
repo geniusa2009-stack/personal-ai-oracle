@@ -431,3 +431,113 @@ def test_legacy_stream_empty_messages_yields_controlled_error(monkeypatch):
 
     assert chunks == ["\n\n(تعذّر البثّ: request requires messages)"]
     provider_stream.assert_not_called()
+
+
+def test_ai_request_deeply_freezes_nested_messages_and_context():
+    nested = {"parts": [{"text": "original"}]}
+    metadata = {"profile": {"tags": ["one", "two"]}}
+    request = AIRequest(
+        messages=[{"role": "user", "content": nested}],
+        temperature=0.7,
+        context=Context(metadata=metadata),
+    )
+
+    nested["parts"][0]["text"] = "mutated outside"
+    metadata["profile"]["tags"].append("three")
+
+    assert request.messages[0]["content"]["parts"][0]["text"] == "original"
+    assert request.context.metadata["profile"]["tags"] == ("one", "two")
+    try:
+        request.messages[0]["content"]["parts"][0]["text"] = "mutated inside"
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Nested request content must be immutable")
+
+
+def test_ai_request_rejects_invalid_temperature_and_message_shape():
+    invalid_temperatures = [-0.1, 2.1, float("nan"), float("inf"), True]
+    for temperature in invalid_temperatures:
+        try:
+            AIRequest(messages=({"role": "user", "content": "x"},), temperature=temperature)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected invalid temperature rejection: {temperature}")
+
+    for messages in ({"role": "user"}, ("not-a-message",), ({"content": "missing role"},)):
+        try:
+            AIRequest(messages=messages, temperature=0.7)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected invalid message rejection: {messages}")
+
+
+def test_request_to_messages_returns_fresh_mutable_provider_payload():
+    request = AIRequest(
+        messages=({"role": "user", "content": {"items": ["safe"]}},),
+        temperature=0.7,
+    )
+    payload = request.to_messages()
+    payload[0]["content"]["items"].append("mutated")
+
+    assert request.messages[0]["content"]["items"] == ("safe",)
+
+
+def test_executor_rejects_mismatched_streaming_mode():
+    provider = Mock()
+    executor = _executor(provider)
+    non_streaming = AIRequest(
+        messages=({"role": "user", "content": "hello"},), temperature=0.7
+    )
+    streaming = AIRequest(
+        messages=({"role": "user", "content": "hello"},),
+        temperature=0.7,
+        streaming=True,
+    )
+
+    for operation, request in (
+        (executor.execute_stream, non_streaming),
+        (executor.execute, streaming),
+    ):
+        try:
+            list(operation(request)) if operation is executor.execute_stream else operation(request)
+        except AIExecutionError:
+            pass
+        else:
+            raise AssertionError("Expected streaming mode mismatch to be rejected")
+
+    provider.chat.assert_not_called()
+    provider.stream.assert_not_called()
+
+
+def test_ai_core_routes_task_type_using_environment(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "environment-key")
+    monkeypatch.setenv("ORACLE_MODEL_RESEARCH", "research/model")
+    with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
+        result = ai_core.llm("research", "question", task_type="research")
+
+    assert result == "answer"
+    assert chat.call_args.kwargs["model"] == "research/model"
+
+
+def test_ai_core_explicit_model_overrides_task_policy(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "environment-key")
+    monkeypatch.setenv("ORACLE_MODEL_RESEARCH", "research/model")
+    with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
+        ai_core.llm(
+            "research", "question", task_type="research", requested_model="explicit/model"
+        )
+
+    assert chat.call_args.kwargs["model"] == "explicit/model"
+
+
+def test_ai_core_request_api_key_does_not_mutate_process_environment(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "environment-key")
+    with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
+        result = ai_core.llm("instruction", "input", api_key="session-key")
+
+    assert result == "answer"
+    assert chat.call_args.kwargs["model"] == "deepseek/deepseek-chat"
+    assert os.environ["OPENROUTER_API_KEY"] == "environment-key"
