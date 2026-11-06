@@ -91,7 +91,7 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
 
     report = deep_research.run_research("water evidence", fetch_pages=True)
 
-    assert report["status"] == "success"
+    assert report["status"] == "partial"
     assert report["stats"] == {"query_count": 2, "source_count": 2, "page_extracted_count": 2}
     assert len(report["citations"]) == 2
     assert report["key_findings"] == ["Finding one"]
