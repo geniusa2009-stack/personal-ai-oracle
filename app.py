@@ -27,6 +27,7 @@ import hyper_scheduler
 import content_factory
 import ai_core
 import memory
+import agent_orchestrator
 import income_hunter
 import discipline_oracle
 import advanced_scholarship
@@ -653,6 +654,11 @@ with tab_chat:
                   "مدرّب محفّز": "coach", "صارم وحاسم": "strict"}
     mode_label = st.radio("نبرة المساعد", list(CHAT_MODES.keys()), horizontal=True)
     chat_mode = CHAT_MODES[mode_label]
+    agent_mode = st.toggle(
+        "🤖 وضع الوكيل — خطّط وشغّل أدوات Oracle الآمنة",
+        value=False,
+        help="يسمح للوكيل باستخدام حتى 3 أدوات قراءة/بحث/تحليل أو إنشاء مسودات. لا يرسل رسائل ولا ينشر ولا يشتري."
+    )
     if "chat_msgs" not in st.session_state:
         st.session_state.chat_msgs = []
     # Bound conversation context to 12 recent turns to control latency and token cost.
@@ -674,12 +680,39 @@ with tab_chat:
             st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
             with st.chat_message("user"):
                 st.markdown(prompt)
-            msgs = [{"role": "system", "content": ai_core.system_prompt(chat_mode)}] \
-                + st.session_state.chat_msgs
             with st.chat_message("assistant"):
-                out = st.write_stream(
-                    ai_core.stream(msgs, memory_scope=memory_scope)
-                )
+                if agent_mode:
+                    try:
+                        with st.spinner("🤖 Oracle بيخطط وينفّذ الأدوات المسموح بها…"):
+                            agent_result = agent_orchestrator.run(
+                                prompt,
+                                memory_scope=memory_scope,
+                                max_steps=3,
+                            )
+                        out = agent_result["answer"]
+                        st.markdown(out)
+                        if agent_result.get("steps"):
+                            with st.expander("🔎 تفاصيل خطوات الوكيل"):
+                                for index, step in enumerate(agent_result["steps"], start=1):
+                                    st.markdown(
+                                        f"**{index}. {step['name']}** — {step['status']}"
+                                    )
+                                    st.caption(f"المدخل: {step['input'][:300]}")
+                                    st.write(step["result"][:1200])
+                        elif agent_result.get("clarifying_question"):
+                            st.info(agent_result["clarifying_question"])
+                    except agent_orchestrator.AgentError as exc:
+                        out = f"تعذّر تنفيذ وضع الوكيل: {exc}"
+                        st.warning(out)
+                    except Exception as exc:
+                        out = f"حدث خطأ غير متوقع في الوكيل: {type(exc).__name__}"
+                        st.error(out)
+                else:
+                    msgs = [{"role": "system", "content": ai_core.system_prompt(chat_mode)}] \
+                        + st.session_state.chat_msgs
+                    out = st.write_stream(
+                        ai_core.stream(msgs, memory_scope=memory_scope)
+                    )
             st.session_state.chat_msgs.append({"role": "assistant", "content": out})
             st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
 
