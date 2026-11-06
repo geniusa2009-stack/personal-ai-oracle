@@ -51,3 +51,9 @@ def test_panic_wipe_deletes_only_selected_allowlisted_tables(monkeypatch, tmp_pa
     finally:
         conn.close()
     assert len(database.list_content(limit=10)) == 1
+
+
+def test_panic_wipe_rejects_non_string_table_names(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    with pytest.raises(ValueError):
+        database.panic_wipe(["entries", {"table": "settings"}])
