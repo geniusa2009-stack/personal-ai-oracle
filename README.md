@@ -27,7 +27,7 @@ A two-service Render Blueprint is provided in `render.yaml`:
 - `personal-ai-oracle-control`: FastAPI control plane with persistent storage.
 - `personal-ai-oracle-web`: Streamlit private dashboard.
 
-The services use Dockerfiles dedicated to their roles. You can use another Docker-capable host by deploying `Dockerfile.cloud-api` and `Dockerfile.cloud-web` separately.
+The services use Dockerfiles dedicated to their roles. The Blueprint creates a shared environment group for the control token so the API and dashboard receive exactly the same value. You can use another Docker-capable host by deploying `Dockerfile.cloud-api` and `Dockerfile.cloud-web` separately.
 
 ### Required secrets
 
@@ -55,7 +55,7 @@ Configure the cloud web service with:
 
 The dashboard login is independent from the control API token. The control token is only used server-side by the dashboard and is not rendered into the browser UI.
 
-For genuine 24/7 cloud availability, use an always-on service plan and persistent storage. Free tiers may sleep, restart or discard local container storage; do not rely on them for continuous background operation or durable state.
+For genuine 24/7 cloud availability, use an always-on service plan and persistent storage. Free tiers may sleep, restart or discard local container storage; do not rely on them for continuous background operation or durable state. Render documents that container filesystems are ephemeral without a persistent disk and that persistent disks are available on paid services. <https://render.com/docs/disks>
 
 ## Pair the MacBook
 
@@ -71,7 +71,7 @@ ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=0
 ```
 
 3. Restart the LaunchAgent. The Mac agent pairs once, stores its device token in `~/.personal_ai_oracle/device-token.json` with mode 0600, and begins polling for jobs.
-4. The dashboard at the cloud web URL can now request Mac-local tools. If the Mac is asleep, powered off or disconnected, those tasks remain queued until the agent reconnects.
+4. The dashboard at the cloud web URL shows whether the Mac agent is online and can request Mac-local tools. Public web search remains available from the cloud; browser navigation, page extraction and local actions are dispatched to the Mac. If the Mac is asleep, powered off or disconnected, those Mac-dependent tasks remain queued and the dashboard reports that the agent is unavailable.
 
 To install Chromium for the isolated browser once:
 

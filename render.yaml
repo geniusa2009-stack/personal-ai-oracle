@@ -1,3 +1,9 @@
+envVarGroups:
+  - name: oracle-control-shared
+    envVars:
+      - key: ORACLE_CLOUD_CONTROL_TOKEN
+        generateValue: true
+
 services:
   - type: web
     name: personal-ai-oracle-control
@@ -11,12 +17,11 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
+      - fromGroup: oracle-control-shared
       - key: ORACLE_CLOUD_DB_PATH
         value: /var/data/control.db
-      - key: ORACLE_CLOUD_CONTROL_TOKEN
-        sync: false
       - key: ORACLE_CLOUD_ENROLLMENT_TOKEN
-        sync: false
+        generateValue: true
 
   - type: web
     name: personal-ai-oracle-web
@@ -30,13 +35,12 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
+      - fromGroup: oracle-control-shared
       - key: ORACLE_RUNTIME_MODE
         value: cloud
       - key: ORACLE_DB_PATH
         value: /var/data/oracle.db
       - key: ORACLE_CLOUD_API_URL
-        sync: false
-      - key: ORACLE_CLOUD_CONTROL_TOKEN
         sync: false
       - key: ORACLE_CLOUD_DASHBOARD_PASSWORD
         sync: false

@@ -70,6 +70,23 @@ if os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
     if st.sidebar.button("Sign out"):
         st.session_state.pop("oracle_cloud_authenticated", None)
         st.rerun()
+    st.sidebar.divider()
+    st.sidebar.caption("Hybrid connection · Cloud + Mac")
+    try:
+        import cloud_client
+        _oracle_devices = cloud_client.list_devices()
+        if not _oracle_devices:
+            st.sidebar.warning("No Mac agent paired yet.")
+        for _device in _oracle_devices:
+            _label = str(_device.get("name") or "Mac agent")
+            if _device.get("online"):
+                st.sidebar.success(f"{_label} · online")
+            elif _device.get("disabled"):
+                st.sidebar.error(f"{_label} · disabled")
+            else:
+                st.sidebar.warning(f"{_label} · offline")
+    except Exception:
+        st.sidebar.caption("Mac connection status is temporarily unavailable.")
 
 # Local mode remains private to 127.0.0.1; cloud mode uses the authenticated dashboard.
 

@@ -308,8 +308,19 @@ def _execute_step(
                 "result": review["reason"],
             }
         if os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
-            from cloud_client import execute_remote_tool
-            result = execute_remote_tool(tool_id, step["input"], task=task)
+            if tool_id == "web.search":
+                # Public web search remains cloud-available even when the Mac is offline.
+                result = web_browser.execute(tool_id, step["input"])
+            else:
+                from cloud_client import execute_remote_tool
+                try:
+                    result = execute_remote_tool(tool_id, step["input"], task=task)
+                except Exception as exc:
+                    result = {
+                        "name": tool_id,
+                        "status": "error",
+                        "result": f"Mac agent unavailable or remote task failed: {type(exc).__name__}: {str(exc)[:700]}",
+                    }
         elif tool_id.startswith("local."):
             result = local_tools.execute(tool_id, step["input"])
         else:

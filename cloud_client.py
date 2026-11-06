@@ -82,3 +82,20 @@ def execute_remote_tool(
         f"Mac agent did not complete {tool_id} within {timeout_seconds} seconds. "
         "Check that the Mac is awake and the Oracle agent is connected."
     )
+
+
+
+def list_devices() -> list[dict[str, Any]]:
+    base_url = os.environ.get("ORACLE_CLOUD_API_URL", "").rstrip("/")
+    token = os.environ.get("ORACLE_CLOUD_CONTROL_TOKEN", "")
+    if not base_url or len(token) < 32:
+        raise CloudAgentUnavailable("Cloud control API is not configured.")
+    response = requests.get(
+        f"{base_url}/v1/devices",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=(10, 20),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    devices = payload.get("devices", [])
+    return devices if isinstance(devices, list) else []
