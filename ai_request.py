@@ -94,3 +94,9 @@ class AIRequest:
     def to_messages(self) -> list[dict]:
         """Create fresh provider-compatible message dictionaries."""
         return [_thaw(message) for message in self.messages]
+
+    def to_response_format(self) -> dict | None:
+        """Create a fresh provider-compatible structured-output configuration."""
+        if self.response_format is None:
+            return None
+        return _thaw(self.response_format)
