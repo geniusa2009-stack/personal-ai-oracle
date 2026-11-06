@@ -27,6 +27,9 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
 
 
 def install() -> int:
+    if sys.platform != "darwin":
+        print("Oracle LaunchAgent installer runs on macOS only.", file=sys.stderr)
+        return 2
     STATE.mkdir(parents=True, exist_ok=True)
     (STATE / "logs").mkdir(parents=True, exist_ok=True)
     PLIST.parent.mkdir(parents=True, exist_ok=True)
@@ -44,6 +47,7 @@ def install() -> int:
         "ORACLE_DEFAULT_PROVIDER": os.environ.get("ORACLE_DEFAULT_PROVIDER", "openrouter"),
         "ORACLE_MAX_AGENT_STEPS": os.environ.get("ORACLE_MAX_AGENT_STEPS", "12"),
         "ORACLE_LOCAL_PORT": os.environ.get("ORACLE_LOCAL_PORT", "8765"),
+        "ORACLE_WORKSPACE": os.environ.get("ORACLE_WORKSPACE", str(ROOT)),
         "ORACLE_PREVENT_IDLE_SLEEP": os.environ.get("ORACLE_PREVENT_IDLE_SLEEP", "1"),
     }
     payload = {
@@ -75,6 +79,9 @@ def install() -> int:
 
 
 def uninstall() -> int:
+    if sys.platform != "darwin":
+        print("Oracle LaunchAgent installer runs on macOS only.", file=sys.stderr)
+        return 2
     uid = str(os.getuid())
     result = _launchctl("bootout", f"gui/{uid}/{LABEL}")
     PLIST.unlink(missing_ok=True)
