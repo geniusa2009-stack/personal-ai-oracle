@@ -308,10 +308,10 @@ st.markdown(
 )
 
 (tab_analyze, tab_sched, tab_factory, tab_chat, tab_radar, tab_scholar,
- tab_wa, tab_income, tab_hub, tab_disc, tab_settings) = st.tabs(
+ tab_wa, tab_income, tab_hub, tab_disc, tab_settings, tab_oracle) = st.tabs(
     ["✍️ التحليل العميق", "🗓️ المخطط الصارم", "🏭 مصنع المحتوى", "💬 الشات المرن",
      "🕵️ رادار الفرص", "🎓 خبير المنح", "📲 واتساب", "💸 ماكينة الدخل",
-     "🧠 مركز الميزات", "🧭 محراب الانضباط", "⚙️ الإعدادات"]
+     "🧠 مركز الميزات", "🧭 محراب الانضباط", "⚙️ الإعدادات", "🔮 Oracle Control Center"]
 )
 
 # ====================== تبويب التحليل ======================
@@ -1126,3 +1126,286 @@ with tab_settings:
             st.json(wiped)
         else:
             st.error("اكتب كلمة «تأكيد» بالظبط في الخانة قبل التفعيل.")
+
+
+# ====================== Oracle Control Center ======================
+with tab_oracle:
+    import knowledge_graph
+    import workflow_ledger
+    import deep_research
+
+    oracle_scope = (
+        os.environ.get("ORACLE_MEMORY_SCOPE")
+        or "user:oracle-owner"
+    ).strip()
+    st.markdown("### 🔮 Oracle Control Center")
+    st.caption(
+        "لوحة تشغيل وذاكرة وبحث. السجلات هنا مرتبطة بنطاق المالك الحالي، "
+        "ومحتوى البحث لا يُحفظ تلقائياً في قاعدة البيانات."
+    )
+
+    try:
+        graph_entities = knowledge_graph.list_entities(oracle_scope, limit=100)
+        graph_relations = knowledge_graph.list_relations(oracle_scope, limit=200)
+        workflow_runs = workflow_ledger.list_runs(oracle_scope, limit=30)
+    except Exception as exc:
+        graph_entities, graph_relations, workflow_runs = [], [], []
+        st.error(f"تعذّر تحميل بيانات مركز التحكم: {type(exc).__name__}")
+
+    routing_enabled = os.environ.get("ORACLE_AUTO_MODEL_ROUTING", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    tools_count = len(agent_orchestrator.available_tools())
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("الأدوات المتاحة", tools_count)
+    m2.metric("الوكل المتخصصون", len(agent_profiles.ROLE_DEFAULTS))
+    m3.metric("كيانات الذاكرة المعرفية", len(graph_entities))
+    m4.metric("سجلات التشغيل", len(workflow_runs))
+    st.caption(
+        f"التوجيه التلقائي للنماذج: {'مفعّل' if routing_enabled else 'متوقف'} · "
+        f"نطاق البيانات: {oracle_scope}"
+    )
+
+    st.divider()
+    st.markdown("#### 🧭 سجل تنفيذ الوكيل")
+    if workflow_runs:
+        st.dataframe(
+            [{
+                "Workflow ID": item["workflow_id"][:12],
+                "الحالة": item["status"],
+                "الخطوات القصوى": item["max_steps"],
+                "البداية": item["created_at"],
+                "آخر تحديث": item["updated_at"],
+                "رمز الخطأ": item["error_code"] or "—",
+            } for item in workflow_runs],
+            use_container_width=True,
+            hide_index=True,
+        )
+        run_ids = [item["workflow_id"] for item in workflow_runs]
+        selected_run = st.selectbox(
+            "تفاصيل تشغيل محدد",
+            run_ids,
+            format_func=lambda value: value[:12],
+            key="oracle_selected_workflow",
+        )
+        steps = workflow_ledger.list_steps(oracle_scope, selected_run)
+        if steps:
+            st.dataframe(
+                [{
+                    "الخطوة": item["step_index"] + 1,
+                    "الأداة": item["tool_id"],
+                    "الحالة": item["status"],
+                    "المدة (ms)": item["duration_ms"],
+                    "بصمة المدخل": item["input_digest"][:12],
+                    "بصمة الناتج": item["output_digest"][:12],
+                    "آخر تحديث": item["updated_at"],
+                } for item in steps],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("لا توجد خطوات مسجلة لهذا التشغيل حتى الآن.")
+    else:
+        st.info("لا توجد سجلات تشغيل بعد. أول مهمة ينفذها الوكيل ستظهر هنا.")
+    st.caption(
+        "السجل يحفظ بصمات SHA-256 وبيانات التشغيل فقط، وليس نص المهمة أو محتوى الملفات أو مخرجات الأدوات."
+    )
+
+    st.divider()
+    st.markdown("#### 🧠 Knowledge Graph — إدارة المعرفة")
+    with st.expander("إضافة كيان جديد", expanded=False):
+        with st.form("oracle_add_knowledge_entity"):
+            entity_name = st.text_input("اسم الكيان", max_chars=180)
+            entity_type = st.selectbox(
+                "نوع الكيان",
+                ["person", "project", "organization", "skill", "topic",
+                 "place", "tool", "concept", "event", "custom"],
+            )
+            entity_saved = st.form_submit_button("حفظ الكيان")
+        if entity_saved:
+            try:
+                saved_entity = knowledge_graph.add_entity(
+                    oracle_scope, entity_name, entity_type
+                )
+                st.success(f"تم حفظ «{saved_entity.name}» بالمعرّف #{saved_entity.id}.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"تعذّر حفظ الكيان: {type(exc).__name__}: {exc}")
+
+    graph_entities = knowledge_graph.list_entities(oracle_scope, limit=100)
+    if graph_entities:
+        st.dataframe(
+            [{
+                "ID": item.id,
+                "الاسم": item.name,
+                "النوع": item.entity_type,
+                "آخر تحديث": item.updated_at,
+            } for item in graph_entities],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("ابدأ بإضافة مشاريع أو أشخاص أو مؤسسات أو مهارات تريد ربطها ببعضها.")
+
+    if len(graph_entities) >= 2:
+        labels = {
+            f"#{item.id} · {item.name} ({item.entity_type})": item.id
+            for item in graph_entities
+        }
+        with st.expander("إنشاء علاقة بين كيانين", expanded=False):
+            with st.form("oracle_add_knowledge_relation"):
+                source_label = st.selectbox("من", list(labels), key="oracle_relation_source")
+                target_options = [key for key in labels if labels[key] != labels[source_label]]
+                target_label = st.selectbox("إلى", target_options, key="oracle_relation_target")
+                relation_type = st.text_input(
+                    "نوع العلاقة (مثال: works_on / uses / belongs_to)",
+                    value="related_to",
+                    max_chars=64,
+                )
+                relation_evidence = st.text_input(
+                    "دليل أو ملاحظة اختيارية",
+                    max_chars=2000,
+                )
+                relation_saved = st.form_submit_button("حفظ العلاقة")
+            if relation_saved:
+                try:
+                    created = knowledge_graph.link_entities(
+                        oracle_scope,
+                        labels[source_label],
+                        labels[target_label],
+                        relation_type,
+                        evidence=relation_evidence,
+                    )
+                    st.success("تم حفظ العلاقة." if created else "العلاقة موجودة بالفعل.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"تعذّر حفظ العلاقة: {type(exc).__name__}: {exc}")
+
+    graph_relations = knowledge_graph.list_relations(oracle_scope, limit=100)
+    if graph_relations:
+        with st.expander(f"العلاقات المحفوظة ({len(graph_relations)})"):
+            st.dataframe(
+                [{
+                    "من": item["source_name"],
+                    "العلاقة": item["relation_type"],
+                    "إلى": item["target_name"],
+                    "الدليل": item["evidence"] or "—",
+                } for item in graph_relations],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    with st.expander("استرجاع سياق من الرسم المعرفي", expanded=False):
+        graph_query = st.text_input(
+            "ابحث في العلاقات والكيانات",
+            key="oracle_graph_query",
+        )
+        if st.button("استرجاع السياق", key="oracle_graph_retrieve"):
+            if graph_query.strip():
+                graph_context = knowledge_graph.retrieve_context(
+                    oracle_scope, graph_query, max_entities=5, max_relations=12
+                )
+                if graph_context:
+                    st.code(graph_context)
+                else:
+                    st.info("لا توجد كيانات أو علاقات مطابقة في هذا النطاق.")
+
+    st.divider()
+    st.markdown("#### 🧑‍💻 خريطة النماذج والوكلاء")
+    try:
+        profile_rows = []
+        for profile in agent_profiles.profile_catalog():
+            prefix = agent_profiles.ROLE_DEFAULTS[profile["role"]][0]
+            profile_rows.append({
+                "الوكيل": profile["role"],
+                "المهمة": profile["task_type"],
+                "المزوّد الحالي": profile["provider"],
+                "الموديل": profile["model"] or "افتراضي المزوّد",
+                "الحرارة": profile["temperature"],
+                "تخصيص مباشر": bool(
+                    os.environ.get(f"{prefix}_PROVIDER")
+                    or os.environ.get(f"{prefix}_MODEL")
+                ),
+            })
+        st.dataframe(profile_rows, use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.warning(f"تعذّر عرض إعدادات الوكلاء: {type(exc).__name__}")
+
+    tier_rows = []
+    for tier in ("FAST", "BALANCED", "DEEP"):
+        tier_rows.append({
+            "المستوى": tier.lower(),
+            "المزوّد": os.environ.get(f"ORACLE_PROVIDER_TIER_{tier}") or "الافتراضي",
+            "الموديل": os.environ.get(f"ORACLE_MODEL_TIER_{tier}") or "الافتراضي",
+        })
+    st.dataframe(tier_rows, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("#### 🔬 بحث عميق متعدد المصادر")
+    st.caption(
+        "يجمع استعلامات ومصادر مستقلة، ويحاول استخراج الصفحات من متصفح Oracle المعزول، "
+        "ثم يعرض مراجع قابلة للمراجعة. في وضع السحابة يحتاج استخراج الصفحات إلى اتصال الماك."
+    )
+    with st.form("oracle_deep_research_form"):
+        research_question = st.text_area(
+            "سؤال البحث",
+            height=100,
+            max_chars=500,
+            placeholder="اكتب سؤالاً يحتاج إلى مقارنة مصادر وتحليل الأدلة…",
+        )
+        rc1, rc2, rc3 = st.columns(3)
+        research_query_count = rc1.selectbox("عدد الاستعلامات", [2, 3, 4], index=1)
+        research_source_count = rc2.selectbox("عدد المصادر الأقصى", [4, 6, 8, 10, 12], index=2)
+        research_fetch = rc3.checkbox("استخراج محتوى الصفحات", value=True)
+        run_research_button = st.form_submit_button("ابدأ البحث العميق")
+    if run_research_button:
+        if not research_question.strip():
+            st.warning("اكتب سؤال البحث أولاً.")
+        elif not ai_core.has_key(provider_name):
+            st.warning("اضبط مزوّد الذكاء الاصطناعي قبل تشغيل التحليل.")
+        else:
+            try:
+                with st.spinner("الباحث بيجمع المصادر ويفحص الأدلة…"):
+                    research_report = deep_research.run_research(
+                        research_question,
+                        memory_scope=oracle_scope,
+                        max_queries=research_query_count,
+                        max_sources=research_source_count,
+                        fetch_pages=research_fetch,
+                    )
+                if research_report["status"] == "success":
+                    st.success("اكتمل البحث مع أدلة قابلة للمراجعة.")
+                elif research_report["status"] == "partial":
+                    st.warning("اكتمل البحث جزئياً؛ راجع القيود ومصادر النتائج.")
+                else:
+                    st.error("لم يتم العثور على مصادر بحث صالحة.")
+                st.markdown(research_report["answer"])
+                if research_report.get("key_findings"):
+                    st.markdown("**أهم النتائج**")
+                    for finding in research_report["key_findings"]:
+                        st.markdown(f"- {finding}")
+                if research_report.get("limitations"):
+                    st.markdown("**حدود البحث**")
+                    for limitation in research_report["limitations"]:
+                        st.warning(limitation)
+                if research_report.get("citations"):
+                    st.markdown("**المراجع المستشهد بها**")
+                    for citation in research_report["citations"]:
+                        st.markdown(
+                            f"- [{citation['id']}] [{citation['title']}]({citation['url']}) "
+                            f"— {citation['page_status']}"
+                        )
+                with st.expander("كل المصادر التي جرى جمعها"):
+                    st.dataframe(
+                        [{
+                            "المرجع": source["citation_id"],
+                            "العنوان": source["title"],
+                            "النطاق": source["domain"],
+                            "حالة الصفحة": source["page_status"],
+                            "الرابط": source["url"],
+                        } for source in research_report["sources"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            except Exception as exc:
+                st.error(f"تعذّر تشغيل البحث: {type(exc).__name__}: {str(exc)[:300]}")

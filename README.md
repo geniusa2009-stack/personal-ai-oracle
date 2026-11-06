@@ -185,3 +185,14 @@ queries, URLs and source-domain hints. Domain hints are not reliability guarante
 Research limits are bounded in code (up to 4 queries, 12 sources, 6 page fetches
 and a 26,000-character synthesis context). Raw research page contents are returned
 for the current run only and are not persisted by the research engine.
+
+
+## Oracle Control Center
+
+The Streamlit dashboard now includes an Oracle Control Center that shows workflow
+execution metadata, specialist/provider assignments, configured quality tiers,
+and the owner-scoped Knowledge Graph. It supports explicitly adding entities and
+directed relationships, searching the saved graph context, and running Deep
+Research directly from the dashboard. Workflow history remains digest-only;
+Knowledge Graph records are explicitly user-entered (the system does not silently
+infer or save relationships from private conversations).

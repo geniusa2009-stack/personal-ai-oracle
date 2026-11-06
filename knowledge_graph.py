@@ -216,6 +216,59 @@ def get_entity(scope: str, entity_id: int) -> Entity | None:
         conn.close()
 
 
+def list_entities(scope: str, *, limit: int = 100) -> list[Entity]:
+    """List recent entities owned by a scope, without exposing other scopes."""
+    scope = _scope(scope)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise KnowledgeGraphError("limit must be an integer from 1 to 100")
+    init_database()
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT id, name, entity_type, scope, attributes_json, created_at, updated_at
+               FROM knowledge_entities WHERE scope = ?
+               ORDER BY updated_at DESC, id DESC LIMIT ?""",
+            (scope, limit),
+        ).fetchall()
+        return [_entity_from_row(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def list_relations(
+    scope: str,
+    *,
+    entity_id: int | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """List directed relationships within one scope, optionally around one entity."""
+    scope = _scope(scope)
+    if entity_id is not None:
+        entity_id = _positive_id(entity_id)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise KnowledgeGraphError("limit must be an integer from 1 to 200")
+    init_database()
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT r.id, r.scope, r.source_entity_id, s.name AS source_name,
+                      r.target_entity_id, t.name AS target_name, r.relation_type,
+                      r.evidence, r.created_at
+               FROM knowledge_relations r
+               JOIN knowledge_entities s
+                 ON s.id = r.source_entity_id AND s.scope = r.scope
+               JOIN knowledge_entities t
+                 ON t.id = r.target_entity_id AND t.scope = r.scope
+               WHERE r.scope = ?
+                 AND (? IS NULL OR r.source_entity_id = ? OR r.target_entity_id = ?)
+               ORDER BY r.id DESC LIMIT ?""",
+            (scope, entity_id, entity_id, entity_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def search_entities(scope: str, query: str, *, limit: int = 20) -> list[Entity]:
     """Find entities by deterministic token overlap without crossing user scopes."""
     scope = _scope(scope)

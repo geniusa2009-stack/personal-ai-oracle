@@ -119,3 +119,24 @@ def test_graph_context_is_injected_into_ai_prompt_with_scope_isolation(monkeypat
     assert "Researcher agent" in enriched[0]["content"]
     assert "<personal_knowledge_graph>" not in other_scope[0]["content"]
     assert "Private unrelated data" not in other_scope[0]["content"]
+
+
+def test_list_entities_and_relations_are_scope_filtered_and_bounded(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    project = knowledge_graph.add_entity("owner:one", "Oracle", "project")
+    agent = knowledge_graph.add_entity("owner:one", "Researcher", "tool")
+    private = knowledge_graph.add_entity("owner:two", "Private", "project")
+    knowledge_graph.link_entities("owner:one", project.id, agent.id, "contains")
+    knowledge_graph.link_entities("owner:two", private.id, knowledge_graph.add_entity(
+        "owner:two", "Other", "concept"
+    ).id, "related_to")
+
+    assert {item.name for item in knowledge_graph.list_entities("owner:one")} == {"Oracle", "Researcher"}
+    relations = knowledge_graph.list_relations("owner:one")
+    assert len(relations) == 1
+    assert relations[0]["source_name"] == "Oracle"
+    assert knowledge_graph.list_relations("owner:two", entity_id=project.id) == []
+    with pytest.raises(knowledge_graph.KnowledgeGraphError):
+        knowledge_graph.list_entities("owner:one", limit=101)
+    with pytest.raises(knowledge_graph.KnowledgeGraphError):
+        knowledge_graph.list_relations("owner:one", limit=201)
