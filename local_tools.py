@@ -132,7 +132,7 @@ def _validate_command(command: list[str]) -> None:
     """Allow common development commands without exposing an unrestricted shell."""
     executable = Path(command[0]).name.casefold()
     args = command[1:]
-    if executable in {"python", "python3"}:
+    if executable.startswith("python"):
         if len(args) >= 2 and args[0] == "-m":
             module = args[1]
             if module in ALLOWED_PYTHON_MODULES:
@@ -166,6 +166,7 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
     try:
         if tool_id == "local.list_directory":
             target = _path(data.get("path"))
+            _reject_protected_path(target)
             if not target.is_dir():
                 raise ValueError(f"not a directory: {target}")
             entries = []
@@ -185,6 +186,7 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
 
         if tool_id == "local.read_file":
             target = _path(data.get("path"))
+            _reject_protected_path(target)
             size = target.stat().st_size
             if size > MAX_FILE_READ_BYTES:
                 raise ValueError(f"file is larger than {MAX_FILE_READ_BYTES} bytes")
@@ -229,6 +231,7 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
 
         if tool_id == "local.find_files":
             root = _path(data.get("root"), "root")
+            _reject_protected_path(root)
             pattern = data.get("pattern", "*")
             maximum = data.get("max_results", 100)
             if not root.is_dir():
