@@ -261,10 +261,12 @@ def _synthesize(
     queries: list[str],
     sources: list[dict[str, Any]],
     memory_scope: str | None,
-) -> tuple[str, list[str], list[str]]:
+) -> tuple[str, list[str], list[str], list[str], list[str]]:
     if not sources:
         return (
             "لم أتمكن من جمع مصادر صالحة للسؤال ده. جرّب إعادة صياغة السؤال أو التأكد من إعداد محرك البحث.",
+            [],
+            [],
             [],
             [],
         )
@@ -310,7 +312,7 @@ def _synthesize(
         data = {}
     if not isinstance(data, dict) or not isinstance(data.get("answer"), str):
         fallback = str(response or "تعذّر إنشاء تقرير البحث.")[:MAX_ANSWER_LENGTH]
-        return fallback, [], []
+        return fallback, [], [], [], []
     answer = data["answer"].strip()[:MAX_ANSWER_LENGTH]
     findings = data.get("key_findings", [])
     limitations = data.get("limitations", [])
@@ -322,7 +324,7 @@ def _synthesize(
     used = list(dict.fromkeys(in_text + declared))
     invalid = [item for item in used if item not in allowed_ids]
     valid = [item for item in used if item in allowed_ids]
-    return answer, valid, invalid
+    return answer, findings, limitations, valid, invalid
 
 
 def run_research(
@@ -355,7 +357,7 @@ def run_research(
     for index, source in enumerate(sources, start=1):
         source["citation_id"] = f"S{index}"
 
-    answer, cited_ids, invalid_ids = _synthesize(
+    answer, key_findings, model_limitations, cited_ids, invalid_ids = _synthesize(
         normalized_query,
         queries,
         sources,
@@ -387,7 +389,7 @@ def run_research(
         }
         for source in sources
     ]
-    limitations: list[str] = []
+    limitations: list[str] = list(model_limitations)
     if not sources:
         limitations.append("No valid search results were returned by the configured search provider.")
     if fetch_pages and any(source["page_status"] != "extracted" for source in sources):
@@ -404,7 +406,7 @@ def run_research(
         "query": normalized_query,
         "queries": queries,
         "answer": answer,
-        "key_findings": [],
+        "key_findings": key_findings,
         "limitations": limitations,
         "citations": citations,
         "sources": output_sources,

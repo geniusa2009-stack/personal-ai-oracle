@@ -84,7 +84,7 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
         lambda *args, **kwargs: json.dumps({
             "answer": "Finding supported by [S1] and [S2].",
             "key_findings": ["Finding one"],
-            "limitations": [],
+            "limitations": ["The sample is limited to retrieved public sources."],
             "cited_source_ids": ["S1", "S2"],
         }),
     )
@@ -94,6 +94,8 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
     assert report["status"] == "success"
     assert report["stats"] == {"query_count": 2, "source_count": 2, "page_extracted_count": 2}
     assert len(report["citations"]) == 2
+    assert report["key_findings"] == ["Finding one"]
+    assert report["limitations"][0] == "The sample is limited to retrieved public sources."
     assert report["citations"][0]["id"] == "S1"
     assert report["citations"][1]["page_status"] == "extracted"
 
