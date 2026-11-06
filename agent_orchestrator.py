@@ -70,13 +70,10 @@ def _build_next_step(
     steps_remaining: int,
     memory_scope: str | None,
     completed_results: list[dict[str, Any]],
-    used_tool_ids: set[str],
+    used_tool_calls: set[str],
 ) -> dict[str, Any]:
-    """Pick one next tool, using all prior observations and the planner's own profile."""
-    tools = [
-        tool for tool in available_tools()
-        if tool["tool_id"] not in used_tool_ids
-    ]
+    """Pick one next tool; allow the same tool again with different input."""
+    tools = available_tools()
     if not tools:
         return {"step": None, "clarifying_question": ""}
 
@@ -148,7 +145,7 @@ def _build_next_step(
         if not isinstance(tool_id, str):
             continue
         tool_id = tool_id.strip()
-        if tool_id not in allowlist or tool_id in used_tool_ids:
+        if tool_id not in allowlist:
             continue
         tool_input = item.get("input", "")
         if not isinstance(tool_input, (str, dict)):
@@ -156,9 +153,13 @@ def _build_next_step(
         serialized = json.dumps(tool_input, ensure_ascii=False) if isinstance(tool_input, dict) else tool_input.strip()
         if not serialized or len(serialized) > MAX_TOOL_INPUT_LENGTH:
             continue
+        call_signature = tool_id + "\\0" + serialized
+        if call_signature in used_tool_calls:
+            continue
         return {
             "step": {
                 "tool_id": tool_id,
+                "call_signature": call_signature,
                 "input": serialized,
                 "tool": allowlist[tool_id],
             },
@@ -235,7 +236,7 @@ def run(
         allowed_steps = max_steps
 
     results: list[dict[str, Any]] = []
-    used_tool_ids: set[str] = set()
+    used_tool_calls: set[str] = set()
     clarifying_question = ""
 
     for step_index in range(allowed_steps):
@@ -244,7 +245,7 @@ def run(
             allowed_steps - step_index,
             memory_scope,
             results,
-            used_tool_ids,
+            used_tool_calls,
         )
         clarifying_question = plan["clarifying_question"] or clarifying_question
         step = plan["step"]
@@ -252,7 +253,7 @@ def run(
             break
         result = _execute_step(step)
         results.append(result)
-        used_tool_ids.add(step["tool_id"])
+        used_tool_calls.add(step["call_signature"])
 
     if not results:
         if clarifying_question:
