@@ -59,7 +59,8 @@ def test_agent_replans_after_observing_each_tool_result(monkeypatch):
     second_planner_prompt = planner_calls.call_args_list[1].args[0][1]["content"]
     assert f"result-{first_id}" in second_planner_prompt
     available_catalog = second_planner_prompt.split("نتائج الخطوات السابقة", 1)[0]
-    assert f'"tool_id": "feature:{first_id}"' not in available_catalog
+    assert f'"tool_id": "feature:{first_id}"' in available_catalog
+    assert "result-" + str(first_id) in second_planner_prompt
 
 
 def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
@@ -75,7 +76,7 @@ def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
     })
     second_plan = json.dumps({
         "steps": [
-            {"feature_id": first_id, "input": "duplicate must be ignored"},
+            {"feature_id": first_id, "input": "first safe input"},
             {"feature_id": second_id, "input": "second safe input"},
         ],
         "clarifying_question": "",
