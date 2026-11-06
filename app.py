@@ -279,7 +279,7 @@ with tab_analyze:
     with col2:
         st.markdown("### 📊 لوحة التحليل الاستراتيجي")
         if analyze_button:
-            if not api_key:
+            if not ai_core.has_key(provider_name):
                 st.error("ضع مفتاح الـ API أولاً في القائمة الجانبية.")
             elif not user_log.strip():
                 st.warning("اكتب بعض الأفكار أولاً.")
@@ -568,7 +568,7 @@ with tab_factory:
     fc_topic = st.text_area("الفكرة / الموضوع",
                             placeholder="اكتب الفكرة اللي عايز تعمل حواليها محتوى…", height=120)
     if st.button("✨ ولّد المحتوى بأسلوبي", use_container_width=True):
-        if not api_key:
+        if not ai_core.has_key(provider_name):
             st.error("ضع مفتاح الـ API أولاً.")
         elif not fc_topic.strip():
             st.warning("اكتب الفكرة أولاً.")
@@ -712,7 +712,7 @@ with tab_chat:
             st.markdown(m["content"])
     prompt = st.chat_input("اكتب رسالتك…")
     if prompt:
-        if not api_key:
+        if not ai_core.has_key(provider_name):
             st.error("ضع مفتاح الـ API أولاً في القائمة الجانبية.")
         else:
             _ensure_env_key()
