@@ -167,3 +167,46 @@ def test_research_rejects_invalid_limits(kwargs):
     options.update(kwargs)
     with pytest.raises(deep_research.ResearchError):
         deep_research.run_research(**options)
+
+
+def test_compact_report_json_is_valid_bounded_and_keeps_source_references():
+    report = {
+        "status": "success",
+        "query": "q" * 500,
+        "queries": ["query " * 40] * 4,
+        "answer": "answer " * 2000,
+        "key_findings": ["finding " * 100] * 8,
+        "limitations": ["limitation " * 100] * 8,
+        "citations": [
+            {"id": f"S{i}", "title": "Title " * 40, "url": f"https://example{i}.com/" + "x" * 1000}
+            for i in range(1, 9)
+        ],
+        "sources": [
+            {
+                "citation_id": f"S{i}",
+                "title": "Title " * 40,
+                "url": f"https://example{i}.com/" + "x" * 1000,
+                "domain": f"example{i}.com",
+                "snippet": "Snippet " * 100,
+                "page_status": "extracted",
+                "source_class": "general-web",
+            }
+            for i in range(1, 9)
+        ],
+        "citation_validation": {"valid_source_ids": [f"S{i}" for i in range(1, 9)], "invalid_source_ids": []},
+        "stats": {"source_count": 8},
+    }
+
+    serialized = deep_research.compact_report_json(report, max_bytes=9000)
+    restored = json.loads(serialized)
+
+    assert len(serialized.encode("utf-8")) <= 9000
+    assert restored["context_truncated"] is True
+    assert restored["citations"]
+    assert all(citation["id"] in {s["citation_id"] for s in restored["sources"]} for citation in restored["citations"])
+
+
+def test_compact_report_rejects_too_small_or_invalid_byte_limits():
+    for maximum in (0, 100, 12001, True):
+        with pytest.raises(deep_research.ResearchError):
+            deep_research.compact_report_json({"answer": "test"}, max_bytes=maximum)

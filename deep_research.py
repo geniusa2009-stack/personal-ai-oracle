@@ -422,6 +422,101 @@ def run_research(
     }
 
 
+def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str:
+    """Serialize a bounded, still-valid JSON report for planner/tool history."""
+    if not isinstance(report, dict):
+        return json.dumps({"status": "error", "answer": "Invalid research report."})
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 1024 <= max_bytes <= 12000:
+        raise ResearchError("max_bytes must be an integer from 1024 to 12000")
+
+    compact = {
+        "status": str(report.get("status") or "partial")[:20],
+        "query": str(report.get("query") or "")[:300],
+        "queries": [str(item)[:180] for item in report.get("queries", [])[:4]],
+        "answer": str(report.get("answer") or "")[:4200],
+        "key_findings": [str(item)[:350] for item in report.get("key_findings", [])[:6]],
+        "limitations": [str(item)[:350] for item in report.get("limitations", [])[:6]],
+        "citations": [],
+        "sources": [],
+        "citation_validation": {
+            "valid_source_ids": list(report.get("citation_validation", {}).get("valid_source_ids", []))[:8],
+            "invalid_source_ids": list(report.get("citation_validation", {}).get("invalid_source_ids", []))[:8],
+        },
+        "stats": report.get("stats", {}),
+    }
+    source_by_id = {}
+    for source in report.get("sources", [])[:8]:
+        if not isinstance(source, dict):
+            continue
+        source_id = str(source.get("citation_id") or "")[:12]
+        if not source_id:
+            continue
+        item = {
+            "citation_id": source_id,
+            "title": str(source.get("title") or "")[:160],
+            "url": str(source.get("url") or "")[:500],
+            "domain": str(source.get("domain") or "")[:180],
+            "snippet": str(source.get("snippet") or "")[:160],
+            "page_status": str(source.get("page_status") or "")[:50],
+            "source_class": str(source.get("source_class") or "")[:40],
+        }
+        source_by_id[source_id] = item
+    cited = compact["citation_validation"]["valid_source_ids"]
+    selected_ids = [item for item in cited if item in source_by_id]
+    if not selected_ids:
+        selected_ids = list(source_by_id)[:6]
+    compact["sources"] = [source_by_id[item] for item in selected_ids[:6]]
+
+    citation_by_id = {}
+    for citation in report.get("citations", [])[:8]:
+        if not isinstance(citation, dict):
+            continue
+        citation_id = str(citation.get("id") or "")[:12]
+        if citation_id not in selected_ids:
+            continue
+        citation_by_id[citation_id] = {
+            "id": citation_id,
+            "title": str(citation.get("title") or "")[:160],
+            "url": str(citation.get("url") or "")[:500],
+            "domain": str(citation.get("domain") or "")[:180],
+            "page_status": str(citation.get("page_status") or "")[:50],
+        }
+    compact["citations"] = [citation_by_id[item] for item in selected_ids if item in citation_by_id]
+
+    def serialize() -> str:
+        return json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+
+    encoded = serialize()
+    if len(encoded.encode("utf-8")) <= max_bytes:
+        return encoded
+
+    compact["answer"] = compact["answer"][:2200]
+    for source in compact["sources"]:
+        source["snippet"] = source["snippet"][:60]
+        source["title"] = source["title"][:100]
+        source["url"] = source["url"][:300]
+    for citation in compact["citations"]:
+        citation["title"] = citation["title"][:100]
+        citation["url"] = citation["url"][:300]
+    compact["key_findings"] = compact["key_findings"][:3]
+    compact["limitations"] = compact["limitations"][:3]
+    compact["context_truncated"] = True
+    encoded = serialize()
+    if len(encoded.encode("utf-8")) <= max_bytes:
+        return encoded
+
+    # Last-resort compact form still preserves valid JSON and the citation IDs
+    # that can fit, rather than slicing an encoded string at an arbitrary byte.
+    minimal = {
+        "status": compact["status"],
+        "answer": compact["answer"][:1200],
+        "citations": compact["citations"][:3],
+        "limitations": ["Research report was compacted to fit the agent context."],
+        "context_truncated": True,
+    }
+    return json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))[:max_bytes]
+
+
 def execute(
     tool_input: dict[str, Any] | str,
     *,

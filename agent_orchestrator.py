@@ -307,9 +307,18 @@ def _execute_step(
         result["tool_id"] = tool_id
         result["input"] = step["input"][:2000]
         try:
-            result["result"] = json.dumps(result.get("result"), ensure_ascii=False)[:MAX_TOOL_OUTPUT_LENGTH]
+            result["result"] = deep_research.compact_report_json(
+                result.get("result") if isinstance(result.get("result"), dict) else {
+                    "status": result.get("status"),
+                    "answer": str(result.get("result") or ""),
+                },
+                max_bytes=MAX_TOOL_OUTPUT_LENGTH - 512,
+            )
         except (TypeError, ValueError):
-            result["result"] = "Research report could not be serialized."
+            result["result"] = json.dumps({
+                "status": "error",
+                "answer": "Research report could not be serialized.",
+            })
         return result
 
     if tool_id.startswith(("local.", "web.")):
