@@ -608,16 +608,14 @@ def migrate_legacy_vault_key() -> int:
         key_row = conn.execute(
             "SELECT value FROM settings WHERE key = 'vault_key'"
         ).fetchone()
-        if key_row is None:
-            conn.commit()
-            return 0
-
-        try:
-            legacy_fernet = Fernet(key_row["value"].encode("ascii"))
-        except Exception as exc:
-            raise VaultMigrationError(
-                "The legacy vault key is invalid; no records were changed"
-            ) from exc
+        legacy_fernet = None
+        if key_row is not None:
+            try:
+                legacy_fernet = Fernet(key_row["value"].encode("ascii"))
+            except Exception as exc:
+                raise VaultMigrationError(
+                    "The legacy vault key is invalid; no records were changed"
+                ) from exc
 
         rows = conn.execute(
             "SELECT id, secret_enc FROM password_vault ORDER BY id"
@@ -631,6 +629,10 @@ def migrate_legacy_vault_key() -> int:
                     try:
                         plaintext = fernet.decrypt(token)
                     except InvalidToken:
+                        if legacy_fernet is None:
+                            raise VaultMigrationError(
+                                f"Vault record {row['id']} needs its legacy key"
+                            )
                         plaintext = legacy_fernet.decrypt(token)
                 elif blob.startswith("b:"):
                     import base64
