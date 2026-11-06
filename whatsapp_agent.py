@@ -26,6 +26,7 @@ import os
 
 import requests
 
+import ai_core
 import db
 import database
 from scholarship_expert import is_scholarship_query, answer_scholarship_query
@@ -83,41 +84,41 @@ def verify_meta_signature(raw_body: bytes, signature_header: str, app_secret: st
 
 
 def generate_reply(text: str, contact: dict, history: list = None) -> str:
-    """يولّد رداً ذكياً بالعامية. يراعي ذاكرة المحادثة، ولو السؤال عن المنح يدمج خبير المنح."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    if not key:
+    """Generate a contextual WhatsApp reply through the shared model router."""
+    if not ai_core.has_key():
         return ""
 
-    # توجيه ذكي: لو الرسالة عن منح → استعن بخبير المنح
     scholarship_ctx = ""
     if is_scholarship_query(text):
-        info = answer_scholarship_query(text, use_web=bool(os.environ.get("OPENROUTER_API_KEY")))
-        scholarship_ctx = f"\n\n[معلومات من خبير المنح لتلخيصها بالعامية للمرسل]:\n{info}"
+        info = answer_scholarship_query(text, use_web=True)
+        scholarship_ctx = f"\\n\\n[معلومات من خبير المنح لتلخيصها بالعامية للمرسل]:\\n{info}"
 
-    # ذاكرة المحادثة السابقة (من جدول whatsapp_chats)
     memory_ctx = ""
     if history:
-        lines = [f"المرسِل: {h.get('incoming_message','')}\nانت: {h.get('smart_reply','')}"
-                 for h in history if h.get("incoming_message")]
+        lines = [
+            f"المرسِل: {item.get('incoming_message', '')}\\nانت: {item.get('smart_reply', '')}"
+            for item in history if item.get("incoming_message")
+        ]
         if lines:
-            memory_ctx = "سياق المحادثة السابقة (للاستمرارية):\n" + "\n".join(lines) + "\n\n"
+            memory_ctx = (
+                "سياق المحادثة السابقة (للاستمرارية):\\n"
+                + "\\n".join(lines)
+                + "\\n\\n"
+            )
 
     system = build_system_prompt(contact)
-    user = (f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\n«{text}»{scholarship_ctx}"
-            f"\n\nاكتب الرد المناسب بالعامية.")
-    try:
-        r = requests.post(
-            OPENROUTER_URL, headers=_headers(key),
-            data=json.dumps({"model": model, "temperature": 0.8,
-                             "messages": [{"role": "system", "content": system},
-                                          {"role": "user", "content": user}]}),
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"(تعذّر توليد الرد: {e})"
+    user = (
+        f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\\n«{text}»{scholarship_ctx}"
+        "\\n\\nاكتب الرد المناسب بالعامية."
+    )
+    reply = ai_core.chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.8,
+        task_type="fast",
+    )
+    if reply.startswith(("⚠️", "(تعذّر")):
+        return ""
+    return reply
 
 
 # --------------------------------------------------------------------------
