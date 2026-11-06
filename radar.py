@@ -69,6 +69,7 @@ def _rank_with_llm(items: list) -> list:
         temperature=0.2,
         task_type="research",
         response_format={"type": "json_object"},
+        agent_role="researcher",
     )
     try:
         if not content or content.startswith(("⚠️", "(تعذّر")):
