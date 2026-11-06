@@ -1,14 +1,9 @@
 """
-🔮 الوكيل الذكي الشخصي والمحلل الاستراتيجي — نسخة سحابية
-Personal AI Agent & Strategic Analyst — Cloud edition
+Personal AI Oracle — Local Mac edition.
 
-- تحليل عميق متدفّق (Streaming) عبر OpenRouter (DeepSeek-V3 / GPT-4o).
-- رادار فرص يعمل في الخلفية تلقائياً (كورسات / وظائف / منح).
-- جاهز للنشر على Render / Railway عبر Docker.
-
-التشغيل محلياً:  streamlit run app.py
-المفاتيح تُقرأ من القائمة الجانبية أو من متغيّرات البيئة (الأفضل على السحابة):
-  OPENROUTER_API_KEY, TAVILY_API_KEY (اختياري), SCAN_INTERVAL_HOURS, OPENROUTER_MODEL
+The dashboard runs on the owner's MacBook and binds to localhost only.
+The local runtime and LaunchAgent keep the UI and background worker alive.
+AI requests can use hosted providers or models served locally by Ollama.
 """
 
 import os
@@ -17,6 +12,9 @@ import json
 from datetime import datetime, timedelta
 
 import streamlit as st
+
+from local_config import load_local_environment
+load_local_environment()
 
 import db
 import database
@@ -28,25 +26,28 @@ import content_factory
 import ai_core
 import memory
 import agent_orchestrator
+import agent_profiles
 import income_hunter
 import discipline_oracle
 import advanced_scholarship
 import feature_hub  # يجمّع features + advanced_module + wealth_empire
-from access_control import AUTHENTICATED_SESSION_KEY, require_app_auth
 
-MODELS = {
-    "🧠 DeepSeek-V3 (العقل المفكّر العميق)": "deepseek/deepseek-chat",
-    "⚡ GPT-4o (سريع وذكي)": "openai/gpt-4o",
-    "🔬 DeepSeek-R1 (تفكير منطقي متسلسل)": "deepseek/deepseek-r1",
+PROVIDER_LABELS = {
+    "openrouter": "OpenRouter",
+    "openai": "OpenAI",
+    "gemini": "Google Gemini",
+    "ollama": "Ollama (local Mac models)",
+}
+PROVIDER_KEY_ENV = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
 }
 
 st.set_page_config(page_title="الوكيل الذكي الشخصي", page_icon="🔮",
                    layout="wide", initial_sidebar_state="expanded")
 
-# The app stores private diaries, contacts, finance data and vault records.
-# Fail closed before database initialization or any user-data rendering.
-require_app_auth(st)
-
+# Local mode: no public login gate. The LaunchAgent binds this app to 127.0.0.1.
 
 def render_report(content):
     """Render untrusted model/data output as Markdown, never raw HTML."""
@@ -80,9 +81,13 @@ def start_background_scheduler():
 
 
 # يُفعّل تلقائياً فقط لو كان مفتاح البحث/التحليل متاحاً في البيئة (وضع السحابة)
-AUTO_RADAR = bool(os.environ.get("OPENROUTER_API_KEY") or os.environ.get("TAVILY_API_KEY")
-                  or os.environ.get("ENABLE_RADAR"))
-if AUTO_RADAR:
+AUTO_RADAR = bool(
+    os.environ.get("ENABLE_RADAR")
+    or os.environ.get("OPENROUTER_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("GEMINI_API_KEY")
+)
+if AUTO_RADAR and not os.environ.get("ORACLE_EXTERNAL_WORKER"):
     start_background_scheduler()
 
 # ---------------------------------------------------------------------------
@@ -120,18 +125,19 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # OpenRouter — البث الفوري + استخراج الكلمات المفتاحية
 # ---------------------------------------------------------------------------
-def stream_openrouter(api_key, model, prompt):
-    """Compatibility wrapper: route deep-analysis streaming through the shared AI core."""
+def stream_openrouter(api_key, model, prompt, provider_name=None):
+    """Compatibility wrapper for selected multi-provider streaming."""
     yield from ai_core.stream(
         [{"role": "user", "content": prompt}],
         temperature=0.8,
         task_type="reasoning",
         requested_model=model,
+        provider_name=provider_name,
         api_key=api_key,
     )
 
 
-def extract_keywords(api_key, model, text):
+def extract_keywords(api_key, model, text, provider_name=None):
     """Extract radar keywords through the shared router with validated JSON output."""
     prompt = (
         "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
@@ -144,6 +150,7 @@ def extract_keywords(api_key, model, text):
             temperature=0.2,
             task_type="research",
             requested_model=model,
+            provider_name=provider_name,
             api_key=api_key,
             response_format={"type": "json_object"},
         )
@@ -185,20 +192,54 @@ def build_prompt(user_log):
 # القائمة الجانبية
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### 🔮 لوحة التحكم")
-    if st.button("🔒 تسجيل الخروج", key="oracle_logout", use_container_width=True):
-        st.session_state.pop(AUTHENTICATED_SESSION_KEY, None)
-        st.rerun()
+    st.markdown("### 🔮 Oracle — Local Mac")
+    st.caption("يعمل محلياً تحت حساب macOS الحالي، وليس موقعاً عاماً.")
     st.divider()
-    env_key = os.environ.get("OPENROUTER_API_KEY", "")
-    api_key = st.text_input("🔑 مفتاح OpenRouter API:", type="password", value=env_key)
-    if api_key:
-        st.success("تم تحميل المفتاح ✅")
-    else:
-        st.warning("🔑 أدخل مفتاح الـ API لتشغيل التحليل.")
 
-    model_name = st.selectbox("🧠 النموذج الذكي:", list(MODELS.keys()))
-    model = MODELS[model_name]
+    provider_options = ai_core.available_providers() or ["openrouter", "ollama"]
+    current_provider = ai_core.default_provider_name()
+    provider_name = st.selectbox(
+        "مزود الذكاء الاصطناعي",
+        provider_options,
+        index=provider_options.index(current_provider) if current_provider in provider_options else 0,
+        format_func=lambda value: PROVIDER_LABELS.get(value, value),
+    )
+    key_env = PROVIDER_KEY_ENV.get(provider_name)
+    api_key = None
+    if key_env:
+        api_key = st.text_input(
+            f"مفتاح {PROVIDER_LABELS.get(provider_name, provider_name)}",
+            type="password",
+            value=os.environ.get(key_env, ""),
+        )
+        if api_key:
+            os.environ[key_env] = api_key
+    model = st.text_input(
+        "اسم الموديل",
+        value=ai_core.default_model_name(provider_name),
+        help="اكتب اسم موديل المزوّد كما يظهر في حسابك أو في Ollama المحلي.",
+    )
+    os.environ["ORACLE_DEFAULT_PROVIDER"] = provider_name
+    if model.strip():
+        os.environ["ORACLE_DEFAULT_MODEL"] = model.strip()
+    else:
+        os.environ.pop("ORACLE_DEFAULT_MODEL", None)
+
+    if ai_core.has_key(provider_name):
+        st.success("المزوّد مُهيأ ✅")
+    else:
+        st.warning("أضف مفتاح المزوّد في إعدادات Oracle المحلية.")
+
+    with st.expander("🧠 نماذج الوكلاء المتخصصين"):
+        st.dataframe(
+            [{
+                "Agent": item["role"],
+                "Provider": item["provider"],
+                "Model": item["model"] or "استخدم موديل المهمة الافتراضي",
+            } for item in agent_profiles.profile_catalog()],
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.divider()
     last_scan = db.get_setting("last_scan", "—")
@@ -250,7 +291,7 @@ with tab_analyze:
                                 stream_openrouter(api_key, model, build_prompt(user_log))
                             )
                     # حفظ اليومية + كلماتها لتغذية الرادار
-                    kws = extract_keywords(api_key, model, user_log)
+                    kws = extract_keywords(api_key, model, user_log, provider_name)
                     db.save_entry(user_log, kws)
                     if kws:
                         st.caption("🧠 كلمات أُضيفت لرادارك: " + "، ".join(kws))
@@ -299,9 +340,12 @@ with tab_radar:
                     st.write(summary)
 
 def _ensure_env_key():
-    """يضمن توفّر المفتاح في البيئة للموديولات الخلفية أثناء الاستخدام المحلي."""
-    if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-        os.environ["OPENROUTER_API_KEY"] = api_key
+    """Keep the selected model profile available to all feature modules in this local process."""
+    os.environ["ORACLE_DEFAULT_PROVIDER"] = provider_name
+    if model.strip():
+        os.environ["ORACLE_DEFAULT_MODEL"] = model.strip()
+    if api_key and key_env:
+        os.environ[key_env] = api_key
 
 
 # ====================== تبويب خبير المنح ======================
