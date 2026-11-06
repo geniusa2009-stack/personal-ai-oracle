@@ -82,6 +82,7 @@ def main() -> int:
     os.environ.setdefault("ORACLE_LOCAL_ACCESS", "full")
     os.environ.setdefault("ORACLE_DB_PATH", str(STATE_DIR / "oracle.db"))
     os.environ.setdefault("ORACLE_EXTERNAL_WORKER", "1")
+    os.environ.setdefault("ENABLE_RADAR", "1")
     os.environ.setdefault("ORACLE_DEFAULT_PROVIDER", "openrouter")
     os.environ.setdefault("ORACLE_MAX_AGENT_STEPS", "12")
 
