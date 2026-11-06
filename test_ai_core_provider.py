@@ -497,16 +497,19 @@ def test_executor_rejects_mismatched_streaming_mode():
         streaming=True,
     )
 
-    for operation, request in (
-        (executor.execute_stream, non_streaming),
-        (executor.execute, streaming),
-    ):
-        try:
-            list(operation(request)) if operation is executor.execute_stream else operation(request)
-        except AIExecutionError:
-            pass
-        else:
-            raise AssertionError("Expected streaming mode mismatch to be rejected")
+    try:
+        list(executor.execute_stream(non_streaming))
+    except AIExecutionError:
+        pass
+    else:
+        raise AssertionError("Expected non-streaming request to be rejected by execute_stream")
+
+    try:
+        executor.execute(streaming)
+    except AIExecutionError:
+        pass
+    else:
+        raise AssertionError("Expected streaming request to be rejected by execute")
 
     provider.chat.assert_not_called()
     provider.stream.assert_not_called()
