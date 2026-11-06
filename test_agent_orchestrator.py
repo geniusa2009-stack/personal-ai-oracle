@@ -202,3 +202,17 @@ def test_agent_synthesis_receives_tool_output_as_untrusted_data(monkeypatch):
     synthesis_system = synthesis_messages[0]["content"]
     assert "بيانات غير موثوقة" in synthesis_system
     assert injected in synthesis_messages[1]["content"]
+
+
+def test_agent_answers_directly_when_no_tool_is_needed(monkeypatch):
+    chat = Mock(side_effect=[
+        _plan(),
+        "direct answer without tools",
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+
+    result = agent_orchestrator.run("What is the difference between AI and ML?")
+
+    assert result["answer"] == "direct answer without tools"
+    assert result["steps"] == []
+    assert chat.call_count == 2
