@@ -288,7 +288,7 @@ with tab_analyze:
                     with st.container(border=True):
                         with st.spinner("⚡ يتم تشغيل العقول التحليلية وقراءة ما بين السطور…"):
                             result = st.write_stream(
-                                stream_openrouter(api_key, model, build_prompt(user_log))
+                                stream_openrouter(api_key, model, build_prompt(user_log), provider_name)
                             )
                     # حفظ اليومية + كلماتها لتغذية الرادار
                     kws = extract_keywords(api_key, model, user_log, provider_name)
@@ -310,9 +310,7 @@ with tab_radar:
     with top[0]:
         if st.button("🔄 شغّل مسحاً الآن", use_container_width=True):
             with st.spinner("🔎 يتم البحث في الإنترنت عن أحدث الفرص…"):
-                # على السحابة المفتاح في البيئة؛ محلياً نمرّره مؤقتاً
-                if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-                    os.environ["OPENROUTER_API_KEY"] = api_key
+                _ensure_env_key()
                 res = radar.run_opportunity_scan()
             if res["status"] == "no_keywords":
                 st.warning("لا توجد كلمات مفتاحية بعد — اكتب يومية أو أضف اهتماماتك في الإعدادات.")
@@ -536,9 +534,7 @@ with tab_sched:
     sleep = sc3.text_input("ميعاد النوم", value="00:00")
 
     if st.button("🚀 ابنِ جدول اليوم", use_container_width=True):
-        _ensure_env_key() if False else None  # المخطط يعمل بدون مفتاح (افتراضي ذكي)
-        if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-            os.environ["OPENROUTER_API_KEY"] = api_key
+        _ensure_env_key()
         goals = [g.strip() for g in goals_txt.splitlines() if g.strip()]
         conn = db.get_conn()
         rows = conn.execute("SELECT text FROM entries ORDER BY id DESC LIMIT 8").fetchall()
@@ -699,9 +695,9 @@ with tab_chat:
     mode_label = st.radio("نبرة المساعد", list(CHAT_MODES.keys()), horizontal=True)
     chat_mode = CHAT_MODES[mode_label]
     agent_mode = st.toggle(
-        "🤖 وضع الوكيل — خطّط وشغّل أدوات Oracle الآمنة",
-        value=False,
-        help="يسمح للوكيل باستخدام حتى 3 أدوات قراءة/بحث/تحليل أو إنشاء مسودات. لا يرسل رسائل ولا ينشر ولا يشتري."
+        "🤖 وضع الوكيل المحلي — صلاحيات حساب Mac الحالي",
+        value=True,
+        help="يستطيع استخدام أدوات Oracle وقراءة/كتابة الملفات وتشغيل البرامج والأوامر بصلاحيات حساب macOS الحالي. لا يتجاوز موافقات macOS أو صلاحيات root."
     )
     if "chat_msgs" not in st.session_state:
         st.session_state.chat_msgs = []
@@ -727,7 +723,7 @@ with tab_chat:
             with st.chat_message("assistant"):
                 if agent_mode:
                     try:
-                        with st.spinner("🤖 Oracle بيخطط وينفّذ الأدوات المسموح بها…"):
+                        with st.spinner("🤖 Oracle بيخطط وينفّذ على جهازك المحلي…"):
                             agent_result = agent_orchestrator.run(
                                 prompt,
                                 memory_scope=memory_scope,
@@ -1036,18 +1032,25 @@ with tab_settings:
             st.success("تم مسح الفرص.")
 
     st.divider()
-    st.markdown("#### 🔐 متغيّرات البيئة (للنشر السحابي)")
+    st.markdown("#### 🧠 إعدادات النماذج والوكلاء — محلية")
+    st.caption("احفظ المفاتيح وأسماء النماذج في ~/.personal_ai_oracle/.env. لا تضعها في Git.")
     st.code(
-        "OPENROUTER_API_KEY=...        # مطلوب للتحليل والردود وترتيب الفرص\n"
-        "TAVILY_API_KEY=...            # اختياري: بحث أكثر موثوقية على السحابة\n"
-        "SCAN_INTERVAL_HOURS=12        # كل كم ساعة يعمل الرادار\n"
-        "OPENROUTER_MODEL=deepseek/deepseek-chat\n"
-        "ORACLE_DB_PATH=/data/oracle.db   # قرص دائم على السحابة\n"
-        "\n# --- واتساب (Cloud API الرسمي) ---\n"
-        "WA_VERIFY_TOKEN=...           # رمز تحقق الويبهوك (تختاره أنت)\n"
-        "WA_ACCESS_TOKEN=...           # توكن الوصول من Meta\n"
-        "WA_PHONE_NUMBER_ID=...        # معرّف رقم الواتساب من Meta\n"
-        "WA_AUTO_REPLY=draft           # draft (مسودّة) أو send (إرسال تلقائي)",
+        "ORACLE_DEFAULT_PROVIDER=ollama\n"
+        "OLLAMA_BASE_URL=http://127.0.0.1:11434/v1\n"
+        "OLLAMA_MODEL=اسم-موديل-مثبت-في-Ollama\n"
+        "OPENROUTER_API_KEY=...\n"
+        "OPENAI_API_KEY=...\n"
+        "GEMINI_API_KEY=...\n"
+        "ORACLE_AGENT_PLANNER_PROVIDER=...\n"
+        "ORACLE_AGENT_PLANNER_MODEL=...\n"
+        "ORACLE_AGENT_RESEARCHER_PROVIDER=...\n"
+        "ORACLE_AGENT_RESEARCHER_MODEL=...\n"
+        "ORACLE_AGENT_CODER_PROVIDER=...\n"
+        "ORACLE_AGENT_CODER_MODEL=...\n"
+        "ORACLE_AGENT_REVIEWER_PROVIDER=...\n"
+        "ORACLE_AGENT_REVIEWER_MODEL=...\n"
+        "ORACLE_MAX_AGENT_STEPS=12\n"
+        "SCAN_INTERVAL_HOURS=12",
         language="bash",
     )
 
