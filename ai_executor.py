@@ -40,8 +40,10 @@ class AIExecutor:
     def execute(self, request: AIRequest) -> AIResult:
         """Execute a normal chat request and normalize its internal result."""
         decision = self._decision_for(request)
+        if request.streaming:
+            raise AIExecutionError("streaming request must use execute_stream")
         content = self.provider.chat(
-            list(request.messages),
+            request.to_messages(),
             temperature=request.temperature,
             model=decision.model,
         )
@@ -55,8 +57,10 @@ class AIExecutor:
     def execute_stream(self, request: AIRequest) -> Iterator[str]:
         """Yield provider chunks incrementally for one streaming request."""
         decision = self._decision_for(request)
+        if not request.streaming:
+            raise AIExecutionError("execute_stream requires a streaming request")
         yield from self.provider.stream(
-            list(request.messages),
+            request.to_messages(),
             temperature=request.temperature,
             model=decision.model,
         )
