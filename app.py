@@ -228,8 +228,10 @@ with st.sidebar:
     else:
         os.environ.pop("ORACLE_DEFAULT_MODEL", None)
 
-    if ai_core.has_key(provider_name):
-        st.success("المزوّد مُهيأ ✅")
+    if provider_name == "ollama":
+        st.info("موديلات Ollama محلية؛ يجب تشغيل Ollama وتثبيت الموديل المختار.")
+    elif ai_core.has_key(provider_name):
+        st.success("بيانات المزوّد موجودة ✅")
     else:
         st.warning("أضف مفتاح المزوّد في إعدادات Oracle المحلية.")
 
