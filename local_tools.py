@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+from datetime import datetime, timezone
 import os
 import shutil
 import subprocess
@@ -21,6 +22,15 @@ MAX_COMMAND_TIMEOUT = 300
 MAX_FILE_READ_BYTES = 2 * 1024 * 1024
 MAX_FILE_WRITE_BYTES = 2 * 1024 * 1024
 MAX_TOOL_OUTPUT = 12000
+BLOCKED_COMMAND_MARKERS = (
+    "sudo", "doas", "csrutil", "tccutil", "spctl", "profiles",
+    "parental control", "parental-control", "screentime", "screen time",
+    "familycontrols", "age restriction", "age verification",
+)
+PROTECTED_PATH_MARKERS = (
+    "screentime", "screen time", "parental", "familycontrols",
+    "managed preferences", "configurationprofiles",
+)
 
 
 TOOL_DEFINITIONS = [
@@ -106,7 +116,7 @@ def _clip(value: str) -> str:
     return value[:MAX_TOOL_OUTPUT] + "\n… (output truncated)"
 
 
-def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
     """Execute a named local capability as the current macOS user."""
     data = _payload(tool_input)
     started = time.monotonic()
@@ -140,6 +150,7 @@ def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
 
         if tool_id == "local.write_file":
             target = _path(data.get("path"))
+            _reject_protected_path(target)
             content = data.get("content")
             if not isinstance(content, str):
                 raise ValueError("content must be text")
@@ -152,12 +163,15 @@ def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
         if tool_id == "local.move_path":
             source = _path(data.get("source"), "source")
             destination = _path(data.get("destination"), "destination")
+            _reject_protected_path(source)
+            _reject_protected_path(destination)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(destination))
             return _success(tool_id, f"Moved {source} to {destination}", started)
 
         if tool_id == "local.delete_path":
             target = _path(data.get("path"))
+            _reject_protected_path(target)
             recursive = data.get("recursive", False)
             if not isinstance(recursive, bool):
                 raise ValueError("recursive must be true or false")
@@ -204,6 +218,12 @@ def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
             if isinstance(timeout, bool) or not isinstance(timeout, int):
                 raise ValueError("timeout must be an integer")
             timeout = max(1, min(timeout, MAX_COMMAND_TIMEOUT))
+            command_text = " ".join(command).casefold()
+            blocked = next((marker for marker in BLOCKED_COMMAND_MARKERS if marker in command_text), None)
+            if blocked:
+                raise PermissionError(
+                    "This command targets system or age-safety protections and is not available to Oracle."
+                )
             cwd_value = data.get("cwd") or os.environ.get("ORACLE_WORKSPACE") or str(Path.home())
             cwd = _path(cwd_value, "cwd")
             if not cwd.is_dir():
@@ -260,6 +280,45 @@ def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
             "result": f"{type(exc).__name__}: {exc}",
             "duration_seconds": round(time.monotonic() - started, 3),
         }
+
+
+
+def _reject_protected_path(target: Path) -> None:
+    normalized = str(target).casefold().replace("_", " ")
+    if any(marker in normalized for marker in PROTECTED_PATH_MARKERS):
+        raise PermissionError(
+            "This path is related to system or age-safety protections and is not available to Oracle."
+        )
+
+
+def _append_audit(tool_id: str, result: dict[str, Any]) -> None:
+    """Keep a private, content-free audit trail of local tool execution."""
+    try:
+        audit_dir = Path(os.environ.get(
+            "ORACLE_AUDIT_DIR",
+            str(Path.home() / ".personal_ai_oracle" / "logs"),
+        )).expanduser()
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit_file = audit_dir / "local-actions.jsonl"
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "tool_id": tool_id,
+            "status": str(result.get("status", "unknown")),
+            "duration_seconds": result.get("duration_seconds"),
+        }
+        with audit_file.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        os.chmod(audit_file, 0o600)
+    except OSError:
+        return
+
+
+def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+    """Run a local tool and append a private audit record without storing file contents."""
+    result = _execute(tool_id, tool_input)
+    _append_audit(tool_id, result)
+    return result
+
 
 
 def _success(tool_id: str, output: str, started: float) -> dict[str, Any]:
