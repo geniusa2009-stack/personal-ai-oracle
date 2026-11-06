@@ -10,6 +10,16 @@ from typing import Mapping
 from ai_request import AIRequest
 
 
+TASK_TIERS = {
+    "fast": "fast",
+    "writing": "balanced",
+    "creative": "balanced",
+    "reasoning": "deep",
+    "coding": "deep",
+    "research": "deep",
+}
+
+
 @dataclass(frozen=True)
 class RouteDecision:
     provider: str
@@ -26,11 +36,15 @@ class ModelRouter:
         default_model: str,
         category_models: Mapping[str, str] | None = None,
         category_providers: Mapping[str, str] | None = None,
+        tier_models: Mapping[str, str] | None = None,
+        tier_providers: Mapping[str, str] | None = None,
     ) -> None:
         self.default_provider = default_provider
         self.default_model = default_model
         self.category_models = dict(category_models or {})
         self.category_providers = dict(category_providers or {})
+        self.tier_models = dict(tier_models or {})
+        self.tier_providers = dict(tier_providers or {})
 
     def route(
         self,
@@ -68,6 +82,18 @@ class ModelRouter:
                     model=selected_model or self.default_model,
                     reason=task_type,
                 )
+
+        # Tier policies are an explicit configuration layer. They never trigger
+        # implicit provider fallback, which could silently change privacy or cost.
+        tier = TASK_TIERS.get(task_type or "", "balanced")
+        tier_model = self.tier_models.get(tier)
+        tier_provider = self.tier_providers.get(tier)
+        if tier_model or tier_provider:
+            return RouteDecision(
+                provider=tier_provider or self.default_provider,
+                model=tier_model or self.default_model,
+                reason=f"tier:{tier}",
+            )
 
         return RouteDecision(
             provider=self.default_provider,

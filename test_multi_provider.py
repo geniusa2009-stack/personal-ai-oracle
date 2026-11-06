@@ -194,3 +194,93 @@ def test_specialist_profile_applies_to_streaming_provider_selection(monkeypatch)
     request = executor.execute_stream.call_args.args[0]
     assert request.requested_provider == "ollama"
     assert request.requested_model == "qwen-coder"
+
+
+def test_model_router_uses_explicit_quality_tiers_after_task_overrides():
+    router = ModelRouter(
+        default_provider="openrouter",
+        default_model="quick-default",
+        category_models={"coding": "task-specific-coder"},
+        tier_models={"fast": "fast-model", "deep": "deep-model"},
+        tier_providers={"fast": "ollama", "deep": "openai"},
+    )
+
+    fast = router.route(task_type="fast")
+    coding = router.route(task_type="coding")
+    research = router.route(task_type="research")
+
+    assert (fast.provider, fast.model, fast.reason) == ("ollama", "fast-model", "tier:fast")
+    assert (coding.provider, coding.model, coding.reason) == (
+        "openrouter", "task-specific-coder", "coding"
+    )
+    assert (research.provider, research.model, research.reason) == (
+        "openai", "deep-model", "tier:deep"
+    )
+
+
+def test_model_router_does_not_implicitly_fallback_between_providers():
+    router = ModelRouter(
+        default_provider="ollama",
+        default_model="local-default",
+        tier_providers={"deep": "openai"},
+        tier_models={"deep": "openai-reasoner"},
+    )
+
+    decision = router.route(task_type="reasoning")
+
+    assert decision.provider == "openai"
+    assert decision.model == "openai-reasoner"
+    assert decision.reason == "tier:deep"
+
+
+def test_opt_in_auto_routing_uses_specialist_task_tier(monkeypatch):
+    import ai_core
+
+    monkeypatch.setenv("ORACLE_DEFAULT_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("ORACLE_AUTO_MODEL_ROUTING", "true")
+    monkeypatch.setenv("ORACLE_MODEL_TIER_DEEP", "deep-reasoner")
+    monkeypatch.setenv("ORACLE_PROVIDER_TIER_DEEP", "ollama")
+    monkeypatch.delenv("ORACLE_AGENT_PLANNER_PROVIDER", raising=False)
+    monkeypatch.delenv("ORACLE_AGENT_PLANNER_MODEL", raising=False)
+    executor = Mock()
+    executor.execute.return_value = Mock(content="routed response")
+
+    with patch.object(ai_core, "_multi_executor", return_value=executor) as factory:
+        result = ai_core.chat(
+            [{"role": "user", "content": "Plan a complex multi-step task"}],
+            memory_scope=None,
+            agent_role="planner",
+        )
+
+    assert result == "routed response"
+    factory.assert_called_once_with(provider_name=None, api_key=None)
+    request = executor.execute.call_args.args[0]
+    assert request.task_type == "reasoning"
+    assert request.requested_provider is None
+    assert request.requested_model is None
+
+
+def test_auto_routing_respects_explicit_role_provider_and_model(monkeypatch):
+    import ai_core
+
+    monkeypatch.setenv("ORACLE_DEFAULT_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("ORACLE_AUTO_MODEL_ROUTING", "true")
+    monkeypatch.setenv("ORACLE_AGENT_CODER_PROVIDER", "gemini")
+    monkeypatch.setenv("ORACLE_AGENT_CODER_MODEL", "gemini-explicit-coder")
+    executor = Mock()
+    executor.execute.return_value = Mock(content="explicit response")
+
+    with patch.object(ai_core, "_multi_executor", return_value=executor) as factory:
+        result = ai_core.chat(
+            [{"role": "user", "content": "write code"}],
+            agent_role="coder",
+        )
+
+    assert result == "explicit response"
+    factory.assert_called_once_with(provider_name="gemini", api_key=None)
+    request = executor.execute.call_args.args[0]
+    assert request.requested_provider == "gemini"
+    assert request.requested_model == "gemini-explicit-coder"
+    assert request.task_type == "coding"

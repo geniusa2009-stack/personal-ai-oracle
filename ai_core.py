@@ -87,6 +87,8 @@ def _router(
     model = default_model or default_model_name(primary) or "unset-model"
     category_models = {}
     category_providers = {}
+    tier_models = {}
+    tier_providers = {}
     for task in TASKS:
         model_value = os.environ.get(f"ORACLE_MODEL_{task.upper()}", "").strip()
         provider_value = os.environ.get(f"ORACLE_PROVIDER_{task.upper()}", "").strip().lower()
@@ -94,6 +96,13 @@ def _router(
             category_models[task] = model_value
         if provider_value:
             category_providers[task] = provider_value
+    for tier in ("FAST", "BALANCED", "DEEP"):
+        model_value = os.environ.get(f"ORACLE_MODEL_TIER_{tier}", "").strip()
+        provider_value = os.environ.get(f"ORACLE_PROVIDER_TIER_{tier}", "").strip().lower()
+        if model_value:
+            tier_models[tier.lower()] = model_value
+        if provider_value:
+            tier_providers[tier.lower()] = provider_value
     if provider is not None:
         primary = "openrouter"
         model = provider.model
@@ -102,6 +111,8 @@ def _router(
         default_model=model,
         category_models=category_models,
         category_providers=category_providers,
+        tier_models=tier_models,
+        tier_providers=tier_providers,
     )
 
 
@@ -213,13 +224,26 @@ def chat(
     try:
         if agent_role:
             import agent_profiles
-            caller_key_provider = (provider_name or default_provider_name()).strip().lower()
             profile = agent_profiles.resolve_profile(agent_role)
-            profile_provider = profile.get("provider")
-            if profile_provider and profile_provider.strip().lower() != caller_key_provider:
-                api_key = None
-            provider_name = profile_provider or provider_name
-            requested_model = profile.get("model") or requested_model
+            prefix = agent_profiles.ROLE_DEFAULTS[agent_role.strip().lower()][0]
+            auto_routing = os.environ.get("ORACLE_AUTO_MODEL_ROUTING", "").strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+            explicit_role_provider = os.environ.get(f"{prefix}_PROVIDER", "").strip().lower()
+            explicit_role_model = os.environ.get(f"{prefix}_MODEL", "").strip()
+            if auto_routing and provider_name is None:
+                # Let the router apply task/tier policy unless this role has
+                # an explicit provider override in the user's private config.
+                provider_name = explicit_role_provider or None
+                requested_model = explicit_role_model or requested_model
+            else:
+                profile_provider = profile.get("provider")
+                caller_key_provider = (provider_name or default_provider_name()).strip().lower()
+                if profile_provider and profile_provider.strip().lower() != caller_key_provider:
+                    api_key = None
+                provider_name = profile_provider or provider_name
+                requested_model = profile.get("model") or requested_model
+            task_type = task_type or profile.get("task_type")
             if profile.get("temperature") is not None:
                 temperature = profile["temperature"]
 
