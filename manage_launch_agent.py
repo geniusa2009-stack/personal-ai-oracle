@@ -40,15 +40,9 @@ def install() -> int:
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "PYTHONPATH": str(ROOT),
         "ORACLE_RUNTIME_MODE": "local",
-        "ORACLE_LOCAL_ACCESS": "full",
         "ORACLE_ENV_FILE": str(STATE / ".env"),
         "ORACLE_DB_PATH": str(STATE / "oracle.db"),
         "ORACLE_EXTERNAL_WORKER": "1",
-        "ORACLE_DEFAULT_PROVIDER": os.environ.get("ORACLE_DEFAULT_PROVIDER", "openrouter"),
-        "ORACLE_MAX_AGENT_STEPS": os.environ.get("ORACLE_MAX_AGENT_STEPS", "12"),
-        "ORACLE_LOCAL_PORT": os.environ.get("ORACLE_LOCAL_PORT", "8765"),
-        "ORACLE_WORKSPACE": os.environ.get("ORACLE_WORKSPACE", str(ROOT)),
-        "ORACLE_PREVENT_IDLE_SLEEP": os.environ.get("ORACLE_PREVENT_IDLE_SLEEP", "1"),
     }
     venv_python = ROOT / ".venv" / "bin" / "python"
     runtime_python = str(venv_python if venv_python.exists() else Path(sys.executable))
