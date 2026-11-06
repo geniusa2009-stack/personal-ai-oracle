@@ -146,3 +146,51 @@ def test_agent_roles_can_use_different_provider_and_model_profiles(monkeypatch):
     assert (planner["provider"], planner["model"]) == ("ollama", "qwen-planner")
     assert (researcher["provider"], researcher["model"]) == ("gemini", "gemini-researcher")
     assert (coder["provider"], coder["model"]) == ("openai", "openai-coder")
+
+
+def test_specialist_profile_overrides_sidebar_provider_and_discards_wrong_key(monkeypatch):
+    import ai_core
+
+    monkeypatch.setenv("ORACLE_DEFAULT_PROVIDER", "openrouter")
+    monkeypatch.setenv("ORACLE_AGENT_RESEARCHER_PROVIDER", "gemini")
+    monkeypatch.setenv("ORACLE_AGENT_RESEARCHER_MODEL", "gemini-research-model")
+    executor = Mock()
+    executor.execute.return_value = Mock(content="research result")
+
+    with patch.object(ai_core, "_multi_executor", return_value=executor) as factory:
+        result = ai_core.chat(
+            [{"role": "user", "content": "research this"}],
+            provider_name="openrouter",
+            api_key="openrouter-session-key",
+            agent_role="researcher",
+        )
+
+    assert result == "research result"
+    factory.assert_called_once_with(provider_name="gemini", api_key=None)
+    request = executor.execute.call_args.args[0]
+    assert request.requested_provider == "gemini"
+    assert request.requested_model == "gemini-research-model"
+
+
+def test_specialist_profile_applies_to_streaming_provider_selection(monkeypatch):
+    import ai_core
+
+    monkeypatch.setenv("ORACLE_DEFAULT_PROVIDER", "openrouter")
+    monkeypatch.setenv("ORACLE_AGENT_CODER_PROVIDER", "ollama")
+    monkeypatch.setenv("ORACLE_AGENT_CODER_MODEL", "qwen-coder")
+    executor = Mock()
+    executor.execute_stream.return_value = iter(["chunk"])
+
+    with patch.object(ai_core, "_multi_executor", return_value=executor) as factory:
+        chunks = list(ai_core.stream(
+            [{"role": "user", "content": "write code"}],
+            provider_name="openrouter",
+            api_key="openrouter-session-key",
+            agent_role="coder",
+        ))
+
+    assert chunks == ["chunk"]
+    factory.assert_called_once_with(provider_name="ollama", api_key=None)
+    request = executor.execute_stream.call_args.args[0]
+    assert request.requested_provider == "ollama"
+    assert request.requested_model == "qwen-coder"
