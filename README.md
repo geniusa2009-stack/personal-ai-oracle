@@ -94,18 +94,21 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
 OLLAMA_MODEL=
 
 # Specialist agent profiles can use different providers and models
-ORACLE_AGENT_PLANNER_PROVIDER=ollama
+# Optional specialist overrides. Leave blank to inherit the default provider/model.
+ORACLE_AGENT_PLANNER_PROVIDER=
 ORACLE_AGENT_PLANNER_MODEL=
-ORACLE_AGENT_EXECUTOR_PROVIDER=ollama
+ORACLE_AGENT_EXECUTOR_PROVIDER=
 ORACLE_AGENT_EXECUTOR_MODEL=
-ORACLE_AGENT_RESEARCHER_PROVIDER=gemini
+ORACLE_AGENT_RESEARCHER_PROVIDER=
 ORACLE_AGENT_RESEARCHER_MODEL=
-ORACLE_AGENT_CODER_PROVIDER=openai
+ORACLE_AGENT_CODER_PROVIDER=
 ORACLE_AGENT_CODER_MODEL=
-ORACLE_AGENT_WRITER_PROVIDER=openrouter
+ORACLE_AGENT_WRITER_PROVIDER=
 ORACLE_AGENT_WRITER_MODEL=
-ORACLE_AGENT_REVIEWER_PROVIDER=openrouter
+ORACLE_AGENT_REVIEWER_PROVIDER=
 ORACLE_AGENT_REVIEWER_MODEL=
+# Example: ORACLE_AGENT_PLANNER_PROVIDER=ollama
+# Example: ORACLE_AGENT_PLANNER_MODEL=qwen2.5:14b
 
 # Optional per-task provider/model routing
 ORACLE_PROVIDER_FAST=
@@ -147,7 +150,9 @@ The dashboard has a default provider/model selector. Specialist agents can indep
 
 Current roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, and `reviewer`.
 
-This means the planner, researcher, coder and reviewer do not have to use the same model. Their chosen settings are visible in the dashboard's sidebar.
+The roles are used in the actual flow: Planner selects tools; Executor reviews local write/move/delete/command actions; Researcher handles scholarship and opportunity analysis; Writer handles content and application documents; Coder diagnoses failed development commands; Reviewer synthesizes the final result; Assistant handles direct answers. Different roles can use different model providers. Their chosen settings are visible in the dashboard's sidebar.
+
+Leave a role's provider/model blank to inherit the selected default. Set `ORACLE_AGENT_<ROLE>_PROVIDER` and `ORACLE_AGENT_<ROLE>_MODEL` only for roles that should use a different model.
 
 Ollama must be installed and a model must be present locally before selecting it. Hosted providers still send their prompts to their respective services; selecting local hosting does not make a cloud provider's requests local.
 
