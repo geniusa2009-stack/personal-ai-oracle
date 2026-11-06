@@ -86,6 +86,31 @@ def _executor(provider: OpenRouterProvider) -> AIExecutor:
     return AIExecutor(router=_router(provider), provider=provider)
 
 
+def chat(
+    messages: list | tuple,
+    temperature: float = 0.7,
+    *,
+    task_type: str | None = None,
+    requested_model: str | None = None,
+    api_key: str | None = None,
+) -> str:
+    """Execute arbitrary chat messages through the shared router and provider layer."""
+    provider = _provider(api_key)
+    if not provider.api_key:
+        return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
+
+    try:
+        request = AIRequest(
+            messages=tuple(messages),
+            temperature=temperature,
+            task_type=task_type,
+            requested_model=requested_model,
+        )
+        return _executor(provider).execute(request).content
+    except (OracleProviderError, AIExecutionError, ValueError, TypeError) as exc:
+        return f"(تعذّر التشغيل: {exc})"
+
+
 def llm(
     instruction: str,
     user_input: str,
@@ -96,25 +121,21 @@ def llm(
     requested_model: str | None = None,
     api_key: str | None = None,
 ) -> str:
-    """استدعاء عام للنموذج بشخصية مرنة. لا يرمي استثناءً."""
-    provider = _provider(api_key)
-    if not provider.api_key:
-        return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
-
-    request = AIRequest(
-        messages=(
+    """Legacy persona helper, now a thin wrapper around the unified chat pipeline."""
+    return chat(
+        [
             {"role": "system", "content": system_prompt(mode, instruction)},
-            {"role": "user", "content": user_input.strip() or
-             "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
-        ),
+            {
+                "role": "user",
+                "content": user_input.strip()
+                or "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)",
+            },
+        ],
         temperature=temperature,
         task_type=task_type,
         requested_model=requested_model,
+        api_key=api_key,
     )
-    try:
-        return _executor(provider).execute(request).content
-    except OracleProviderError as e:
-        return f"(تعذّر التشغيل: {e})"
 
 
 def stream(
