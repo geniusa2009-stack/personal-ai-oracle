@@ -46,6 +46,13 @@ st.set_page_config(page_title="الوكيل الذكي الشخصي", page_icon=
 # Fail closed before database initialization or any user-data rendering.
 require_app_auth(st)
 
+
+def render_report(content):
+    """Render untrusted model/data output as Markdown, never raw HTML."""
+    with st.container(border=True):
+        st.markdown(str(content))
+
+
 # ---------------------------------------------------------------------------
 # تهيئة قاعدة البيانات + تشغيل المجدول الخلفي مرة واحدة لكل عملية
 # ---------------------------------------------------------------------------
@@ -235,12 +242,12 @@ with tab_analyze:
             elif not user_log.strip():
                 st.warning("اكتب بعض الأفكار أولاً.")
             else:
-                st.markdown('<div class="report-card">', unsafe_allow_html=True)
                 try:
-                    with st.spinner("⚡ يتم تشغيل العقول التحليلية وقراءة ما بين السطور…"):
-                        result = st.write_stream(
-                            stream_openrouter(api_key, model, build_prompt(user_log)))
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    with st.container(border=True):
+                        with st.spinner("⚡ يتم تشغيل العقول التحليلية وقراءة ما بين السطور…"):
+                            result = st.write_stream(
+                                stream_openrouter(api_key, model, build_prompt(user_log))
+                            )
                     # حفظ اليومية + كلماتها لتغذية الرادار
                     kws = extract_keywords(api_key, model, user_log)
                     db.save_entry(user_log, kws)
@@ -248,7 +255,6 @@ with tab_analyze:
                         st.caption("🧠 كلمات أُضيفت لرادارك: " + "، ".join(kws))
                     st.toast("🎯 تم التحليل وتغذية الرادار بنجاح!", icon="✅")
                 except Exception as e:
-                    st.markdown("</div>", unsafe_allow_html=True)
                     st.error(f"حدث خطأ أثناء الاتصال: {e}")
         else:
             st.markdown('<div class="report-card">اكتب على اليمين واضغط زر التحليل… '
@@ -283,16 +289,13 @@ with tab_radar:
         for o in opps:
             label = radar.CATEGORY_LABELS_AR.get(o["category"], o["category"])
             summary = o.get("summary") or o.get("snippet") or ""
-            st.markdown(
-                f'''<div class="opp-card">
-                    <span class="score">{o["score"]}%</span>
-                    <a href="{o["url"]}" target="_blank">🔗 {o["title"] or o["url"]}</a>
-                    <div style="color:#6b7280;font-size:13px;margin:4px 0;">
-                        {label} · {o["keyword"]} · {o["source"]}</div>
-                    <div style="color:#374151;font-size:14px;">{summary}</div>
-                </div>''',
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"**{o['score']}% · {o['title'] or o['url']}**")
+                st.caption(f"{label} · {o['keyword']} · {o['source']}")
+                if o.get("url"):
+                    st.write(o["url"])
+                if summary:
+                    st.write(summary)
 
 def _ensure_env_key():
     """يضمن توفّر المفتاح في البيئة للموديولات الخلفية أثناء الاستخدام المحلي."""
@@ -313,7 +316,7 @@ with tab_scholar:
             _ensure_env_key()
             with st.spinner("بدوّر على أنسب المنح ليك…"):
                 ans = scholarship_expert.answer_scholarship_query(sc_q, use_web=True)
-            st.markdown(f'<div class="report-card">{ans}</div>', unsafe_allow_html=True)
+            render_report(ans)
             st.caption("📌 المواعيد تقريبية وبتتغيّر سنوياً — راجع الموقع الرسمي لكل منحة.")
 
     with st.expander("📚 تصفّح قاعدة المنح المدمجة"):
@@ -323,8 +326,7 @@ with tab_scholar:
                                               "Japan", "Australia", "Egypt", "Multiple"])
         for s in scholarship_expert.search_scholarships(level=f_level or None,
                                                         country=f_country or None, limit=20):
-            st.markdown(f'<div class="opp-card">{scholarship_expert.format_scholarship(s)}</div>',
-                        unsafe_allow_html=True)
+            render_report(scholarship_expert.format_scholarship(s))
 
     # ----- الأدوات الأكاديمية المطوّرة -----
     st.divider()
@@ -343,7 +345,7 @@ with tab_scholar:
                 _ensure_env_key()
                 with st.spinner("براجع وأطوّر…"):
                     out = advanced_scholarship.optimize_personal_statement(ps, prog, TIERS[tier_l])
-                st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+                render_report(out)
                 st.caption("📌 بنرفع الجودة والفرص — القبول بيعتمد على عوامل كتير، مفيش ضمان نتيجة.")
     with st.expander("📄 محسّن السيرة الذاتية (CV / ATS)"):
         role = st.text_input("الوظيفة/البرنامج المستهدف", key="cv_role")
@@ -355,7 +357,7 @@ with tab_scholar:
                 _ensure_env_key()
                 with st.spinner("بحسّن…"):
                     out = advanced_scholarship.optimize_cv(cv, role)
-                st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+                render_report(out)
     with st.expander("🎤 محاكي المقابلات الشرس (Apex Interview)"):
         if "apex_hist" not in st.session_state:
             st.session_state.apex_hist = ""
@@ -366,7 +368,7 @@ with tab_scholar:
             with st.spinner("المفتّش بيجهّز…"):
                 q = advanced_scholarship.start_apex_interview(sch)
             st.session_state.apex_hist = "مفتّش: " + q
-            st.markdown(f'<div class="report-card">{q}</div>', unsafe_allow_html=True)
+            render_report(q)
         ans = st.text_area("إجابتك على آخر سؤال", height=110, key="apex_ans")
         if cews[1].button("📨 سلّم الإجابة", key="apex_send"):
             if not ans.strip():
@@ -376,7 +378,7 @@ with tab_scholar:
                 with st.spinner("بيقيّم بصرامة…"):
                     fb = advanced_scholarship.apex_interview_turn(sch, st.session_state.apex_hist, ans)
                 st.session_state.apex_hist += f"\nأنا: {ans}\nمفتّش: {fb}"
-                st.markdown(f'<div class="report-card">{fb}</div>', unsafe_allow_html=True)
+                render_report(fb)
 
     # ----- لوحة المنح المكتشفة تلقائياً (Dashboard) -----
     st.divider()
@@ -421,7 +423,7 @@ with tab_wa:
             _ensure_env_key()
             with st.spinner("بكتب رد بالعامية…"):
                 preview = whatsapp_agent.generate_reply(test_msg, {"relationship": test_rel, "name": ""})
-            st.markdown(f'<div class="opp-card">{preview}</div>', unsafe_allow_html=True)
+            render_report(preview)
 
     st.divider()
     st.markdown("#### 📝 المسودّات بانتظار موافقتك")
@@ -531,9 +533,8 @@ with tab_factory:
             st.warning("اكتب الفكرة أولاً.")
         else:
             _ensure_env_key()
-            st.markdown('<div class="report-card">', unsafe_allow_html=True)
-            out = st.write_stream(content_factory.stream_content(fc_type, fc_topic))
-            st.markdown("</div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                out = st.write_stream(content_factory.stream_content(fc_type, fc_topic))
             if out and not out.startswith("⚠️"):
                 database.save_content(fc_type, fc_topic, out)
                 st.download_button("⬇️ تحميل", out,
@@ -547,7 +548,7 @@ with tab_factory:
                 st.markdown(f"**{c['content_type']} — {c['topic']}**  \n"
                             f"<span style='color:#6b7280;font-size:12px'>{c['created_at']}</span>",
                             unsafe_allow_html=True)
-                st.markdown(f'<div class="opp-card">{c["body"]}</div>', unsafe_allow_html=True)
+                render_report(c["body"])
 
 # ====================== تبويب مركز الميزات الموحّد ======================
 with tab_hub:
@@ -581,9 +582,9 @@ with tab_hub:
         _ensure_env_key()
         with st.spinner("بشتغل…"):
             res = group["run"](fid, hub_in)
-        st.markdown(f'<div class="report-card"><b>{res["name"]}</b> '
-                    f'({badge.get(res["status"], res["status"])})<br><br>'
-                    f'{res["result"]}</div>', unsafe_allow_html=True)
+        render_report(
+            f"**{res['name']}** ({badge.get(res['status'], res['status'])})\\n\\n{res['result']}"
+        )
 
     with st.expander(f"📜 كل ميزات «{g_label}»"):
         for s in secs:
@@ -771,7 +772,7 @@ with tab_income:
             else:
                 with st.spinner("بكتب عرض يكسب…"):
                     p = income_hunter.tailor_proposal(proj, skills, rate, curr)
-                st.markdown(f'<div class="report-card">{p}</div>', unsafe_allow_html=True)
+                render_report(p)
         props = database.list_proposals(20)
         if props:
             with st.expander(f"📂 العروض المحفوظة ({len(props)})"):
@@ -811,7 +812,7 @@ with tab_income:
         if st.button("📝 اكتب مراجعة بالعامية"):
             with st.spinner("بكتب…"):
                 rev = income_hunter.write_review(prod or "منتج", link or "")
-            st.markdown(f'<div class="report-card">{rev}</div>', unsafe_allow_html=True)
+            render_report(rev)
 
     elif eng == "📝 مقالات SEO + نشر ووردبريس":
         kw = st.text_input("الكلمة المفتاحية", placeholder="منح ممولة بالكامل 2026")
@@ -824,7 +825,7 @@ with tab_income:
         if art:
             st.text_input("العنوان", art["title"], key="seo_title")
             st.caption("Meta: " + (art["meta"] or "—"))
-            st.markdown(f'<div class="report-card">{art["content"]}</div>', unsafe_allow_html=True)
+            render_report(art["content"])
             pubcol = st.columns([1, 1])
             pstatus = pubcol[0].selectbox("حالة النشر", ["draft", "publish"])
             if pubcol[1].button("🚀 انشر على ووردبريس"):
@@ -843,7 +844,7 @@ with tab_income:
             pc[0].metric("توقّع الشهر", pred["projected_month"])
             pc[1].metric("آخر 30 يوم", pred["last_30_days"])
             st.info(f"🏆 المجال الأنسب حالياً: **{pred['best_channel']}**")
-            st.markdown(f'<div class="report-card">{pred["advice"]}</div>', unsafe_allow_html=True)
+            render_report(pred["advice"])
         with st.expander("➕ سجّل بيع/إعلان يدوياً (للتجربة)"):
             mc = st.columns(4)
             kind = mc[0].selectbox("النوع", ["بيع منتج", "إعلان"])
@@ -873,7 +874,7 @@ with tab_disc:
         if st.button("⚖️ استدعِ المجلس", use_container_width=True):
             with st.spinner("المجلس بيتشاور…"):
                 out = discipline_oracle.compile_masters_council(sit)
-            st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+            render_report(out)
 
     elif tool == "🗺️ خريطة المستقبل (4 مستويات)":
         g = st.text_input("هدفك الأكبر", placeholder="أبقى مهندس AI وأبني دخل سحابي")
@@ -881,7 +882,7 @@ with tab_disc:
         if st.button("🧱 ابنِ الخريطة", use_container_width=True):
             with st.spinner("ببني خريطة 10 سنين → اليوم…"):
                 res = discipline_oracle.generate_hyper_realistic_roadmap(g, sk)
-            st.markdown(f'<div class="report-card">{res["text"]}</div>', unsafe_allow_html=True)
+            render_report(res["text"])
         ms = database.list_milestones(limit=200)
         if ms:
             with st.expander(f"📌 المعالم المحفوظة ({len(ms)})"):
@@ -895,8 +896,7 @@ with tab_disc:
         cc = st.columns(2)
         a = cc[0].text_input("من", "09:00"); b = cc[1].text_input("إلى", "11:00")
         if st.button("🟥 أصدر أمر النهاردة", use_container_width=True):
-            st.markdown(f'<div class="report-card">{discipline_oracle.daily_course_enforcer(courses, a, b)}</div>',
-                        unsafe_allow_html=True)
+            render_report(discipline_oracle.daily_course_enforcer(courses, a, b))
 
     elif tool == "🔒 حجب المشتتات":
         hrs = st.slider("ساعات التركيز", 1, 8, 3)
@@ -920,13 +920,12 @@ with tab_disc:
         if st.button("🎬 اكتب سيناريو كامل", use_container_width=True):
             with st.spinner("بكتب السيناريو…"):
                 sc = discipline_oracle.youtube_trend_scout(niche or "تكنولوجيا")
-            st.markdown(f'<div class="report-card">{sc}</div>', unsafe_allow_html=True)
+            render_report(sc)
 
     elif tool == "💬 مسودّات ردود الكومنتات":
         cmnts = st.text_area("الصق الكومنتات (كومنت لكل سطر)", height=140)
         if st.button("✍️ اكتب مسودّات الردود", use_container_width=True):
-            st.markdown(f'<div class="report-card">{discipline_oracle.youtube_comment_drafts(cmnts)}</div>',
-                        unsafe_allow_html=True)
+            render_report(discipline_oracle.youtube_comment_drafts(cmnts))
 
     else:  # موجّه التركيز الصحّي
         ctx = st.text_area("إيه اللي حاسس إنه بيشتتك أو محتاج تركّز عليه؟", height=100)
