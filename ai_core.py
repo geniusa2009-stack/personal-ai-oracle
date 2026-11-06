@@ -127,6 +127,7 @@ def chat(
     requested_model: str | None = None,
     api_key: str | None = None,
     memory_scope: str | None = None,
+    response_format: dict | None = None,
 ) -> str:
     """Execute arbitrary chat messages through the shared router, memory and provider layers."""
     provider = _provider(api_key)
@@ -139,6 +140,7 @@ def chat(
             temperature=temperature,
             task_type=task_type,
             requested_model=requested_model,
+            response_format=response_format,
         )
         return _executor(provider).execute(request).content
     except (OracleProviderError, AIExecutionError, ValueError, TypeError) as exc:
