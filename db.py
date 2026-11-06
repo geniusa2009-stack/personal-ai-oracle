@@ -74,10 +74,35 @@ def init_db():
             body       TEXT,
             status     TEXT           -- received | draft | sent | failed
         );
+
+        CREATE TABLE IF NOT EXISTS wa_processed_messages (
+            message_id TEXT PRIMARY KEY,
+            wa_id TEXT NOT NULL,
+            processed_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
     conn.close()
+
+
+def claim_wa_message(message_id: str, wa_id: str) -> bool:
+    """Atomically claim a Meta message ID so webhook retries cannot process it twice."""
+    if not isinstance(message_id, str) or not message_id.strip():
+        raise ValueError("message_id is required")
+    if not isinstance(wa_id, str) or not wa_id.strip():
+        raise ValueError("wa_id is required")
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO wa_processed_messages(message_id, wa_id, processed_at) "
+            "VALUES(?,?,?)",
+            (message_id.strip(), wa_id.strip(), datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------
