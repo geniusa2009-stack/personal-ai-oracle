@@ -227,3 +227,25 @@ def test_compact_report_fallback_keeps_json_valid_at_minimum_size():
     assert len(serialized.encode("utf-8")) <= 1024
     assert restored["context_truncated"] is True
     assert "answer" in restored
+
+
+def test_research_stops_repeated_remote_waits_when_mac_agent_is_offline(monkeypatch):
+    from cloud_client import CloudAgentUnavailable
+
+    monkeypatch.setenv("ORACLE_RUNTIME_MODE", "cloud")
+    sources = [
+        {"url": f"https://example{i}.com/", "page_status": "not_fetched", "title": "x", "snippet": ""}
+        for i in range(1, 5)
+    ]
+    calls = []
+
+    def unavailable(url, task):
+        calls.append(url)
+        raise CloudAgentUnavailable("Mac agent offline")
+
+    monkeypatch.setattr(deep_research, "_navigate", unavailable)
+    deep_research._fetch_pages(sources, maximum=4, task="research")
+
+    assert len(calls) == 1
+    assert sources[0]["page_status"] == "unavailable:CloudAgentUnavailable"
+    assert all(item["page_status"] == "unavailable:MacAgentOffline" for item in sources[1:])

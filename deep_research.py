@@ -217,11 +217,19 @@ def _fetch_pages(
     maximum: int,
     task: str,
 ) -> None:
-    for source in sources[:maximum]:
+    selected_sources = sources[:maximum]
+    for index, source in enumerate(selected_sources):
         try:
             result = _navigate(source["url"], task)
         except Exception as exc:
-            source["page_status"] = f"unavailable:{type(exc).__name__}"
+            error_name = type(exc).__name__
+            source["page_status"] = f"unavailable:{error_name}"
+            if error_name == "CloudAgentUnavailable":
+                # The same Mac-backed browser serves every page in this run.
+                # Do not wait through one remote timeout for each remaining URL.
+                for remaining in selected_sources[index + 1:]:
+                    remaining["page_status"] = "unavailable:MacAgentOffline"
+                break
             continue
         status = str(result.get("status") or "error").lower() if isinstance(result, dict) else "error"
         value = result.get("result") if isinstance(result, dict) else None
