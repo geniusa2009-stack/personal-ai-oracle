@@ -53,7 +53,7 @@ def _build_messages(content_type: str, topic: str, style_samples: str):
 def stream_content(content_type: str, topic: str):
     """Stream content through the shared AI router/provider pipeline."""
     messages = _build_messages(content_type, topic, learn_style())
-    yield from ai_core.stream(messages, temperature=0.9, task_type="creative")
+    yield from ai_core.stream(messages, temperature=0.9, task_type="creative", agent_role="writer")
 
 
 def generate_content(content_type: str, topic: str, save: bool = True) -> str:
@@ -61,7 +61,7 @@ def generate_content(content_type: str, topic: str, save: bool = True) -> str:
     if not ai_core.has_key():
         return ""
     messages = _build_messages(content_type, topic, learn_style())
-    body = ai_core.chat(messages, temperature=0.9, task_type="creative")
+    body = ai_core.chat(messages, temperature=0.9, task_type="creative", agent_role="writer")
     if body and not body.startswith(("⚠️", "(تعذّر")) and save:
         database.save_content(content_type, topic, body)
     return body
