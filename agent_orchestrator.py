@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 
 import ai_core
@@ -370,11 +371,13 @@ def _execute_step(
     }
 
 
-def run(
+def _run_core(
     task: str,
     *,
     memory_scope: str | None = None,
     max_steps: int | None = None,
+    workflow_id: str | None = None,
+    workflow_scope: str | None = None,
 ) -> dict[str, Any]:
     """Plan, execute, observe and re-plan using the current local user account."""
     if not isinstance(task, str) or not task.strip():
@@ -409,12 +412,38 @@ def run(
         step = plan["step"]
         if step is None:
             break
+        step_started = time.monotonic()
+        if workflow_id and workflow_scope:
+            try:
+                import workflow_ledger
+                workflow_ledger.begin_step(
+                    workflow_scope,
+                    workflow_id,
+                    step_index,
+                    step["tool_id"],
+                    step["input"],
+                )
+            except Exception:
+                # The trace store is observability, not a dependency for task execution.
+                pass
         result = _execute_step(
             step,
             task=task,
             memory_scope=memory_scope,
         )
         results.append(result)
+        if workflow_id and workflow_scope:
+            try:
+                import workflow_ledger
+                workflow_ledger.complete_step(
+                    workflow_scope,
+                    workflow_id,
+                    step_index,
+                    result,
+                    duration_ms=int((time.monotonic() - step_started) * 1000),
+                )
+            except Exception:
+                pass
         used_tool_calls.add(step["call_signature"])
 
     if not results:
@@ -479,3 +508,69 @@ def run(
         "clarifying_question": clarifying_question,
         "steps": results,
     }
+
+
+
+def run(
+    task: str,
+    *,
+    memory_scope: str | None = None,
+    max_steps: int | None = None,
+) -> dict[str, Any]:
+    """Execute a task and expose a privacy-preserving durable workflow trace."""
+    workflow_scope = (
+        memory_scope
+        or os.environ.get("ORACLE_WORKFLOW_SCOPE", "local:owner").strip()
+        or "local:owner"
+    )
+    workflow_id = None
+    ledger_enabled = os.environ.get("ORACLE_ENABLE_WORKFLOW_LEDGER", "true").strip().lower() not in {
+        "0", "false", "no", "off"
+    }
+    if ledger_enabled:
+        try:
+            import workflow_ledger
+            workflow_id = workflow_ledger.start_run(
+                workflow_scope,
+                task,
+                max_steps if max_steps is not None else _step_limit(),
+            )
+        except Exception:
+            workflow_id = None
+
+    try:
+        result = _run_core(
+            task,
+            memory_scope=memory_scope,
+            max_steps=max_steps,
+            workflow_id=workflow_id,
+            workflow_scope=workflow_scope,
+        )
+    except Exception as exc:
+        if workflow_id:
+            try:
+                import workflow_ledger
+                workflow_ledger.finish_run(
+                    workflow_scope,
+                    workflow_id,
+                    "failed",
+                    error_code=type(exc).__name__,
+                )
+            except Exception:
+                pass
+        raise
+
+    if workflow_id:
+        try:
+            import workflow_ledger
+            failures = {"error", "failed", "blocked_by_executor"}
+            status = (
+                "partial"
+                if any(str(item.get("status", "")).lower() in failures for item in result.get("steps", []))
+                else "completed"
+            )
+            workflow_ledger.finish_run(workflow_scope, workflow_id, status)
+            result["workflow_id"] = workflow_id
+        except Exception:
+            pass
+    return result

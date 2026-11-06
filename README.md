@@ -153,3 +153,16 @@ precedence over tier settings. Explicit role-level provider/model settings take
 precedence over automatic selection. Oracle does not silently switch providers
 when a selected provider is unavailable: configure the intended provider/model
 and its credentials first. This avoids unexpected data transfers or costs.
+
+
+## Workflow trace and execution history
+
+When enabled (default), each agent run receives a workflow ID and writes a durable
+execution trace to the configured SQLite database. The ledger stores task, input,
+and output **SHA-256 digests**, tool IDs, statuses, elapsed time, and timestamps;
+it does not store task text, local file contents, tool arguments, or tool outputs.
+Trace rows are scope-isolated and can be cleared using the existing panic-wipe
+allowlist. Set `ORACLE_ENABLE_WORKFLOW_LEDGER=false` to disable trace creation,
+or `ORACLE_WORKFLOW_SCOPE` to choose a stable owner scope when no memory scope
+is passed to the orchestrator. A step left in `running` state is visible as an
+interrupted checkpoint; automatic replay/resume is not enabled by this ledger.

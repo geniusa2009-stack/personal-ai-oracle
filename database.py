@@ -270,6 +270,39 @@ def init_database():
             ON knowledge_relations(scope, source_entity_id, relation_type);
         CREATE INDEX IF NOT EXISTS idx_knowledge_relations_target
             ON knowledge_relations(scope, target_entity_id, relation_type);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_runs (
+            workflow_id  TEXT PRIMARY KEY,
+            scope        TEXT NOT NULL,
+            task_digest  TEXT NOT NULL,
+            status       TEXT NOT NULL,
+            max_steps    INTEGER NOT NULL,
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            finished_at  TEXT,
+            error_code   TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_workflow_runs_scope_created
+            ON oracle_workflow_runs(scope, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_steps (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id    TEXT NOT NULL,
+            scope          TEXT NOT NULL,
+            step_index     INTEGER NOT NULL,
+            tool_id        TEXT NOT NULL,
+            status         TEXT NOT NULL,
+            input_digest   TEXT NOT NULL,
+            output_digest  TEXT NOT NULL DEFAULT '',
+            input_length   INTEGER NOT NULL DEFAULT 0,
+            output_length  INTEGER NOT NULL DEFAULT 0,
+            duration_ms    INTEGER,
+            created_at     TEXT NOT NULL,
+            updated_at     TEXT NOT NULL,
+            UNIQUE(workflow_id, step_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_workflow_steps_scope_run
+            ON oracle_workflow_steps(scope, workflow_id, step_index);
         """
     )
     conn.commit()
@@ -1044,7 +1077,7 @@ SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
     "feature_log", "memories", "knowledge_relations", "knowledge_entities",
-    "wa_processed_messages",
+    "oracle_workflow_steps", "oracle_workflow_runs", "wa_processed_messages",
 ]
 
 
