@@ -47,7 +47,7 @@ class AIExecutor:
             "model": decision.model,
         }
         if request.response_format is not None:
-            chat_options["response_format"] = dict(request.response_format)
+            chat_options["response_format"] = request.to_response_format()
         content = self.provider.chat(request.to_messages(), **chat_options)
         return AIResult(
             content=content,
