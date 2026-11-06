@@ -1,342 +1,182 @@
-# 🔮 الوكيل الذكي الشخصي والمحلل الاستراتيجي — نسخة سحابية
-# Personal AI Oracle — Cloud Edition
+# Personal AI Oracle — Local Mac Edition
 
-تطبيق Streamlit يحلّل يومياتك وأفكارك بعمق عبر OpenRouter (DeepSeek-V3 / GPT-4o)،
-ويشغّل **رادار فرص تلقائي في الخلفية** يبحث في الإنترنت عن كورسات ووظائف ومنح
-تناسب اهتماماتك — جاهز للرفع على **Render** أو **Railway** ليعمل ٢٤/٧ حتى لو كان جهازك مغلقاً.
+Personal AI Oracle is a private, local-first AI workspace that runs on the owner's MacBook. It is **not a public website and is not configured for cloud deployment**.
 
----
+The MacBook runs two supervised processes:
+- A local Streamlit dashboard bound only to `127.0.0.1`.
+- A background worker that runs the opportunity radar on a schedule.
 
-## 🧩 مكوّنات المشروع / Project layout
+A per-user macOS LaunchAgent starts Oracle when the owner logs in and restarts the runtime if it exits. On AC power, Oracle can use `caffeinate -s` to prevent idle system sleep. A MacBook that is powered off, logged out, asleep, or closed in a way that triggers sleep cannot run a 24/7 process.
 
-| الملف | الوظيفة |
+## Local architecture
+
+| File | Responsibility |
 |---|---|
-| `app.py` | واجهة Streamlit: تحليل متدفّق + تبويب رادار الفرص + الإعدادات + جدولة داخلية |
-| `ai_core.py` | النواة الموحدة لاستدعاءات النماذج، توجيه حسب المهمة، وإضافة الذاكرة ذات الصلة |
-| `memory.py` | ذاكرة صريحة بنطاقات منفصلة واسترجاع بالصلة قبل إدراجها في سياق النموذج |
-| `agent_orchestrator.py` | وضع الوكيل: تخطيط تكراري، تنفيذ أدوات مسموح بها، ومراجعة النتائج حتى 3 خطوات |
-| `db.py` | طبقة SQLite مشتركة (يوميات، فرص، إعدادات) — مسارها عبر `ORACLE_DB_PATH` |
-| `search.py` | محرك البحث: Tavily (لو فيه مفتاح) وإلا DuckDuckGo بدون مفتاح |
-| `radar.py` | محرك رادار الفرص: يبني الاستعلامات، يبحث، يرتّب بالـ AI، يخزّن |
-| `scholarship_expert.py` | خبير المنح: قاعدة معرفة + فلترة + إجابة بالعامية المصرية |
-| `whatsapp_agent.py` | الرد الآلي على واتساب عبر Cloud API الرسمي (وضع مسودّة افتراضي) |
-| `hyper_scheduler.py` | المخطط الصارم: تحليل طاقة + جدول بالدقيقة + توجيه «الآن» |
-| `content_factory.py` | مصنع المحتوى: محتوى بالعامية بأسلوبك (منشور/ثريد/ريلز/ميمز) |
-| `features.py` | سجل الـ50 ميزة + موزّع تشغيل بحالات (فعّالة/تجريبية/تحتاج ربط) |
-| `database.py` | جداول الذاكرة والمنح والجداول والمحتوى وسجل الميزات |
-| `worker.py` | عملية خلفية مستقلة (24/7) لتشغيل الرادار على فاصل زمني ثابت |
-| `Dockerfile` | صورة الحاوية (تربط `$PORT` تلقائياً) |
-| `render.yaml` | مخطط نشر Render بنقرة (Blueprint) |
-| `railway.json` / `Procfile` | إعداد Railway / منصّات Procfile |
+| `app.py` | Local Streamlit dashboard and chat |
+| `local_runtime.py` | Supervises the UI and background worker |
+| `manage_launch_agent.py` | Installs or removes the macOS LaunchAgent |
+| `local_config.py` | Loads the private environment file from the user's home directory |
+| `local_tools.py` | Local file, app and command tools for the agent |
+| `agent_orchestrator.py` | Adaptive tool planning, execution and review |
+| `agent_profiles.py` | Independent provider/model profiles for specialist agents |
+| `ai_core.py` | Shared AI request, memory, routing and provider execution |
+| `llm_provider.py` | OpenRouter, OpenAI, Gemini and Ollama provider adapters |
+| `model_router.py` | Chooses a provider/model pair for each task |
+| `memory.py` | Explicit, scope-isolated long-term memory |
+| `db.py`, `database.py` | Local SQLite storage |
+| `worker.py`, `radar.py` | Background opportunity discovery |
 
----
+## Install on macOS
 
-## ⚙️ متغيّرات البيئة / Environment variables
-
-| المتغيّر | مطلوب؟ | الوصف |
-|---|---|---|
-| `OPENROUTER_API_KEY` | ✅ | مفتاح OpenRouter للتحليل وترتيب الفرص |
-| `ORACLE_APP_PASSWORD` | ✅ للإنتاج | كلمة مرور المالك، 16 حرفاً على الأقل؛ بدونها تظل لوحة التطبيق مقفولة |
-| `ORACLE_VAULT_KEY` | مطلوب للخزنة | مفتاح Fernet مستقل؛ لا يُخزَّن داخل SQLite |
-| `WA_APP_SECRET` | مطلوب للويبهوك | App Secret من Meta للتحقق من توقيع كل POST |
-| `ORACLE_MODEL_FAST` | اختياري | نموذج المهام السريعة |
-| `ORACLE_MODEL_REASONING` | اختياري | نموذج الاستدلال |
-| `ORACLE_MODEL_CODING` | اختياري | نموذج البرمجة |
-| `ORACLE_MODEL_RESEARCH` | اختياري | نموذج البحث |
-| `ORACLE_MODEL_WRITING` | اختياري | نموذج الكتابة |
-| `ORACLE_MODEL_CREATIVE` | اختياري | نموذج المهام الإبداعية |
-| `ORACLE_MEMORY_SCOPE` | اختياري | نطاق ذاكرة المستخدم؛ الافتراضي `user:oracle-owner` |
-| `TAVILY_API_KEY` | اختياري | بحث أكثر موثوقية على السحابة (بدّل DuckDuckGo) |
-| `SCAN_INTERVAL_HOURS` | اختياري | كل كم ساعة يعمل الرادار (الافتراضي 12) |
-| `OPENROUTER_MODEL` | اختياري | نموذج ترتيب الفرص (الافتراضي `deepseek/deepseek-chat`) |
-| `ENABLE_RADAR` | اختياري | `1` لتفعيل الجدولة الداخلية بدون مفتاح في البيئة |
-| `ORACLE_DB_PATH` | اختياري | مسار قاعدة البيانات (على السحابة: `/data/oracle.db`) |
-
-> 🔑 احصل على مفتاح OpenRouter من https://openrouter.ai/keys
-> ومفتاح Tavily (اختياري) من https://tavily.com
-
----
-
-> 🔐 **الأمان في النشر:** اضبط `ORACLE_APP_PASSWORD` بعبارة سرية عشوائية لا تقل عن 16 حرفاً قبل فتح التطبيق على الإنترنت. اضبط `ORACLE_VAULT_KEY` بمفتاح Fernet مستقل (يمكن توليده من Python بواسطة `Fernet.generate_key()`) قبل تخزين أو كشف أسرار الخزنة. لا تضع هذه القيم في Git أو داخل قاعدة البيانات.
->
-> 📲 **أمان WhatsApp Webhook:** يجب ضبط `WA_APP_SECRET` من إعدادات تطبيق Meta. الطلبات غير الموقعة أو ذات التوقيع غير الصحيح تُرفض قبل معالجة محتواها. احتفظ أيضاً بـ`WA_VERIFY_TOKEN` عشوائي للتحقق الأولي من عنوان الويبهوك.
-
-## 🤖 وضع الوكيل (Agent Mode)
-
-يمكن تفعيل وضع الوكيل من تبويب الشات. يقوم Oracle باختيار أداة قراءة/بحث/تحليل أو مسودة واحدة، ثم يفحص نتيجتها ويقرر هل يحتاج خطوة أخرى. الحد الأقصى 3 أدوات في الطلب الواحد، ولا يسمح مسار الوكيل بإرسال رسائل واتساب أو نشر محتوى أو تنفيذ مشتريات أو أوامر نظام. تعرض الواجهة خطوات التنفيذ الفعلية، ويظل أي إجراء خارجي محتاجاً لموافقة مستقلة.
-
-الذاكرة المضافة إلى سياق الوكيل اختيارية ومحددة بالنطاق `ORACLE_MEMORY_SCOPE`. يتم اختيار حتى 8 ذكريات ذات صلة نصية بالطلب بدلاً من إرسال آخر 30 ذكرى في كل مرة. التطبيق لا يحفظ المحادثات تلقائياً كذكريات؛ المستخدم يضيف الحقائق والتفضيلات والأهداف صراحةً من لوحة الذاكرة.
-
----
-
-## 💻 التشغيل محلياً / Run locally
+From the repository directory:
 
 ```bash
-cd oracle_app
-pip install -r requirements.txt
-streamlit run app.py
-```
-ثم افتح `http://localhost:8501`. ضع المفتاح في القائمة الجانبية، وفعّل الرادار يدوياً
-من تبويب «رادار الفرص» بزر «شغّل مسحاً الآن».
-
-تشغيل العامل الخلفي محلياً (اختياري):
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-python worker.py
+python3 install_local.py
 ```
 
----
+The installer creates a project virtual environment, installs Python dependencies, creates the private local state directory, and registers the LaunchAgent.
 
-## ☁️ النشر على Render (موصى به)
+Dashboard:
 
-1. ارفع مجلد المشروع إلى مستودع **GitHub**.
-2. من Render: **New → Blueprint** واختر المستودع (سيقرأ `render.yaml` تلقائياً).
-3. أدخل قيمة `OPENROUTER_API_KEY` (و `TAVILY_API_KEY` اختيارياً) في حقول الأسرار.
-4. اضغط **Apply** — وستحصل على رابط عام يعمل من أي مكان.
+```
+http://127.0.0.1:8765
+```
 
-⚠️ **مهم بخصوص الـ 24/7:**
-- الخطة **المجانية** في Render تُنيم الخدمة عند الخمول، فالجدولة الداخلية تتوقف حتى يُفتح الرابط.
-- للعمل المتواصل الحقيقي: استخدم خطة مدفوعة، وفعّل خدمة `worker` المُعلّقة في `render.yaml`
-  (احذف التعليق `#`) لتشغيل `python worker.py` كعامل خلفي لا ينام.
-- القرص الدائم (`disk`) يتطلّب خطة مدفوعة؛ على المجانية احذف قسم `disk` (ستكون البيانات مؤقتة).
+To check the service, inspect the LaunchAgent and logs under:
 
----
+```
+~/.personal_ai_oracle/logs/
+```
 
-## 🚆 النشر على Railway
-
-1. **New Project → Deploy from GitHub repo**. سيكتشف Railway الـ `Dockerfile` تلقائياً.
-2. من **Variables** أضف `OPENROUTER_API_KEY` (وبقية المتغيّرات حسب الحاجة).
-3. Railway يوفّر `$PORT` تلقائياً — التطبيق يلتقطه من الأمر في `railway.json`.
-4. لرادار 24/7 مستقل: أنشئ **خدمة ثانية** في نفس المشروع بأمر التشغيل `python worker.py`.
-
----
-
-## 🐳 تشغيل عبر Docker مباشرة
+To stop and remove automatic startup (the database and keys are kept):
 
 ```bash
-docker build -t oracle .
-docker run -p 8501:8501 \
-  -e OPENROUTER_API_KEY=sk-or-... \
-  -e ENABLE_RADAR=1 \
-  -v $(pwd)/data:/data \
-  oracle
+.venv/bin/python manage_launch_agent.py uninstall
 ```
 
----
+To run Oracle manually without installing the LaunchAgent:
 
-## 🕵️ كيف يعمل رادار الفرص؟
+```bash
+.venv/bin/python local_runtime.py
+```
 
-1. يجمع كلماتك المفتاحية من: ما تكتبه في الإعدادات + ما يُستخرج تلقائياً من يومياتك.
-2. لكل كلمة يبني استعلامات لثلاث فئات: **كورسات / وظائف / منح** (عربي وإنجليزي).
-3. يبحث في الإنترنت (Tavily أو DuckDuckGo)، يزيل المكرّر حسب الرابط.
-4. يرتّب النتائج بالذكاء الاصطناعي (درجة 0–100 + سبب مختصر) ويخزّنها.
-5. تظهر الفرص في تبويب «رادار الفرص» مرتّبة حسب الأهمية، وتُحدَّث دورياً في الخلفية.
+## Private configuration
 
----
+Secrets and local settings live outside Git at:
 
----
+```
+~/.personal_ai_oracle/.env
+```
 
-## 🎓 خبير المنح (`scholarship_expert.py`)
+The file should be readable only by the current user:
 
-قاعدة معرفة أولية بمنح عالمية ومحلية حقيقية (Fulbright, Chevening, DAAD, Erasmus,
-Türkiye Bursları, MEXT, Knight-Hennessy, Mastercard, GREAT, وجهات مصرية…) + محرك
-فلترة حسب الدولة/المستوى/المجال + بحث حيّ للمواعيد الحالية + إجابة **بالعامية المصرية**.
+```bash
+chmod 600 ~/.personal_ai_oracle/.env
+```
 
-- يظهر كتبويب «🎓 خبير المنح» داخل التطبيق.
-- يُستخدم تلقائياً داخل ردود الواتساب عندما تكون الرسالة عن منح.
-- ⚠️ المواعيد تقريبية وتتغيّر سنوياً؛ الإجابة دائماً تنبّه بمراجعة الموقع الرسمي.
+Example configuration:
 
----
+```dotenv
+# Default assistant provider/model
+ORACLE_DEFAULT_PROVIDER=openrouter
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=deepseek/deepseek-chat
 
-## 📲 موديول الرد الآلي على واتساب (`whatsapp_agent.py`)
+# Other hosted providers
+OPENAI_API_KEY=
+OPENAI_MODEL=
+GEMINI_API_KEY=
+GEMINI_MODEL=
 
-مبني على **واتساب Cloud API الرسمي من Meta** (وليس أدوات غير رسمية تُعرّض رقمك للحظر).
+# Local model server (Ollama)
+ORACLE_OLLAMA_ENABLED=1
+OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+OLLAMA_MODEL=
 
-**كيف يعمل:**
-1. Meta يرسل الرسائل الواردة إلى ويبهوك `/webhook` في هذا الموديول.
-2. يحدّد الموديول هوية المرسِل من جدول `contacts` (صاحب/عيلة/شغل/جروب) ويبني
-   System Prompt مصري مناسب للعلاقة.
-3. يولّد رداً طبيعياً بالعامية عبر OpenRouter (ويدمج خبير المنح لو السؤال عن منح).
-4. حسب `WA_AUTO_REPLY`:
-   - `draft` (افتراضي وآمن): يحفظ الرد كـ**مسودّة** تراجعها وتوافق عليها من تبويب «📲 واتساب».
-   - `send`: يرسل الرد تلقائياً فوراً.
+# Specialist agent profiles can use different providers and models
+ORACLE_AGENT_PLANNER_PROVIDER=ollama
+ORACLE_AGENT_PLANNER_MODEL=
+ORACLE_AGENT_EXECUTOR_PROVIDER=ollama
+ORACLE_AGENT_EXECUTOR_MODEL=
+ORACLE_AGENT_RESEARCHER_PROVIDER=gemini
+ORACLE_AGENT_RESEARCHER_MODEL=
+ORACLE_AGENT_CODER_PROVIDER=openai
+ORACLE_AGENT_CODER_MODEL=
+ORACLE_AGENT_WRITER_PROVIDER=openrouter
+ORACLE_AGENT_WRITER_MODEL=
+ORACLE_AGENT_REVIEWER_PROVIDER=openrouter
+ORACLE_AGENT_REVIEWER_MODEL=
 
-**خطوات التفعيل (مختصرة):**
-1. أنشئ تطبيقاً على [Meta for Developers](https://developers.facebook.com) وفعّل منتج WhatsApp.
-2. خُذ `WhatsApp Access Token` و `Phone Number ID` وحُطّهم في متغيّرات البيئة.
-3. اختر `WA_VERIFY_TOKEN` أي نص سرّي، وضعه في إعدادات الويبهوك على Meta.
-4. انشر الموديول كخدمة ويب (أمر التشغيل):
-   ```bash
-   gunicorn "whatsapp_agent:create_app()" --bind 0.0.0.0:$PORT
-   ```
-   ثم اضبط رابط الويبهوك على Meta:  `https://<خدمتك>/webhook`
-5. ابدأ بـ `WA_AUTO_REPLY=draft` وراجع المسودّات قبل ما تحوّله لـ `send`.
+# Optional per-task provider/model routing
+ORACLE_PROVIDER_FAST=
+ORACLE_MODEL_FAST=
+ORACLE_PROVIDER_REASONING=
+ORACLE_MODEL_REASONING=
+ORACLE_PROVIDER_CODING=
+ORACLE_MODEL_CODING=
+ORACLE_PROVIDER_RESEARCH=
+ORACLE_MODEL_RESEARCH=
+ORACLE_PROVIDER_WRITING=
+ORACLE_MODEL_WRITING=
+ORACLE_PROVIDER_CREATIVE=
+ORACLE_MODEL_CREATIVE=
 
-**تشغيل محلي للاختبار:** `python whatsapp_agent.py` (افتراضياً على المنفذ 8080)،
-وللاختبار من غير ويبهوك استخدم تبويب «📲 واتساب → 🧪 جرّب الرد».
+# Agent, storage and background task settings
+ORACLE_MAX_AGENT_STEPS=12
+ORACLE_MEMORY_SCOPE=user:oracle-owner
+ORACLE_LOCAL_PORT=8765
+ORACLE_PREVENT_IDLE_SLEEP=1
+SCAN_INTERVAL_HOURS=12
+TAVILY_API_KEY=
+WA_ACCESS_TOKEN=
+WA_PHONE_NUMBER_ID=
+WA_AUTO_REPLY=draft
+```
 
-> ⚠️ ملاحظة مسؤولة: الرد الآلي يكتب رسائل باسمك. ابدأ دائماً بوضع المسودّة، وراجع
-> النبرة، وتجنّب الوعود نيابة عنك (مواعيد/التزامات) قبل التأكيد.
+Do not commit this file or paste real keys into source code. Oracle loads it at startup; restart the LaunchAgent after editing it.
 
----
+## Multi-model and multi-agent routing
 
----
+Oracle supports four provider adapters:
+- **OpenRouter** — hosted models through one provider key.
+- **OpenAI** — direct OpenAI API access.
+- **Google Gemini** — Gemini through Google's OpenAI-compatible endpoint.
+- **Ollama** — models running on the Mac at `127.0.0.1:11434`; local requests do not need a cloud key.
 
-## 🚀 الوكيل الخارق: المخطط + المحتوى + الـ50 ميزة
+The dashboard has a default provider/model selector. Specialist agents can independently select a provider and model using `ORACLE_AGENT_<ROLE>_PROVIDER` and `ORACLE_AGENT_<ROLE>_MODEL`.
 
-**🗓️ المخطط الصارم (`hyper_scheduler.py`):** يحلّل منحنى طاقتك من يومياتك (أو منحنى
-افتراضي ذكي)، يقسّم يومك لبلوكات دقيقة، يوزّع التركيز العميق على أوقات الذروة والمهام
-الخفيفة على الهبوط، ويربط أهدافك الكبرى بأفعال صغيرة. يوجّهك لحظياً: «دلوقتي وقت التركيز
-على كذا / دلوقتي وقت راحة». يُحفظ في جدول `schedules`.
+Current roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, and `reviewer`.
 
-**🏭 مصنع المحتوى (`content_factory.py`):** يقرأ عيّنات من كتابتك الحقيقية ويولّد منشورات/
-ثريدات/سيناريوهات ريلز/ميمز بالعامية المصرية بصوتك أنت (بثّ فوري + حفظ في `generated_content`).
+This means the planner, researcher, coder and reviewer do not have to use the same model. Their chosen settings are visible in the dashboard's sidebar.
 
-**الـ50 ميزة (`features.py`):** كلها مسجّلة في بنية واحدة قابلة للتشغيل عبر موزّع
-(`run_feature`)، وكل ميزة لها حالة واضحة:
+Ollama must be installed and a model must be present locally before selecting it. Hosted providers still send their prompts to their respective services; selecting local hosting does not make a cloud provider's requests local.
 
-- 🟢 **فعّالة** — تشتغل دلوقتي (تحليل مشاعر، رادار فرص/منح/كورسات/وظائف، رد واتساب،
-  مصنع محتوى، مدرب قرار، فلتر أولويات، محاكي مقابلات، خطة عمل، تنفّس، محفّز صباحي…).
-- 🟡 **تجريبية** — أفضل-جهد عبر الذكاء الاصطناعي/البحث (تتبّع عادات، كاشف تسويف،
-  صائد تريندات/كتب/أخبار، مخطط ميزانية، محلل توتر…).
-- 🔌 **تحتاج ربط** — البنية جاهزة لكنها تتطلّب تكاملاً خارجياً (جدولة نشر تلقائي،
-  تيليجرام، قراءة مصاريف من SMS، تتبّع نوم بسوار، مشغّل موسيقى، تذكيرات مجدولة).
+## Local agent capabilities
 
-> الفلسفة: كل ميزة دالة pluggable تُسجّل في `features.py`. الميزات «تحتاج ربط» ترجع
-> رسالة واضحة بما يلزم تفعيلها، فتقدر تطوّرها تدريجياً بدون كسر أي شيء.
+Agent Mode is enabled by default. The agent can use Oracle features plus local file and application tools, and can run supported developer commands under the currently logged-in macOS user account. It does not run as root and does not bypass macOS privacy permissions or system protections. Local tool activity is recorded in a content-free audit file at:
 
-تظهر كلها في تبويب «🚀 الـ50 ميزة» مع لوحة تشغيل وسجل تنفيذ (`feature_log`).
+```
+~/.personal_ai_oracle/logs/local-actions.jsonl
+```
 
----
+The agent has a configurable step budget (`ORACLE_MAX_AGENT_STEPS`, default 12) to prevent a planning loop from running forever. Set a value up to 30 for longer workflows.
 
-## 🛸 وحدة الذكاء الخارق (50 ميزة في 5 أقسام)
+## Storage and backups
 
-نواة موحّدة (`ai_core.py`) فيها System Prompt مرن بيتبدّل حسب الموقف: **ودّي** بالعامية
-لشات العلاقات والسعادة، و**احترافي وقور** للإيميلات والمنح والمشاريع، و**صارم** عند التهاون.
+The SQLite database is stored at:
 
-| الملف | القسم | الميزات |
-|---|---|---|
-| `social_diplomacy.py` | 🤝 العلاقات والدبلوماسية | 1–10 (كاشف النوايا، الصلح، فلتر الفضوليين، الكاريزما، مصحّح الغضب، الواجبات، درع الابتزاز، حافظ الوعود…) |
-| `super_learning.py` | 🧠 التعلّم الخارق | 11–20 (ملخّص فيديو، خرائط ذهنية، فاينمان، مترجم مصطلحات، تكرار متباعد، مدرّب برومبتات…) |
-| `financial_intelligence.py` | 💰 الذكاء المالي | 21–30 (مانع الشراء الاندفاعي، خطة ادخار، حاسبة رسوم مخفية، محلّل عروض وهمية، منظّم فواتير…) |
-| `cyber_security.py` | 🛡️ الأمن السيبراني | 31–40 (مولّد كلمات سر، فاحص تصيّد، خزنة مشفّرة، درع واي فاي، مستشار قانوني رقمي…) |
-| `lifestyle_hub.py` | ✨ أسلوب الحياة | 41–50 (منسّق إطلالات، بومودورو متكيّف، منفّذ التزام صارم، رفيق قراءة، موصّل أحلام الطفولة…) |
+```
+~/.personal_ai_oracle/oracle.db
+```
 
-كلها مُجمّعة في `advanced_module.py` بموزّع تشغيل `run_feature` وتظهر في تبويب
-«🛸 الوحدة الخارقة». الميزات الحسابية والأدوات تشتغل فعلياً (مولّد كلمات السر، فاحص الروابط،
-حاسبة الرسوم، حافظ الوعود، الفواتير، الخزنة المشفّرة بـ `cryptography`)، والباقي بالذكاء
-الاصطناعي، والميزات اللي تحتاج عتاد/تكامل (كاميرا/مايك، تسريب بيانات، أسعار لحظية…) بحالة
-«🔌 تحتاج ربط» وبترجّع المطلوب بوضوح.
+The encrypted password vault uses `ORACLE_VAULT_KEY`. Back up the database and that key together. Losing the key means encrypted vault values cannot be recovered. Legacy Fernet/Base64 records are migrated transactionally when the vault is revealed after the new key is configured.
 
-### 🛑 زر الذعر (Panic Button)
-في تبويب «⚙️ الإعدادات»: `database.panic_wipe()` بيمسح فوراً السجلات الحساسة (المحادثات،
-جهات الاتصال، اليوميات، المالية، الخزنة، الوعود…) بعد تأكيد كتابي. لا يمكن التراجع.
+## WhatsApp note
 
-> **الجداول الجديدة:** `promises`, `bills`, `financial_tracker`, `user_wellbeing`, `password_vault`.
+The current project has WhatsApp Cloud API outbound/draft functionality and a signed Flask webhook implementation. A localhost-only service cannot receive Meta webhook events directly from the public internet. Incoming WhatsApp events need a separate local bridge or a deliberately configured inbound connection; Oracle does not expose a public webhook service in this local edition.
 
----
+## Validation
 
-## 💸 ماكينة الدخل التلقائية (`income_hunter.py`)
-
-خمسة محرّكات دخل + لوحة أرباح حيّة في تبويب «💸 ماكينة الدخل»:
-
-1. **مولّد عروض الفريلانس** — يقرأ وصف المشروع، يطابق مهاراتك، ويكتب Proposal مسعّراً
-   مقنعاً ويحفظه في `freelance_proposals`. (يُراجَع ويُرسل يدوياً — انظر الملاحظة أدناه.)
-2. **مصنع المنتجات الرقمية** — يحوّل بيانات الوكيل (منح/فرص/محتوى) لكتاب إلكتروني HTML
-   منسّق جاهز للبيع + هيكل روابط الدفع + **قمع مبيعات واتساب** (يكشف نية الشراء ويرد
-   بالعامية ويرفق رابط الدفع/التحميل تلقائياً).
-3. **وكيل الأفيليت** — يبحث عن منتجات عمولة عالية ويكتب مراجعات بالعامية تتضمّن روابطك.
-4. **مقالات SEO + نشر ووردبريس** — يولّد مقالاً محسّناً (عنوان/ميتا/عناوين فرعية)
-   و**ينشره فعلياً** على WordPress عبر REST API (`WP_URL`/`WP_USER`/`WP_APP_PASSWORD`).
-5. **حارس الأرباح** — `revenue_summary()` + `predict_revenue()`: لوحة تعرض العروض،
-   المبيعات، نقرات الأفيليت، الأرباح بالدولار والجنيه، ومعدل التحويل + نصيحة المجال الأنسب.
-
-**جداول جديدة:** `freelance_proposals`, `digital_sales`, `affiliate_clicks`, `ad_revenue`.
-
-**متغيّرات بيئة اختيارية:** `PAYMENT_LINK`, `PRODUCT_DOWNLOAD_LINK`, `GUMROAD_API_KEY`,
-`WP_URL`, `WP_USER`, `WP_APP_PASSWORD`, `ORACLE_PRODUCTS_DIR`.
-
-> ⚠️ **مهم وبصراحة:** كشط Upwork/Fiverr/Mostaql وإرسال العروض آلياً **يخالف شروط المنصات
-> وقد يحظر حسابك**. لذلك الأداة **تكتب العرض وتخزّنه لمراجعتك وإرساله بنفسك** (أو عبر API
-> رسمي إن توفّر) — مش بوت كشط بيبعت لوحده. وكذلك لا يتم تحريك أموال برمجياً؛ روابط الدفع
-> هي روابط Gumroad/Stripe التي تنشئها أنت.
-
----
-
-## 🏛️ إمبراطورية الدخل (150 ميزة في 6 موديولات)
-
-`freelance_empire.py` · `digital_products.py` · `affiliate_radar.py` ·
-`seo_content_factory.py` · `arbitrage_finance.py` · `micro_saas_agency.py`
-— مُجمّعة في `wealth_empire.py` وتظهر في تبويب «🏛️ إمبراطورية الدخل» مع لوحة ROI.
-
-**جداول جديدة:** `revenue_streams`, `affiliate_logs`, `seo_metrics`, `freelance_contracts`.
-
-كل ميزة لها حالة: 🟢 فعّالة · 🟡 تجريبية · 🔌 تحتاج ربط · ⛔ موقوفة.
-
-### ⚖️ حدود الامتثال (مهمة وبصراحة)
-بعض ما طُلب لم يُبنَ كأتمتة شغّالة لأنه يضرّك أو يضرّ غيرك، وبُني بديل متوافق بدلاً منه:
-
-| موقوف ⛔ | السبب | البديل المتوافق |
-|---|---|---|
-| كشط Upwork/Fiverr… كل 30 ث + إرسال آلي | مخالفة شروط → حظر الحساب | الصق المشروع → عرض جاهز ترسله بنفسك / API رسمي |
-| Auto-Commenter على فيسبوك/تويتر | سبام يضر سمعتك | انشر مراجعتك على حسابك بقيمة حقيقية |
-| إخفاء/تمويه روابط العمولة | تضليل ممنوع قانونياً | روابط **مع إفصاح** واضح (مدمج تلقائياً) |
-| FOMO «لإجبار» المتردد | تلاعب مضلِّل | ندرة صادقة حقيقية فقط (#46) |
-| كشط خرائط جوجل/فيسبوك للـ cold spam | كشط بيانات شخصية + سبام | عرض لعملاء وافقوا على التواصل (Warm) |
-| تنفيذ صفقات/سحب أموال آلياً، أرباح «مضمونة» | مخاطرة مالية ونصيحة غير مسؤولة | أدوات معلوماتية بإخلاء مسؤولية، القرار بيدك |
-
-ما عدا ذلك يعمل فعلياً: مهندس العروض النفسي، التسعير الذكي، e-books، روابط الدفع،
-قمع الواتساب، المراجعات بإفصاح، الـ SEO والنشر على ووردبريس، الربط الداخلي، الفواتير
-والعقود، لوحة ROI، تقارير العملاء، والنسخ الاحتياطي المشفّر.
-
----
-
-## 🧭 محراب الانضباط (`discipline_oracle.py`)
-
-نظام تركيز وانضباط صارم لكنه صحّي، في تبويب «🧭 محراب الانضباط»:
-مجلس الحكماء (أرشيتايب إلهام بلا اقتباسات منسوبة لأشخاص)، خريطة مستقبل من 4 مستويات
-(تُحفظ في `future_milestones`)، أمر الكورس اليومي، قائمة حجب المشتتات (تُطبَّق بموافقتك)،
-فلتر القيمة، سيناريوهات يوتيوب ومسودّات ردود الكومنتات (بمراجعتك).
-
-**جداول جديدة:** `future_milestones`, `youtube_automation_logs`, `discipline_matrix`.
-
-### ⚖️ ما الذي أُعيدت صياغته ولماذا
-- **حجب المشتتات**: يولّد قائمة `hosts` تطبّقها أنت — لا يعدّل ملفات نظامك تلقائياً (حماية لجهازك).
-- **ردود يوتيوب**: مسودّات تراجعها + هيكل YouTube Data API — لا رد آلي على الكل (سبام/مخالفة شروط).
-- **«العزوف التام عن النساء/الزواج وقمع الشهوة»**: لم يُبنَ كنظام تلقين يومي يؤطّر العلاقات/الزواج
-  كعدوّ. بُدّل بـ`sovereign_focus_prompt`: موجّه تركيز صحّي يحوّل طاقتك نحو العلم والكود وصيد
-  المنح وبناء الثروة، دون الحطّ من أحد ودون آليات «قمع» قسرية. الانضباط هدف، والعلاقات اختيار شخصي.
-
----
-
-## 🧠 مركز الميزات الموحّد (Unified Dashboard)
-
-تم **دمج الأنظمة الثلاثة** في تبويب واحد «🧠 مركز الميزات» عبر `feature_hub.py`، فبدل
-3 تبويبات متكررة بنفس كود التشغيل، بقى فيه واجهة واحدة: **اختر المجموعة → القسم → الميزة →
-شغّل**. المجموعات الثلاث:
-
-- 🧩 **الوكيل الأساسي (50)** — `features.py`
-- 🛸 **الوحدة الخارقة (50)** — `advanced_module.py`
-- 🏛️ **إمبراطورية الدخل (150)** — `wealth_empire.py`
-
-إجمالي **250 ميزة** في مكان واحد، ولوحات البيانات الحيّة (المود/المالي/ROI/الوعود/الفواتير)
-اتجمّعت تحت نفس التبويب. ده قلّل التبويبات من 13 لـ 11 وشال تكرار الكود.
-
----
-
-## 🎓 خبير المنح المطوّر (`advanced_scholarship.py`)
-
-أدوات أكاديمية داخل تبويب «🎓 خبير المنح»:
-- **محسّن خطاب النوايا (Personal Statement)** حسب فئة الجامعة (Ivy/Oxbridge/MIT/عالمي/ثانويات).
-- **محسّن السيرة الذاتية (CV)** متوافق مع ATS.
-- **محاكي المقابلات الشرس (Apex Interview)** بأسلوب Chevening/DAAD/Fulbright — أسئلة فخّ،
-  نقد جادّ، وصيغة بديلة مثالية.
-
-> ⚖️ أمانة: لا ادّعاءات «قبول 100%» أو «اقتباس 0% مضمون» أو «معصوم من الخطأ». الأدوات ترفع
-> الجودة والفرص فقط، وتنصح بمراجعة المواقع الرسمية وفحص الانتحال بأداة متخصّصة. القرار والنتيجة
-> يعتمدان على عوامل كثيرة خارج النص.
-
----
-
-## 🔒 الخصوصية
-كل بياناتك في قاعدة SQLite على خادمك أنت. لوحة التطبيق محمية بكلمة مرور مالك واحدة عبر `ORACLE_APP_PASSWORD`. أسرار الخزنة تستخدم مفتاح Fernet خارجي `ORACLE_VAULT_KEY` ولا يوجد fallback إلى Base64. لا تُرسَل إلا استعلامات البحث (لمحرك البحث) والنصوص المطلوب تحليلها أو الرد عليها (إلى OpenRouter)، ورسائل واتساب (عبر Meta Cloud API).
+The repository CI runs:
+- Python bytecode compilation.
+- The full pytest suite, including provider routing, memory, local tools, agent planning, webhook validation and vault migration.
