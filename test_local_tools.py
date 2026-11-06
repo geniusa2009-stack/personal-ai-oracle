@@ -60,7 +60,7 @@ def test_local_directory_listing_and_pattern_search(tmp_path):
 
 def test_local_command_runs_as_current_user_without_shell(tmp_path):
     sample = tmp_path / "sample.py"
-    sample.write_text("value = 42\n", encoding="utf-8")
+    sample.write_text("value = 42" + chr(10), encoding="utf-8")
     result = local_tools.execute(
         "local.run_command",
         {
