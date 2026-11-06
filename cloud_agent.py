@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -134,6 +135,24 @@ def _execute(job: dict[str, Any]) -> dict[str, Any]:
     return web_browser.execute(tool_id, payload)
 
 
+def _heartbeat_loop(base_url: str, token: str, stop_event: threading.Event) -> None:
+    """Keep the device presence fresh while a long local tool is executing."""
+    with requests.Session() as heartbeat_session:
+        heartbeat_session.headers.update({
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "PersonalAIOracle-MacAgent/1.0",
+        })
+        while not stop_event.wait(20):
+            try:
+                heartbeat_session.post(
+                    f"{base_url}/v1/agent/heartbeat",
+                    timeout=(5, 10),
+                ).raise_for_status()
+            except requests.RequestException:
+                # The main worker loop owns reconnect/backoff and reports connection failures.
+                continue
+
+
 def _bound_result(result: dict[str, Any], maximum_bytes: int = 50_000) -> dict[str, Any]:
     """Keep cloud result uploads below the API limit and avoid giant page/file payloads."""
     try:
@@ -179,6 +198,14 @@ def run_forever() -> int:
     session.verify = True
     token = _pair_if_needed(base_url, session)
     session.headers.update({"Authorization": f"Bearer {token}"})
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat_loop,
+        args=(base_url, token, heartbeat_stop),
+        name="oracle-cloud-heartbeat",
+        daemon=True,
+    )
+    heartbeat_thread.start()
     print("[Oracle Mac Agent] Connected to private cloud control plane.", flush=True)
 
     while not STOPPING:
@@ -213,6 +240,8 @@ def run_forever() -> int:
         except Exception as exc:
             print(f"[Oracle Mac Agent] Agent loop error: {type(exc).__name__}: {str(exc)[:300]}", file=sys.stderr, flush=True)
             time.sleep(3)
+    heartbeat_stop.set()
+    heartbeat_thread.join(timeout=2)
     session.close()
     return 0
 
