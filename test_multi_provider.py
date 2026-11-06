@@ -309,3 +309,65 @@ def test_opt_in_auto_routing_applies_to_streaming_specialists(monkeypatch):
     assert request.task_type == "research"
     assert request.requested_provider is None
     assert request.requested_model is None
+
+
+def test_executor_records_privacy_safe_success_metrics(monkeypatch, tmp_path):
+    import db
+    import model_observability
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "executor-metrics.db"))
+    monkeypatch.setenv("ORACLE_MEMORY_SCOPE", "owner-metrics")
+    provider = Mock()
+    provider.chat.return_value = "PRIVATE COMPLETION THAT MUST NOT BE STORED"
+    executor = AIExecutor(
+        router=ModelRouter("openrouter", "test-model"),
+        provider=provider,
+    )
+    result = executor.execute(AIRequest(
+        messages=({"role": "user", "content": "PRIVATE PROMPT"},),
+        temperature=0.2,
+        task_type="reasoning",
+    ))
+    assert result.content.startswith("PRIVATE COMPLETION")
+    events = model_observability.list_events("owner-metrics")
+    assert len(events) == 1
+    assert events[0]["outcome"] == "success"
+    assert events[0]["provider"] == "openrouter"
+    assert events[0]["model"] == "test-model"
+    assert events[0]["output_chars"] == len(result.content)
+    assert "PRIVATE PROMPT" not in json.dumps(events)
+    assert "PRIVATE COMPLETION" not in json.dumps(events)
+
+
+def test_executor_records_stream_failure_without_prompt_or_completion(monkeypatch, tmp_path):
+    import db
+    import model_observability
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "executor-stream-metrics.db"))
+    monkeypatch.setenv("ORACLE_MEMORY_SCOPE", "owner-stream")
+    provider = Mock()
+
+    def broken_stream(*_args, **_kwargs):
+        yield "partial"
+        raise RuntimeError("secret-bearing exception detail")
+
+    provider.stream.side_effect = broken_stream
+    executor = AIExecutor(
+        router=ModelRouter("ollama", "local-model"),
+        provider=provider,
+        provider_name="ollama",
+    )
+    request = AIRequest(
+        messages=({"role": "user", "content": "NEVER STORE THIS PROMPT"},),
+        temperature=0.2,
+        task_type="research",
+        streaming=True,
+    )
+    with pytest.raises(RuntimeError):
+        list(executor.execute_stream(request))
+    events = model_observability.list_events("owner-stream")
+    assert len(events) == 1
+    assert events[0]["outcome"] == "error"
+    serialized = json.dumps(events)
+    assert "NEVER STORE THIS PROMPT" not in serialized
+    assert "secret-bearing exception detail" not in serialized
