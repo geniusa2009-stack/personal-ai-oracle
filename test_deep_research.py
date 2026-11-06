@@ -210,3 +210,20 @@ def test_compact_report_rejects_too_small_or_invalid_byte_limits():
     for maximum in (0, 100, 12001, True):
         with pytest.raises(deep_research.ResearchError):
             deep_research.compact_report_json({"answer": "test"}, max_bytes=maximum)
+
+
+def test_compact_report_fallback_keeps_json_valid_at_minimum_size():
+    report = {
+        "status": "success",
+        "answer": "معلومة مهمة " * 3000,
+        "citations": [{"id": f"S{i}", "title": "x" * 300, "url": "https://example.com/" + "x" * 1000} for i in range(1, 9)],
+        "sources": [],
+        "citation_validation": {"valid_source_ids": [], "invalid_source_ids": []},
+    }
+
+    serialized = deep_research.compact_report_json(report, max_bytes=1024)
+    restored = json.loads(serialized)
+
+    assert len(serialized.encode("utf-8")) <= 1024
+    assert restored["context_truncated"] is True
+    assert "answer" in restored

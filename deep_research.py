@@ -507,14 +507,21 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
 
     # Last-resort compact form still preserves valid JSON and the citation IDs
     # that can fit, rather than slicing an encoded string at an arbitrary byte.
-    minimal = {
-        "status": compact["status"],
-        "answer": compact["answer"][:1200],
-        "citations": compact["citations"][:3],
-        "limitations": ["Research report was compacted to fit the agent context."],
-        "context_truncated": True,
-    }
-    return json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))[:max_bytes]
+    for answer_limit, citation_limit in ((700, 3), (300, 2), (120, 1), (0, 0)):
+        minimal = {
+            "status": compact["status"],
+            "answer": compact["answer"][:answer_limit],
+            "citations": [
+                {"id": item["id"]}
+                for item in compact["citations"][:citation_limit]
+            ],
+            "limitations": ["Research report was compacted to fit the agent context."],
+            "context_truncated": True,
+        }
+        encoded = json.dumps(minimal, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) <= max_bytes:
+            return encoded
+    raise ResearchError("Unable to compact the research report within the requested limit")
 
 
 def execute(
