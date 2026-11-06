@@ -240,6 +240,36 @@ def init_database():
         );
         CREATE INDEX IF NOT EXISTS idx_memories_scope_created
             ON memories(scope, created_at DESC, id DESC);
+
+        CREATE TABLE IF NOT EXISTS knowledge_entities (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope           TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            entity_type     TEXT NOT NULL,
+            attributes_json TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            UNIQUE(scope, normalized_name),
+            UNIQUE(id, scope)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_entities_scope_name
+            ON knowledge_entities(scope, normalized_name);
+
+        CREATE TABLE IF NOT EXISTS knowledge_relations (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope            TEXT NOT NULL,
+            source_entity_id INTEGER NOT NULL,
+            target_entity_id INTEGER NOT NULL,
+            relation_type    TEXT NOT NULL,
+            evidence         TEXT NOT NULL DEFAULT '',
+            created_at       TEXT NOT NULL,
+            UNIQUE(scope, source_entity_id, target_entity_id, relation_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_relations_source
+            ON knowledge_relations(scope, source_entity_id, relation_type);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_relations_target
+            ON knowledge_relations(scope, target_entity_id, relation_type);
         """
     )
     conn.commit()
@@ -1013,7 +1043,8 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log", "memories", "wa_processed_messages",
+    "feature_log", "memories", "knowledge_relations", "knowledge_entities",
+    "wa_processed_messages",
 ]
 
 
