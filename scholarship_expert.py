@@ -212,6 +212,7 @@ def _llm(prompt: str, system: str) -> str:
         [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
         temperature=0.6,
         task_type="research",
+        agent_role="researcher",
     )
     if not answer or answer.startswith(("⚠️", "(تعذّر")):
         return ""
