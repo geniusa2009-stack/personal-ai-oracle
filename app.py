@@ -545,9 +545,8 @@ with tab_factory:
     if saved:
         with st.expander(f"🗂️ أرشيف المحتوى ({len(saved)})"):
             for c in saved:
-                st.markdown(f"**{c['content_type']} — {c['topic']}**  \n"
-                            f"<span style='color:#6b7280;font-size:12px'>{c['created_at']}</span>",
-                            unsafe_allow_html=True)
+                st.markdown(f"**{c['content_type']} — {c['topic']}**")
+                st.caption(c["created_at"])
                 render_report(c["body"])
 
 # ====================== تبويب مركز الميزات الموحّد ======================
@@ -583,7 +582,7 @@ with tab_hub:
         with st.spinner("بشتغل…"):
             res = group["run"](fid, hub_in)
         render_report(
-            f"**{res['name']}** ({badge.get(res['status'], res['status'])})\\n\\n{res['result']}"
+            f"**{res['name']}** ({badge.get(res['status'], res['status'])})\n\n{res['result']}"
         )
 
     with st.expander(f"📜 كل ميزات «{g_label}»"):
@@ -932,7 +931,7 @@ with tab_disc:
         if st.button("🎯 وجّهني", use_container_width=True):
             with st.spinner("…"):
                 out = discipline_oracle.sovereign_focus_prompt(ctx)
-            st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+            render_report(out)
 
     st.divider()
     dm = database.list_discipline(20)
