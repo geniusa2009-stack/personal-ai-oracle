@@ -75,6 +75,8 @@ class OpenAICompatibleProvider:
 
     def _ensure_configured(self) -> None:
         if self.require_api_key and not self.api_key:
+            if self.name == "openrouter":
+                raise OracleProviderError("missing OpenRouter API key")
             raise OracleProviderError(f"missing API key for provider: {self.name}")
 
     def chat(
