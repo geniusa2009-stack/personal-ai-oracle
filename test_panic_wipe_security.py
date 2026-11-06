@@ -17,7 +17,12 @@ def test_panic_wipe_rejects_untrusted_table_names_without_deleting(monkeypatch, 
     with pytest.raises(ValueError):
         database.panic_wipe(["entries; DROP TABLE settings;--"])
 
-    assert db.list_entries(limit=10)[0]["text"] == "private entry"
+    conn = db.get_conn()
+    try:
+        assert conn.execute("SELECT text FROM entries").fetchone()["text"] == "private entry"
+        assert conn.execute("SELECT 1 FROM settings LIMIT 1").fetchone() is None
+    finally:
+        conn.close()
 
 
 def test_panic_wipe_empty_selection_is_a_noop(monkeypatch, tmp_path):
@@ -25,7 +30,11 @@ def test_panic_wipe_empty_selection_is_a_noop(monkeypatch, tmp_path):
     db.save_entry("private entry", ["test"])
 
     assert database.panic_wipe([]) == {}
-    assert len(db.list_entries(limit=10)) == 1
+    conn = db.get_conn()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 1
+    finally:
+        conn.close()
 
 
 def test_panic_wipe_deletes_only_selected_allowlisted_tables(monkeypatch, tmp_path):
@@ -36,5 +45,9 @@ def test_panic_wipe_deletes_only_selected_allowlisted_tables(monkeypatch, tmp_pa
     result = database.panic_wipe(["entries"])
 
     assert result == {"entries": 1}
-    assert db.list_entries(limit=10) == []
+    conn = db.get_conn()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 0
+    finally:
+        conn.close()
     assert len(database.list_content(limit=10)) == 1
