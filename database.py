@@ -1026,10 +1026,14 @@ def panic_wipe(tables: list = None) -> dict:
     else:
         if not isinstance(tables, (list, tuple, set)):
             raise TypeError("tables must be a list, tuple, set, or None")
-        targets = list(dict.fromkeys(tables))
-        unknown = set(targets) - allowed
-        if unknown:
-            raise ValueError(f"table is not allowlisted for panic wipe: {sorted(unknown)!r}")
+        requested = list(tables)
+        invalid = [
+            item for item in requested
+            if not isinstance(item, str) or item not in allowed
+        ]
+        if invalid:
+            raise ValueError("panic wipe accepts allowlisted table names only")
+        targets = list(dict.fromkeys(requested))
 
     if not targets:
         return {}
