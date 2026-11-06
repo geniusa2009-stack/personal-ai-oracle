@@ -203,6 +203,7 @@ def _execute_step(step: dict[str, Any]) -> dict[str, Any]:
         }
     return {
         "tool_id": tool_id,
+        "feature_id": feature_id,
         "name": str(result.get("name") or step["tool"]["name"])[:160],
         "status": str(result.get("status") or "unknown")[:40],
         "input": step["input"][:2000],
@@ -227,7 +228,11 @@ def run(
     if max_steps is not None:
         if isinstance(max_steps, bool) or not isinstance(max_steps, int) or max_steps < 1:
             raise AgentError("max_steps must be a positive integer.")
-        allowed_steps = min(max_steps, MAX_AGENT_STEPS_HARD_LIMIT)
+        if max_steps > MAX_AGENT_STEPS_HARD_LIMIT:
+            raise AgentError(
+                f"max_steps cannot exceed {MAX_AGENT_STEPS_HARD_LIMIT}."
+            )
+        allowed_steps = max_steps
 
     results: list[dict[str, Any]] = []
     used_tool_ids: set[str] = set()
