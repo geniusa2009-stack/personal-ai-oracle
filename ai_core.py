@@ -152,14 +152,14 @@ def stream(
         yield "⚠️ أضف مفتاح OpenRouter الأول."
         return
 
-    request = AIRequest(
-        messages=tuple(messages),
-        temperature=temperature,
-        task_type=task_type,
-        requested_model=requested_model,
-        streaming=True,
-    )
     try:
+        request = AIRequest(
+            messages=tuple(messages),
+            temperature=temperature,
+            task_type=task_type,
+            requested_model=requested_model,
+            streaming=True,
+        )
         yield from _executor(provider).execute_stream(request)
-    except (OracleProviderError, AIExecutionError) as e:
-        yield f"\n\n(تعذّر البثّ: {e})"
+    except (OracleProviderError, AIExecutionError, ValueError, TypeError) as exc:
+        yield f"\n\n(تعذّر البثّ: {exc})"
