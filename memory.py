@@ -132,7 +132,7 @@ def _memory_tokens(text: str) -> set[str]:
     }
     return {
         token.casefold()
-        for token in re.findall(r"[A-Za-z0-9_]{2,}|[\\u0600-\\u06FF]{2,}", text or "")
+        for token in re.findall(r"[A-Za-z0-9_]{2,}|[\u0600-\u06FF]{2,}", text or "")
         if token.casefold() not in stop_words
     }
 
