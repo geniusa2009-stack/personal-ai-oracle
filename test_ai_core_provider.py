@@ -606,7 +606,7 @@ def test_ai_core_injects_only_explicit_memories_from_requested_scope(monkeypatch
     with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
         result = ai_core.chat(
             [{"role": "system", "content": "Be useful."},
-             {"role": "user", "content": "Hello"}],
+             {"role": "user", "content": "Please reply in concise Egyptian Arabic"}],
             memory_scope="user:owner",
         )
 
