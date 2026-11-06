@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Iterator, Protocol, Sequence
+from typing import Iterator, Mapping, Protocol, Sequence
 
 import requests
 
@@ -23,6 +23,7 @@ class LLMProvider(Protocol):
         messages: Sequence[dict],
         temperature: float = 0.7,
         model: str | None = None,
+        response_format: Mapping[str, object] | None = None,
     ) -> str:
         """Return the completed assistant message as text."""
         ...
@@ -72,6 +73,7 @@ class OpenRouterProvider:
         messages: Sequence[dict],
         temperature: float = 0.7,
         model: str | None = None,
+        response_format: Mapping[str, object] | None = None,
     ) -> str:
         """Execute a non-streaming OpenRouter chat completion."""
         if not self.api_key:
@@ -82,6 +84,8 @@ class OpenRouterProvider:
             "messages": list(messages),
             "temperature": temperature,
         }
+        if response_format is not None:
+            payload["response_format"] = dict(response_format)
         try:
             response = requests.post(
                 self.url,
