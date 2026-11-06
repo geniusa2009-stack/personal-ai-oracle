@@ -507,14 +507,34 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
 
     # Last-resort compact form still preserves valid JSON and the citation IDs
     # that can fit, rather than slicing an encoded string at an arbitrary byte.
-    for answer_limit, citation_limit in ((700, 3), (300, 2), (120, 1), (0, 0)):
+    source_lookup = {
+        item["citation_id"]: item
+        for item in compact["sources"]
+    }
+    for answer_limit, citation_limit, url_limit in (
+        (700, 3, 180), (300, 2, 100), (120, 1, 0), (0, 0, 0)
+    ):
+        selected_citations = compact["citations"][:citation_limit]
+        minimal_sources = []
+        minimal_citations = []
+        for item in selected_citations:
+            citation_id = item["id"]
+            source = source_lookup.get(citation_id)
+            minimal_sources.append({
+                "citation_id": citation_id,
+                "title": str((source or {}).get("title") or item.get("title") or "")[:80],
+                "url": str((source or {}).get("url") or item.get("url") or "")[:url_limit],
+            })
+            minimal_citations.append({
+                "id": citation_id,
+                "title": str(item.get("title") or "")[:80],
+                "url": str(item.get("url") or "")[:url_limit],
+            })
         minimal = {
             "status": compact["status"],
             "answer": compact["answer"][:answer_limit],
-            "citations": [
-                {"id": item["id"]}
-                for item in compact["citations"][:citation_limit]
-            ],
+            "citations": minimal_citations,
+            "sources": minimal_sources,
             "limitations": ["Research report was compacted to fit the agent context."],
             "context_truncated": True,
         }
