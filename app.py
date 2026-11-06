@@ -27,6 +27,7 @@ import whatsapp_agent
 import hyper_scheduler
 import content_factory
 import ai_core
+import memory
 import income_hunter
 import discipline_oracle
 import advanced_scholarship
@@ -658,6 +659,9 @@ with tab_chat:
     chat_mode = CHAT_MODES[mode_label]
     if "chat_msgs" not in st.session_state:
         st.session_state.chat_msgs = []
+    # Bound conversation context to 12 recent turns to control latency and token cost.
+    st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
+    memory_scope = os.environ.get("ORACLE_MEMORY_SCOPE", "user:oracle-owner")
     cc = st.columns([1, 5])
     if cc[0].button("🧹 مسح الشات"):
         st.session_state.chat_msgs = []
@@ -671,13 +675,71 @@ with tab_chat:
         else:
             _ensure_env_key()
             st.session_state.chat_msgs.append({"role": "user", "content": prompt})
+            st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
             with st.chat_message("user"):
                 st.markdown(prompt)
             msgs = [{"role": "system", "content": ai_core.system_prompt(chat_mode)}] \
                 + st.session_state.chat_msgs
             with st.chat_message("assistant"):
-                out = st.write_stream(ai_core.stream(msgs))
+                out = st.write_stream(
+                    ai_core.stream(msgs, memory_scope=memory_scope)
+                )
             st.session_state.chat_msgs.append({"role": "assistant", "content": out})
+            st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
+
+    with st.expander("🧠 الذاكرة الشخصية — أنت تتحكم فيما يُحفظ", expanded=False):
+        st.caption("الذكريات المحفوظة صراحةً فقط تدخل في سياق المحادثة. لا تُحفظ رسائلك تلقائياً.")
+        with st.form("oracle_memory_write", clear_on_submit=True):
+            memory_content = st.text_area(
+                "معلومة أو تفضيل أو هدف تريد من Oracle تذكّره",
+                max_chars=4000,
+            )
+            memory_type_label = st.selectbox(
+                "نوع الذاكرة", ["حقيقة", "تفضيل", "هدف"]
+            )
+            memory_saved = st.form_submit_button("💾 احفظ في ذاكرتي")
+        if memory_saved:
+            type_map = {"حقيقة": "fact", "تفضيل": "preference", "هدف": "goal"}
+            try:
+                record = memory.write_memory(
+                    memory_content,
+                    type_map[memory_type_label],
+                    memory_scope,
+                    "manual",
+                )
+                st.success(f"اتحفظت الذاكرة رقم {record.id}.")
+                st.rerun()
+            except memory.MemoryValidationError as exc:
+                st.error(str(exc))
+
+        saved_memories = memory.list_memories(memory_scope, limit=50)
+        if saved_memories:
+            st.dataframe(
+                [{
+                    "ID": item.id,
+                    "النوع": {"fact": "حقيقة", "preference": "تفضيل", "goal": "هدف"}.get(item.memory_type, item.memory_type),
+                    "المحتوى": item.content,
+                    "المصدر": item.source,
+                    "التاريخ": item.created_at,
+                } for item in saved_memories],
+                use_container_width=True,
+                hide_index=True,
+            )
+            selected_memory = st.selectbox(
+                "اختر ذاكرة لحذفها",
+                options=[item.id for item in saved_memories],
+                format_func=lambda item_id: next(
+                    f"#{item_id} — {next((item.content[:70] for item in saved_memories if item.id == item_id), '')}"
+                    for _ in [0]
+                ),
+                key="oracle_memory_delete_id",
+            )
+            if st.button("🗑️ احذف الذاكرة المختارة", key="oracle_memory_delete"):
+                memory.delete_memory(selected_memory, memory_scope)
+                st.success("تم حذف الذاكرة.")
+                st.rerun()
+        else:
+            st.caption("لسه مفيش ذكريات محفوظة.")
 
 # ====================== تبويب ماكينة الدخل ======================
 with tab_income:
