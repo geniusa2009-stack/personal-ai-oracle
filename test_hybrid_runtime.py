@@ -187,7 +187,7 @@ def test_cloud_result_body_expires_after_retention_window(tmp_path, monkeypatch)
     cloud_control.init_db()
     with cloud_control._db_connection() as connection:
         row = connection.execute(
-            "SELECT result_json,task,tool_input,error FROM jobs WHERE job_id='retention-test'
+            "SELECT result_json,task,tool_input,error FROM jobs WHERE job_id='retention-test'"
         ).fetchone()
     assert row["result_json"] is None
     assert row["task"] == ""
