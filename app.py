@@ -1009,7 +1009,7 @@ with tab_settings:
 
     st.divider()
     st.markdown("#### 🔐 الخزنة المشفّرة (password_vault)")
-    reveal = st.toggle("اعرض كلمات السر (محلياً فقط)", value=False)
+    reveal = st.toggle("اعرض كلمات السر (يتطلب ORACLE_VAULT_KEY)", value=False)
     vault = database.list_vault(reveal=reveal)
     if vault:
         st.dataframe([{"الاسم": v["label"], "اليوزر": v["username"],
