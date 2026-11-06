@@ -661,7 +661,7 @@ with tab_chat:
         st.session_state.chat_msgs = []
     # Bound conversation context to 12 recent turns to control latency and token cost.
     st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
-    memory_scope = os.environ.get("ORACLE_MEMORY_SCOPE", "user:oracle-owner")
+    memory_scope = (os.environ.get("ORACLE_MEMORY_SCOPE") or "user:oracle-owner").strip()
     cc = st.columns([1, 5])
     if cc[0].button("🧹 مسح الشات"):
         st.session_state.chat_msgs = []
@@ -725,13 +725,14 @@ with tab_chat:
                 use_container_width=True,
                 hide_index=True,
             )
+            memory_labels = {
+                item.id: f"#{item.id} — {item.content[:70]}"
+                for item in saved_memories
+            }
             selected_memory = st.selectbox(
                 "اختر ذاكرة لحذفها",
-                options=[item.id for item in saved_memories],
-                format_func=lambda item_id: next(
-                    f"#{item_id} — {next((item.content[:70] for item in saved_memories if item.id == item_id), '')}"
-                    for _ in [0]
-                ),
+                options=list(memory_labels),
+                format_func=lambda item_id: memory_labels[item_id],
                 key="oracle_memory_delete_id",
             )
             if st.button("🗑️ احذف الذاكرة المختارة", key="oracle_memory_delete"):
