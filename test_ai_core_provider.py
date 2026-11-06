@@ -544,3 +544,83 @@ def test_ai_core_request_api_key_does_not_mutate_process_environment(monkeypatch
     assert result == "answer"
     assert chat.call_args.kwargs["model"] == "deepseek/deepseek-chat"
     assert os.environ["OPENROUTER_API_KEY"] == "environment-key"
+
+
+def test_ai_request_freezes_structured_response_format():
+    response_format = {"type": "json_object", "schema": {"required": ["answer"]}}
+    request = AIRequest(
+        messages=({"role": "user", "content": "return JSON"},),
+        temperature=0.1,
+        response_format=response_format,
+    )
+    response_format["schema"]["required"].append("secret")
+
+    assert request.response_format["schema"]["required"] == ("answer",)
+
+
+def test_executor_forwards_response_format_only_when_requested():
+    provider = Mock()
+    provider.chat.return_value = "answer"
+    request = AIRequest(
+        messages=({"role": "user", "content": "return JSON"},),
+        temperature=0.2,
+        response_format={"type": "json_object"},
+    )
+
+    _executor(provider).execute(request)
+
+    provider.chat.assert_called_once_with(
+        [{"role": "user", "content": "return JSON"}],
+        temperature=0.2,
+        model="default/model",
+        response_format={"type": "json_object"},
+    )
+
+
+def test_provider_includes_structured_output_format(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    provider = OpenRouterProvider()
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"choices": [{"message": {"content": '{"ok":true}'}}]}
+
+    with patch("llm_provider.requests.post", return_value=response) as post:
+        assert provider.chat(
+            [{"role": "user", "content": "JSON"}],
+            response_format={"type": "json_object"},
+        ) == '{"ok":true}'
+
+    payload = json.loads(post.call_args.kwargs["data"])
+    assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_ai_core_injects_only_explicit_memories_from_requested_scope(monkeypatch, tmp_path):
+    import db
+    import memory
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "oracle-ai-memory.db"))
+    memory.write_memory("Prefers concise Egyptian Arabic", "preference", "user:owner", "manual")
+    memory.write_memory("Private fact for another scope", "fact", "user:other", "manual")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer") as chat:
+        result = ai_core.chat(
+            [{"role": "system", "content": "Be useful."},
+             {"role": "user", "content": "Hello"}],
+            memory_scope="user:owner",
+        )
+
+    assert result == "answer"
+    sent_messages = chat.call_args.args[0]
+    system = next(item["content"] for item in sent_messages if item["role"] == "system")
+    assert "Prefers concise Egyptian Arabic" in system
+    assert "Private fact for another scope" not in system
+
+
+def test_ai_core_without_memory_scope_does_not_read_memory(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch("memory.list_memories", side_effect=AssertionError("memory should not be read")):
+        with patch.object(ai_core.OpenRouterProvider, "chat", return_value="answer"):
+            assert ai_core.chat(
+                [{"role": "user", "content": "Hello"}]
+            ) == "answer"
