@@ -53,15 +53,32 @@ def has_key() -> bool:
     return bool(os.environ.get("OPENROUTER_API_KEY"))
 
 
-def _provider() -> OpenRouterProvider:
-    """Return the current configured provider without changing legacy config."""
-    return OpenRouterProvider()
+def _provider(api_key: str | None = None) -> OpenRouterProvider:
+    """Return a request-local provider; explicit keys never mutate process env."""
+    return OpenRouterProvider(api_key=api_key) if api_key is not None else OpenRouterProvider()
 
 
 def _router(provider: OpenRouterProvider | None = None) -> ModelRouter:
-    """Build a request-local router from the current configured default model."""
+    """Build a request-local router using optional per-task model configuration."""
     provider = provider or _provider()
-    return ModelRouter(default_provider="openrouter", default_model=provider.model)
+    category_env = {
+        "fast": "ORACLE_MODEL_FAST",
+        "reasoning": "ORACLE_MODEL_REASONING",
+        "coding": "ORACLE_MODEL_CODING",
+        "research": "ORACLE_MODEL_RESEARCH",
+        "writing": "ORACLE_MODEL_WRITING",
+        "creative": "ORACLE_MODEL_CREATIVE",
+    }
+    category_models = {
+        task: os.environ[env_name].strip()
+        for task, env_name in category_env.items()
+        if os.environ.get(env_name, "").strip()
+    }
+    return ModelRouter(
+        default_provider="openrouter",
+        default_model=provider.model,
+        category_models=category_models,
+    )
 
 
 def _executor(provider: OpenRouterProvider) -> AIExecutor:
@@ -69,10 +86,18 @@ def _executor(provider: OpenRouterProvider) -> AIExecutor:
     return AIExecutor(router=_router(provider), provider=provider)
 
 
-def llm(instruction: str, user_input: str, mode: str = "friendly",
-        temperature: float = 0.7) -> str:
+def llm(
+    instruction: str,
+    user_input: str,
+    mode: str = "friendly",
+    temperature: float = 0.7,
+    *,
+    task_type: str | None = None,
+    requested_model: str | None = None,
+    api_key: str | None = None,
+) -> str:
     """استدعاء عام للنموذج بشخصية مرنة. لا يرمي استثناءً."""
-    provider = _provider()
+    provider = _provider(api_key)
     if not provider.api_key:
         return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
 
@@ -83,6 +108,8 @@ def llm(instruction: str, user_input: str, mode: str = "friendly",
              "(المستخدم لم يكتب تفاصيل — اطلب المعلومات الناقصة باختصار وبأدب.)"},
         ),
         temperature=temperature,
+        task_type=task_type,
+        requested_model=requested_model,
     )
     try:
         return _executor(provider).execute(request).content
@@ -90,9 +117,16 @@ def llm(instruction: str, user_input: str, mode: str = "friendly",
         return f"(تعذّر التشغيل: {e})"
 
 
-def stream(messages: list, temperature: float = 0.8):
-    """بثّ متعدد الرسائل (للشات المرن)."""
-    provider = _provider()
+def stream(
+    messages: list,
+    temperature: float = 0.8,
+    *,
+    task_type: str | None = None,
+    requested_model: str | None = None,
+    api_key: str | None = None,
+):
+    """بثّ متعدد الرسائل (للشات المرن) عبر مسار التوجيه الموحد."""
+    provider = _provider(api_key)
     if not provider.api_key:
         yield "⚠️ أضف مفتاح OpenRouter الأول."
         return
@@ -100,6 +134,8 @@ def stream(messages: list, temperature: float = 0.8):
     request = AIRequest(
         messages=tuple(messages),
         temperature=temperature,
+        task_type=task_type,
+        requested_model=requested_model,
         streaming=True,
     )
     try:
