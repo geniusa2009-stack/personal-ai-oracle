@@ -207,10 +207,13 @@ with st.sidebar:
     key_env = PROVIDER_KEY_ENV.get(provider_name)
     api_key = None
     if key_env:
+        default_api_key = os.environ.get(key_env, "")
+        if provider_name == "gemini":
+            default_api_key = default_api_key or os.environ.get("GOOGLE_API_KEY", "")
         api_key = st.text_input(
             f"مفتاح {PROVIDER_LABELS.get(provider_name, provider_name)}",
             type="password",
-            value=os.environ.get(key_env, ""),
+            value=default_api_key,
         )
         if api_key:
             os.environ[key_env] = api_key
@@ -280,7 +283,7 @@ with tab_analyze:
         st.markdown("### 📊 لوحة التحليل الاستراتيجي")
         if analyze_button:
             if not ai_core.has_key(provider_name):
-                st.error("ضع مفتاح الـ API أولاً في القائمة الجانبية.")
+                st.error("اضبط مزود الذكاء الاصطناعي في القائمة الجانبية.")
             elif not user_log.strip():
                 st.warning("اكتب بعض الأفكار أولاً.")
             else:
@@ -727,7 +730,7 @@ with tab_chat:
                             agent_result = agent_orchestrator.run(
                                 prompt,
                                 memory_scope=memory_scope,
-                                max_steps=3,
+                                max_steps=None,
                             )
                         out = agent_result["answer"]
                         st.markdown(out)
