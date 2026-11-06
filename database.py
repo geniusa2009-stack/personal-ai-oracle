@@ -1011,26 +1011,44 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log", "memories",
+    "feature_log", "memories", "wa_processed_messages",
 ]
 
 
 def panic_wipe(tables: list = None) -> dict:
-    """يمسح فوراً السجلات الحساسة من قاعدة البيانات. يُعيد عدد المحذوف لكل جدول."""
+    """Delete only explicitly allowlisted sensitive tables in one transaction."""
     init_database()
-    targets = tables or SENSITIVE_TABLES
+    allowed = set(SENSITIVE_TABLES)
+    if tables is None:
+        targets = list(SENSITIVE_TABLES)
+    else:
+        if not isinstance(tables, (list, tuple, set)):
+            raise TypeError("tables must be a list, tuple, set, or None")
+        targets = list(dict.fromkeys(tables))
+        unknown = set(targets) - allowed
+        if unknown:
+            raise ValueError(f"table is not allowlisted for panic wipe: {sorted(unknown)!r}")
+
+    if not targets:
+        return {}
+
     conn = get_conn()
     wiped = {}
-    for t in targets:
-        try:
-            n = conn.execute(f"SELECT COUNT(*) AS c FROM {t}").fetchone()["c"]
-            conn.execute(f"DELETE FROM {t}")
-            wiped[t] = n
-        except Exception:
-            wiped[t] = "—"
-    conn.commit()
-    conn.close()
-    return wiped
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for table_name in targets:
+            count = conn.execute(
+                f"SELECT COUNT(*) AS c FROM {table_name}"
+            ).fetchone()["c"]
+            conn.execute(f"DELETE FROM {table_name}")
+            wiped[table_name] = count
+        conn.commit()
+        return wiped
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
