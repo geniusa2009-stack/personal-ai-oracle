@@ -91,25 +91,25 @@ def generate_reply(text: str, contact: dict, history: list = None) -> str:
     scholarship_ctx = ""
     if is_scholarship_query(text):
         info = answer_scholarship_query(text, use_web=True)
-        scholarship_ctx = f"\\n\\n[معلومات من خبير المنح لتلخيصها بالعامية للمرسل]:\\n{info}"
+        scholarship_ctx = f"\n\n[معلومات من خبير المنح لتلخيصها بالعامية للمرسل]:\n{info}"
 
     memory_ctx = ""
     if history:
         lines = [
-            f"المرسِل: {item.get('incoming_message', '')}\\nانت: {item.get('smart_reply', '')}"
+            f"المرسِل: {item.get('incoming_message', '')}\nانت: {item.get('smart_reply', '')}"
             for item in history if item.get("incoming_message")
         ]
         if lines:
             memory_ctx = (
-                "سياق المحادثة السابقة (للاستمرارية):\\n"
-                + "\\n".join(lines)
-                + "\\n\\n"
+                "سياق المحادثة السابقة (للاستمرارية):\n"
+                + "\n".join(lines)
+                + "\n\n"
             )
 
     system = build_system_prompt(contact)
     user = (
-        f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\\n«{text}»{scholarship_ctx}"
-        "\\n\\nاكتب الرد المناسب بالعامية."
+        f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\n«{text}»{scholarship_ctx}"
+        "\n\nاكتب الرد المناسب بالعامية."
     )
     reply = ai_core.chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
