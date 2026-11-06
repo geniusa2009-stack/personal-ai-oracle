@@ -61,8 +61,8 @@ def _rank_with_llm(items: list) -> list:
         "والفائدة، واكتب ملخصاً عربياً موجزاً لكل فرصة. لا تعتبر وجود النتيجة دليلاً "
         "على صحتها، ولا تمنح درجة مرتفعة لمجرد صياغة جذابة. "
         "أعد JSON فقط بهذا الشكل: "
-        '{"ranked":[{"i":0,"score":50,"summary":"سبب مختصر"}]}\\n\\n'
-        f"الفرص:\\n{json.dumps(compact, ensure_ascii=False)}"
+        '{"ranked":[{"i":0,"score":50,"summary":"سبب مختصر"}]}\n\n'
+        f"الفرص:\n{json.dumps(compact, ensure_ascii=False)}"
     )
     content = ai_core.chat(
         [{"role": "user", "content": prompt}],
