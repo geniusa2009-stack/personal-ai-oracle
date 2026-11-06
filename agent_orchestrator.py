@@ -53,7 +53,7 @@ def available_tools() -> list[dict[str, Any]]:
     return tools
 
 
-def _build_plan(task: str, max_steps: int, memory_scope: str | None) -> list[dict[str, Any]]:
+def _build_plan(task: str, max_steps: int, memory_scope: str | None) -> dict[str, Any]:
     tools = available_tools()
     tool_catalog = json.dumps(tools, ensure_ascii=False)
     system = (
@@ -89,6 +89,10 @@ def _build_plan(task: str, max_steps: int, memory_scope: str | None) -> list[dic
     raw_steps = data.get("steps", [])
     if not isinstance(raw_steps, list):
         raise AgentError("حقل steps يجب أن يكون قائمة.")
+    clarifying_question = data.get("clarifying_question", "")
+    if not isinstance(clarifying_question, str):
+        clarifying_question = ""
+    clarifying_question = clarifying_question.strip()[:500]
 
     allowlist = {tool["id"]: tool for tool in tools}
     steps = []
@@ -116,7 +120,7 @@ def _build_plan(task: str, max_steps: int, memory_scope: str | None) -> list[dic
         })
         seen.add(feature_id)
 
-    return steps
+    return {"steps": steps, "clarifying_question": clarifying_question}
 
 
 def run(
@@ -138,11 +142,13 @@ def run(
     ):
         raise AgentError(f"عدد الخطوات يجب أن يكون من 1 إلى {MAX_AGENT_STEPS}.")
 
-    steps = _build_plan(task, max_steps, memory_scope)
+    plan = _build_plan(task, max_steps, memory_scope)
+    steps = plan["steps"]
     if not steps:
+        question = plan["clarifying_question"] or "إيه المعلومة الناقصة اللي تحب توضحها؟"
         return {
-            "answer": "محتاج توضيحاً إضافياً قبل اختيار أداة مناسبة.",
-            "clarifying_question": "",
+            "answer": question,
+            "clarifying_question": question,
             "steps": [],
         }
 
@@ -200,6 +206,6 @@ def run(
 
     return {
         "answer": answer,
-        "clarifying_question": "",
+        "clarifying_question": plan["clarifying_question"],
         "steps": results,
     }
