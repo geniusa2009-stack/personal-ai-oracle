@@ -127,3 +127,29 @@ If `ORACLE_CLOUD_API_URL` is configured in the Mac's private environment file, t
 CI runs Python compilation and the pytest suite, including cloud job validation, token hashing, browser URL validation, provider routing, local tools, agent planning, webhook validation and vault migration.
 
 A successful CI run validates the code and API contracts; it does not by itself prove deployment credentials, cloud-provider configuration, browser binaries, or the user's physical Mac hardware are configured.
+
+
+## Intelligence layer: knowledge graph and automatic model tiers
+
+Oracle can enrich a request with a small, scope-isolated knowledge-graph context.
+Only entities and relationships explicitly saved through `knowledge_graph.py`
+are retrieved; graph records are bounded and treated as untrusted context.
+
+Automatic quality-tier routing is **off by default**. Enable it in the private
+local environment file with:
+
+```env
+ORACLE_AUTO_MODEL_ROUTING=true
+ORACLE_MODEL_TIER_FAST=<provider-model-id>
+ORACLE_MODEL_TIER_BALANCED=<provider-model-id>
+ORACLE_MODEL_TIER_DEEP=<provider-model-id>
+ORACLE_PROVIDER_TIER_FAST=<configured-provider>
+ORACLE_PROVIDER_TIER_BALANCED=<configured-provider>
+ORACLE_PROVIDER_TIER_DEEP=<configured-provider>
+```
+
+Task-specific `ORACLE_MODEL_<TASK>` / `ORACLE_PROVIDER_<TASK>` settings take
+precedence over tier settings. Explicit role-level provider/model settings take
+precedence over automatic selection. Oracle does not silently switch providers
+when a selected provider is unavailable: configure the intended provider/model
+and its credentials first. This avoids unexpected data transfers or costs.

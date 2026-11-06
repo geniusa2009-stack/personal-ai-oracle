@@ -95,6 +95,23 @@ def _entity_type(value: str) -> str:
     return normalized
 
 
+def _contains_secret(value: Any) -> bool:
+    """Inspect both structured field names and nested string values."""
+    sensitive_key = re.compile(
+        r"(?:^|[_-])(?:api[_-]?key|access[_-]?token|authorization|password|"
+        r"private[_-]?key|secret)(?:$|[_-])",
+        re.IGNORECASE,
+    )
+    if isinstance(value, Mapping):
+        return any(
+            sensitive_key.search(str(key)) is not None or _contains_secret(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_contains_secret(item) for item in value)
+    return isinstance(value, str) and _SECRET_PATTERN.search(value) is not None
+
+
 def _attributes(value: Mapping[str, Any] | None) -> tuple[dict[str, Any], str]:
     if value is None:
         normalized: dict[str, Any] = {}
@@ -114,7 +131,7 @@ def _attributes(value: Mapping[str, Any] | None) -> tuple[dict[str, Any], str]:
         raise KnowledgeGraphError("attributes must contain JSON-compatible values") from exc
     if len(serialized) > MAX_ATTRIBUTES_LENGTH:
         raise KnowledgeGraphError("attributes are too large")
-    if _SECRET_PATTERN.search(serialized):
+    if _contains_secret(normalized):
         raise KnowledgeGraphError("credentials and secrets cannot be stored in the graph")
     return normalized, serialized
 

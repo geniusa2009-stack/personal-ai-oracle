@@ -33,6 +33,11 @@ def test_graph_rejects_secrets_invalid_types_and_oversized_attributes(monkeypatc
     with pytest.raises(knowledge_graph.KnowledgeGraphError):
         knowledge_graph.add_entity("owner:one", "Project", attributes={"password": "x"})
 
+    with pytest.raises(knowledge_graph.KnowledgeGraphError):
+        knowledge_graph.add_entity(
+            "owner:one", "Project", attributes={"metadata": {"private_key": "hidden"}}
+        )
+
 
 def test_relations_require_same_scope_and_are_idempotent(monkeypatch, tmp_path):
     _use_test_database(monkeypatch, tmp_path)

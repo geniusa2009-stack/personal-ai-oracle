@@ -235,7 +235,11 @@ def chat(
                 # Let the router apply task/tier policy unless this role has
                 # an explicit provider override in the user's private config.
                 provider_name = explicit_role_provider or None
-                requested_model = explicit_role_model or requested_model
+                requested_model = (
+                    explicit_role_model
+                    or (profile.get("model") if explicit_role_provider else None)
+                    or requested_model
+                )
             else:
                 profile_provider = profile.get("provider")
                 caller_key_provider = (provider_name or default_provider_name()).strip().lower()
@@ -316,13 +320,28 @@ def stream(
     try:
         if agent_role:
             import agent_profiles
-            caller_key_provider = (provider_name or default_provider_name()).strip().lower()
             profile = agent_profiles.resolve_profile(agent_role)
-            profile_provider = profile.get("provider")
-            if profile_provider and profile_provider.strip().lower() != caller_key_provider:
-                api_key = None
-            provider_name = profile_provider or provider_name
-            requested_model = profile.get("model") or requested_model
+            prefix = agent_profiles.ROLE_DEFAULTS[agent_role.strip().lower()][0]
+            auto_routing = os.environ.get("ORACLE_AUTO_MODEL_ROUTING", "").strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+            explicit_role_provider = os.environ.get(f"{prefix}_PROVIDER", "").strip().lower()
+            explicit_role_model = os.environ.get(f"{prefix}_MODEL", "").strip()
+            if auto_routing and provider_name is None:
+                provider_name = explicit_role_provider or None
+                requested_model = (
+                    explicit_role_model
+                    or (profile.get("model") if explicit_role_provider else None)
+                    or requested_model
+                )
+            else:
+                profile_provider = profile.get("provider")
+                caller_key_provider = (provider_name or default_provider_name()).strip().lower()
+                if profile_provider and profile_provider.strip().lower() != caller_key_provider:
+                    api_key = None
+                provider_name = profile_provider or provider_name
+                requested_model = profile.get("model") or requested_model
+            task_type = task_type or profile.get("task_type")
             if profile.get("temperature") is not None:
                 temperature = profile["temperature"]
         executor = _multi_executor(provider_name=provider_name, api_key=api_key)
