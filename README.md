@@ -166,3 +166,22 @@ allowlist. Set `ORACLE_ENABLE_WORKFLOW_LEDGER=false` to disable trace creation,
 or `ORACLE_WORKFLOW_SCOPE` to choose a stable owner scope when no memory scope
 is passed to the orchestrator. A step left in `running` state is visible as an
 interrupted checkpoint; automatic replay/resume is not enabled by this ledger.
+
+
+## Deep Research Engine
+
+The Planner can now select `web.deep_research` for evidence-heavy questions. The
+research engine asks the Researcher for up to four distinct search queries, searches
+and deduplicates normalized HTTP(S) sources, and can extract up to six pages through
+Oracle's isolated browser. In cloud mode, public search runs in the cloud while page
+navigation is dispatched to the paired Mac agent.
+
+Each source receives a stable per-report citation ID (`[S1]`, `[S2]`, ...).
+The synthesis is checked against the actual source IDs; unknown model-generated
+citations are flagged instead of being treated as valid. Reports distinguish
+extracted page text from search-snippet-only evidence and expose limitations,
+queries, URLs and source-domain hints. Domain hints are not reliability guarantees.
+
+Research limits are bounded in code (up to 4 queries, 12 sources, 6 page fetches
+and a 26,000-character synthesis context). Raw research page contents are returned
+for the current run only and are not persisted by the research engine.
