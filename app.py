@@ -31,6 +31,7 @@ import income_hunter
 import discipline_oracle
 import advanced_scholarship
 import feature_hub  # يجمّع features + advanced_module + wealth_empire
+from access_control import AUTHENTICATED_SESSION_KEY, require_app_auth
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -42,6 +43,10 @@ MODELS = {
 
 st.set_page_config(page_title="الوكيل الذكي الشخصي", page_icon="🔮",
                    layout="wide", initial_sidebar_state="expanded")
+
+# The app stores private diaries, contacts, finance data and vault records.
+# Fail closed before database initialization or any user-data rendering.
+require_app_auth(st)
 
 # ---------------------------------------------------------------------------
 # تهيئة قاعدة البيانات + تشغيل المجدول الخلفي مرة واحدة لكل عملية
@@ -115,26 +120,14 @@ def _headers(api_key):
 
 
 def stream_openrouter(api_key, model, prompt):
-    payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-               "stream": True, "temperature": 0.8}
-    with requests.post(OPENROUTER_URL, headers=_headers(api_key),
-                       data=json.dumps(payload), stream=True, timeout=180) as resp:
-        resp.raise_for_status()
-        for raw in resp.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            chunk = line[6:].strip()
-            if chunk == "[DONE]":
-                break
-            try:
-                delta = json.loads(chunk)["choices"][0]["delta"].get("content")
-                if delta:
-                    yield delta
-            except Exception:
-                continue
+    """Compatibility wrapper: route deep-analysis streaming through the shared AI core."""
+    yield from ai_core.stream(
+        [{"role": "user", "content": prompt}],
+        temperature=0.8,
+        task_type="reasoning",
+        requested_model=model,
+        api_key=api_key,
+    )
 
 
 def extract_keywords(api_key, model, text):
@@ -185,6 +178,10 @@ def build_prompt(user_log):
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 🔮 لوحة التحكم")
+    if st.button("🔒 تسجيل الخروج", key="oracle_logout", use_container_width=True):
+        st.session_state.pop(AUTHENTICATED_SESSION_KEY, None)
+        st.rerun()
+    st.divider()
     env_key = os.environ.get("OPENROUTER_API_KEY", "")
     api_key = st.text_input("🔑 مفتاح OpenRouter API:", type="password", value=env_key)
     if api_key:
