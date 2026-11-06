@@ -105,23 +105,23 @@ def test_legacy_database_key_and_base64_rows_are_migrated(monkeypatch, tmp_path)
     assert all(row["secret_enc"].startswith("f:") for row in encrypted_rows)
 
 
-def test_wrong_external_key_rolls_back_legacy_migration(monkeypatch, tmp_path):
+def test_corrupt_legacy_vault_row_rolls_back_migration(monkeypatch, tmp_path):
     _use_test_database(monkeypatch, tmp_path)
     legacy_key = Fernet.generate_key()
-    cipher = Fernet(legacy_key).encrypt(b"legacy-secret").decode("ascii")
     db.set_setting("vault_key", legacy_key.decode("ascii"))
     conn = db.get_conn()
     try:
         conn.execute(
             "INSERT INTO password_vault(label, username, secret_enc, created_at) "
             "VALUES(?,?,?,?)",
-            ("old", "owner", "f:" + cipher, "2026-01-01T00:00:00"),
+            ("corrupt", "owner", "f:not-a-valid-fernet-token", "2026-01-01T00:00:00"),
         )
         conn.commit()
     finally:
         conn.close()
 
-    monkeypatch.setenv("ORACLE_VAULT_KEY", Fernet.generate_key().decode("ascii"))
+    new_key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("ORACLE_VAULT_KEY", new_key)
     with pytest.raises(database.VaultMigrationError):
         database.migrate_legacy_vault_key()
 
@@ -135,4 +135,4 @@ def test_wrong_external_key_rolls_back_legacy_migration(monkeypatch, tmp_path):
         conn.close()
 
     assert key_row["value"] == legacy_key.decode("ascii")
-    assert stored == "f:" + cipher
+    assert stored == "f:not-a-valid-fernet-token"
