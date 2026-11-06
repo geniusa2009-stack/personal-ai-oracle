@@ -128,7 +128,7 @@ def extract_keywords(api_key, model, text):
     prompt = (
         "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
         "مجالات يبحث فيها صاحبه عن فرص. أعد JSON فقط بهذا الشكل: "
-        '{"keywords":["..."]}.\\n\\nالنص:\\n' + text
+        '{"keywords":["..."]}.\n\nالنص:\n' + text
     )
     try:
         content = ai_core.chat(
