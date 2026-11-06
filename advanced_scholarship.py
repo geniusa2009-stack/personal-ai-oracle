@@ -69,7 +69,7 @@ def optimize_personal_statement(draft: str, program: str = "", tier: str = "top_
         "كن صادقاً: حسّن الجودة والفرص، وما تَعِدش بقبول مضمون."
     )
     payload = f"البرنامج/الجامعة: {program or '—'}\n\nالمسودّة:\n{draft}"
-    return ai_core.llm(instruction, payload, mode="professional", temperature=0.6)
+    return ai_core.llm(instruction, payload, mode="professional", temperature=0.6, agent_role="writer")
 
 
 def optimize_cv(cv_text: str, target_role: str = "") -> str:
@@ -79,7 +79,7 @@ def optimize_cv(cv_text: str, target_role: str = "") -> str:
         "اعرض: أهم الثغرات، ثم نقاط خبرة معاد صياغتها بأفعال إنجاز وأرقام، ثم ترتيب مقترح."
     )
     payload = f"الوظيفة/البرنامج المستهدف: {target_role or '—'}\n\nالسيرة:\n{cv_text}"
-    return ai_core.llm(instruction, payload, mode="professional", temperature=0.5)
+    return ai_core.llm(instruction, payload, mode="professional", temperature=0.5, agent_role="writer")
 
 
 def originality_rewrite(text: str) -> str:
@@ -89,7 +89,7 @@ def originality_rewrite(text: str) -> str:
         "في الآخر ذكّر المستخدم إن دي خطوة لتحسين الأصالة، ويُفضّل يفحصه بأداة انتحال "
         "متخصّصة قبل التسليم — من غير أي ادعاء بنسبة صفر مضمونة."
     )
-    return ai_core.llm(instruction, text, mode="professional", temperature=0.4)
+    return ai_core.llm(instruction, text, mode="professional", temperature=0.4, agent_role="writer")
 
 
 # --------------------------------------------------------------------------
