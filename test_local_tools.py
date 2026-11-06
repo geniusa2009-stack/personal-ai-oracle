@@ -72,7 +72,7 @@ def test_local_command_runs_as_current_user_without_shell(tmp_path):
 
     assert result["status"] == "success"
     assert result["exit_code"] == 0
-    assert "oracle-local-command" in result["result"]
+    assert str(sample) in result["result"]
 
 
 def test_local_command_requires_an_argument_array():
@@ -90,7 +90,7 @@ def test_local_command_uses_shell_false(monkeypatch, tmp_path):
     with patch("local_tools.subprocess.run", return_value=completed) as run:
         result = local_tools.execute(
             "local.run_command",
-            {"command": ["echo", "ok"], "cwd": str(tmp_path), "timeout": 5},
+            {"command": ["git", "status"], "cwd": str(tmp_path), "timeout": 5},
         )
 
     assert result["status"] == "success"
