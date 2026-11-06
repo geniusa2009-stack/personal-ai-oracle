@@ -6,6 +6,7 @@ import pytest
 
 import agent_orchestrator
 import features
+import local_tools
 
 
 def _plan(feature_id=None, user_input="safe input", question=""):
@@ -221,4 +222,105 @@ def test_agent_answers_directly_when_no_tool_is_needed(monkeypatch):
 
     assert result["answer"] == "direct answer without tools"
     assert result["steps"] == []
+    assert chat.call_count == 2
+
+
+def test_executor_reviews_destructive_local_actions_before_execution(monkeypatch):
+    tool = next(
+        item for item in agent_orchestrator.available_tools()
+        if item["tool_id"] == "local.delete_path"
+    )
+    step = {
+        "tool_id": "local.delete_path",
+        "input": json.dumps({"path": "/tmp/example", "recursive": True}),
+        "tool": tool,
+    }
+    monkeypatch.setattr(
+        agent_orchestrator.ai_core,
+        "chat",
+        lambda *args, **kwargs: json.dumps({
+            "approved": False,
+            "reason": "The requested delete is broader than the stated task.",
+        }),
+    )
+    execute = Mock()
+    monkeypatch.setattr(local_tools, "execute", execute)
+
+    result = agent_orchestrator._execute_step(
+        step,
+        task="Read a file only",
+        memory_scope=None,
+    )
+
+    assert result["status"] == "blocked_by_executor"
+    assert "broader" in result["result"]
+    execute.assert_not_called()
+
+
+def test_executor_approved_local_action_runs_with_current_user_tool(monkeypatch, tmp_path):
+    tool = next(
+        item for item in agent_orchestrator.available_tools()
+        if item["tool_id"] == "local.write_file"
+    )
+    target = tmp_path / "oracle.txt"
+    step = {
+        "tool_id": "local.write_file",
+        "input": json.dumps({"path": str(target), "content": "approved"}),
+        "tool": tool,
+    }
+    monkeypatch.setattr(
+        agent_orchestrator.ai_core,
+        "chat",
+        lambda *args, **kwargs: json.dumps({
+            "approved": True,
+            "reason": "The single-file write is relevant to the task.",
+        }),
+    )
+
+    result = agent_orchestrator._execute_step(
+        step,
+        task="Create the requested local note",
+        memory_scope=None,
+    )
+
+    assert result["status"] == "success"
+    assert target.read_text(encoding="utf-8") == "approved"
+    assert "executor_review" in result
+
+
+def test_coder_agent_diagnoses_failed_local_build_command(monkeypatch):
+    tool = next(
+        item for item in agent_orchestrator.available_tools()
+        if item["tool_id"] == "local.run_command"
+    )
+    step = {
+        "tool_id": "local.run_command",
+        "input": json.dumps({"command": ["git", "status"]}),
+        "tool": tool,
+    }
+    chat = Mock(side_effect=[
+        json.dumps({"approved": True, "reason": "The git status check is appropriate."}),
+        "The repository command failed because the working directory is missing.",
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+    monkeypatch.setattr(
+        local_tools,
+        "execute",
+        lambda *args, **kwargs: {
+            "name": "local.run_command",
+            "status": "error",
+            "exit_code": 128,
+            "result": "fatal: not a git repository",
+        },
+    )
+
+    result = agent_orchestrator._execute_step(
+        step,
+        task="Check the repository status",
+        memory_scope=None,
+    )
+
+    assert result["exit_code"] == 128
+    assert "coder_diagnosis" in result
+    assert "missing" in result["coder_diagnosis"]
     assert chat.call_count == 2
