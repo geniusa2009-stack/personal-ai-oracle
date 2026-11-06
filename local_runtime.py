@@ -17,7 +17,6 @@ from local_config import load_local_environment
 ROOT = Path(__file__).resolve().parent
 STATE_DIR = Path.home() / ".personal_ai_oracle"
 LOG_DIR = STATE_DIR / "logs"
-PORT = os.environ.get("ORACLE_LOCAL_PORT", "8765")
 STOPPING = False
 
 
@@ -85,6 +84,8 @@ def main() -> int:
     os.environ.setdefault("ENABLE_RADAR", "1")
     os.environ.setdefault("ORACLE_DEFAULT_PROVIDER", "openrouter")
     os.environ.setdefault("ORACLE_MAX_AGENT_STEPS", "12")
+    os.environ.setdefault("ORACLE_WORKSPACE", str(ROOT))
+    port = os.environ.get("ORACLE_LOCAL_PORT", "8765")
 
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
@@ -92,7 +93,7 @@ def main() -> int:
     ui_args = [
         sys.executable, "-m", "streamlit", "run", str(ROOT / "app.py"),
         f"--server.address=127.0.0.1",
-        f"--server.port={PORT}",
+        f"--server.port={port}",
         "--server.headless=true",
         "--browser.gatherUsageStats=false",
     ]
