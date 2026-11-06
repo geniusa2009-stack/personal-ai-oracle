@@ -10,6 +10,7 @@ Local SQLite module managing two core tables:
 """
 
 from datetime import datetime
+import os
 
 # نعيد استخدام نفس الاتصال/المسار/الإعدادات من db.py لضمان قاعدة بيانات واحدة
 from db import get_conn, init_db, DB_PATH, get_setting, set_setting  # noqa: F401
