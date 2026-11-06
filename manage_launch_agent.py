@@ -50,9 +50,11 @@ def install() -> int:
         "ORACLE_WORKSPACE": os.environ.get("ORACLE_WORKSPACE", str(ROOT)),
         "ORACLE_PREVENT_IDLE_SLEEP": os.environ.get("ORACLE_PREVENT_IDLE_SLEEP", "1"),
     }
+    venv_python = ROOT / ".venv" / "bin" / "python"
+    runtime_python = str(venv_python if venv_python.exists() else Path(sys.executable))
     payload = {
         "Label": LABEL,
-        "ProgramArguments": [sys.executable, str(ROOT / "local_runtime.py")],
+        "ProgramArguments": [runtime_python, str(ROOT / "local_runtime.py")],
         "WorkingDirectory": str(ROOT),
         "RunAtLoad": True,
         "KeepAlive": True,
