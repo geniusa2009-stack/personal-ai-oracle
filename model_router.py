@@ -47,10 +47,16 @@ class ModelRouter:
             requested_provider = request.requested_provider
 
         if requested_provider or requested_model:
+            if requested_provider and requested_model:
+                reason = "explicit_route"
+            elif requested_provider:
+                reason = "explicit_provider"
+            else:
+                reason = "explicit_model"
             return RouteDecision(
                 provider=requested_provider or self.default_provider,
                 model=requested_model or self.category_models.get(task_type or "", self.default_model),
-                reason="explicit_route",
+                reason=reason,
             )
 
         if task_type:
