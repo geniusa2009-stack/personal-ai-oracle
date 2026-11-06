@@ -32,6 +32,17 @@ PROTECTED_PATH_MARKERS = (
     "managed preferences", "configurationprofiles",
 )
 
+ALLOWED_COMMANDS = {
+    "git": {"status", "diff", "log", "branch", "show", "rev-parse", "ls-files",
+            "grep", "check-ignore", "add", "commit", "switch", "checkout", "fetch", "pull", "tag"},
+    "npm": {"--version", "-v", "test", "run"},
+    "node": {"--version", "-v"},
+    "go": {"version", "test", "vet", "fmt", "build", "list"},
+    "ollama": {"version", "list", "ps", "show", "run", "pull"},
+    "brew": {"list", "info"},
+}
+ALLOWED_PYTHON_MODULES = {"pytest", "compileall", "unittest"}
+
 
 TOOL_DEFINITIONS = [
     {
@@ -114,6 +125,38 @@ def _clip(value: str) -> str:
     if len(value) <= MAX_TOOL_OUTPUT:
         return value
     return value[:MAX_TOOL_OUTPUT] + "\n… (output truncated)"
+
+
+
+def _validate_command(command: list[str]) -> None:
+    """Allow common development commands without exposing an unrestricted shell."""
+    executable = Path(command[0]).name.casefold()
+    args = command[1:]
+    if executable in {"python", "python3"}:
+        if len(args) >= 2 and args[0] == "-m":
+            module = args[1]
+            if module in ALLOWED_PYTHON_MODULES:
+                return
+            if module == "pip" and len(args) >= 3 and args[2] in {"list", "show", "check"}:
+                return
+        raise PermissionError(
+            "Only test, compile and Python package-inspection commands are available to the agent."
+        )
+    if executable in ALLOWED_COMMANDS:
+        if args and args[0] in ALLOWED_COMMANDS[executable]:
+            if executable == "npm" and args[0] == "run":
+                if len(args) >= 2 and args[1] in {"test", "lint", "build", "typecheck"}:
+                    return
+            elif executable == "git" and args[0] in {"commit", "add", "switch", "checkout"}:
+                return
+            elif executable != "npm":
+                return
+        raise PermissionError(f"Command is not enabled for local agent execution: {executable}")
+    raise PermissionError(
+        "This executable is not enabled for autonomous command execution. "
+        "Use Oracle's file and application tools or run the command yourself."
+    )
+
 
 
 def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
@@ -224,6 +267,7 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
                 raise PermissionError(
                     "This command targets system or age-safety protections and is not available to Oracle."
                 )
+            _validate_command(command)
             cwd_value = data.get("cwd") or os.environ.get("ORACLE_WORKSPACE") or str(Path.home())
             cwd = _path(cwd_value, "cwd")
             if not cwd.is_dir():
