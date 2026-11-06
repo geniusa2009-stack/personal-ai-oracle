@@ -166,6 +166,7 @@ def extract_messages(payload: dict) -> list:
                         continue
                     wa_id = msg.get("from", "")
                     out.append({
+                        "message_id": msg.get("id", ""),
                         "wa_id": wa_id,
                         "name": contacts.get(wa_id),
                         "text": msg.get("text", {}).get("body", ""),
@@ -184,6 +185,10 @@ def handle_incoming(payload: dict) -> list:
     for m in extract_messages(payload):
         wa_id, text = m["wa_id"], m["text"]
         if not wa_id or not text:
+            continue
+        message_id = m.get("message_id")
+        if message_id and not db.claim_wa_message(message_id, wa_id):
+            actions.append({"wa_id": wa_id, "mode": mode, "status": "duplicate"})
             continue
         contact = db.upsert_contact(wa_id, m.get("name"))
         db.log_wa_message(wa_id, "in", text, "received")
