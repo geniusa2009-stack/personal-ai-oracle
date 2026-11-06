@@ -57,6 +57,7 @@ class AIRequest:
     messages: tuple[Mapping[str, object], ...]
     temperature: float
     requested_model: str | None = None
+    requested_provider: str | None = None
     task_type: str | None = None
     streaming: bool = False
     context: Context = field(default_factory=Context)
