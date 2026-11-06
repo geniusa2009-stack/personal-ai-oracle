@@ -134,6 +134,7 @@ def stream_openrouter(api_key, model, prompt, provider_name=None):
         requested_model=model,
         provider_name=provider_name,
         api_key=api_key,
+        agent_role="assistant",
     )
 
 
@@ -153,6 +154,7 @@ def extract_keywords(api_key, model, text, provider_name=None):
             provider_name=provider_name,
             api_key=api_key,
             response_format={"type": "json_object"},
+            agent_role="researcher",
         )
         if not content or content.startswith(("⚠️", "(تعذّر")):
             return []
