@@ -121,6 +121,74 @@ def list_memories(
         conn.close()
 
 
+
+def _memory_tokens(text: str) -> set[str]:
+    """Extract simple Arabic/English terms for a dependency-free relevance score."""
+    stop_words = {
+        "the", "and", "for", "with", "that", "this", "from", "have", "you", "your",
+        "are", "was", "were", "what", "when", "where", "how", "can", "could",
+        "من", "في", "على", "إلى", "الى", "عن", "مع", "ده", "دي", "دا", "هو",
+        "هي", "أنا", "انا", "انت", "أنت", "منه", "فيه", "اللي", "هذا", "هذه",
+    }
+    return {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z0-9_]{2,}|[\\u0600-\\u06FF]{2,}", text or "")
+        if token.casefold() not in stop_words
+    }
+
+
+def retrieve_memories(
+    scope: str,
+    query: str,
+    *,
+    limit: int = 8,
+    candidate_limit: int = 100,
+) -> list[MemoryRecord]:
+    """Return relevant explicit memories from one scope, with recency as a tie-breaker."""
+    scope = _validate_identifier(scope, "scope", MAX_SCOPE_LENGTH)
+    if not isinstance(query, str):
+        raise MemoryValidationError("query must be text")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
+        raise MemoryValidationError("limit must be an integer from 1 to 50")
+    if (
+        not isinstance(candidate_limit, int)
+        or isinstance(candidate_limit, bool)
+        or not 1 <= candidate_limit <= 1000
+    ):
+        raise MemoryValidationError("candidate_limit must be an integer from 1 to 1000")
+
+    candidates = list_memories(scope, limit=candidate_limit)
+    if not candidates:
+        return []
+
+    query_tokens = _memory_tokens(query[-12000:])
+    if not query_tokens:
+        return [
+            item for item in candidates
+            if item.memory_type in {"preference", "goal"}
+        ][:min(limit, 2)]
+
+    scored = []
+    for position, item in enumerate(candidates):
+        content_tokens = _memory_tokens(item.content)
+        overlap = query_tokens & content_tokens
+        if not overlap:
+            continue
+        # Reward memories that cover more of the current query without letting
+        # a single common word dominate a long stored paragraph.
+        score = len(overlap) / ((len(query_tokens) * len(content_tokens)) ** 0.5)
+        scored.append((score, -position, item))
+
+    if not scored:
+        return [
+            item for item in candidates
+            if item.memory_type in {"preference", "goal"}
+        ][:min(limit, 2)]
+
+    scored.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    return [entry[2] for entry in scored[:limit]]
+
+
 def delete_memory(memory_id: int, scope: str) -> bool:
     """Hard-delete one memory only from the supplied owning scope."""
     scope = _validate_identifier(scope, "scope", MAX_SCOPE_LENGTH)
