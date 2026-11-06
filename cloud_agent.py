@@ -134,6 +134,42 @@ def _execute(job: dict[str, Any]) -> dict[str, Any]:
     return web_browser.execute(tool_id, payload)
 
 
+def _bound_result(result: dict[str, Any], maximum_bytes: int = 50_000) -> dict[str, Any]:
+    """Keep cloud result uploads below the API limit and avoid giant page/file payloads."""
+    try:
+        encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError):
+        return {"name": str(result.get("name", "remote-tool")), "status": "error", "result": "Tool returned a non-serializable result."}
+    if len(encoded) <= maximum_bytes:
+        return result
+    bounded = dict(result)
+    value = bounded.get("result")
+    if isinstance(value, str):
+        bounded["result"] = value[:40_000] + "\\n[Output truncated before cloud upload.]"
+    elif isinstance(value, dict):
+        reduced = dict(value)
+        if isinstance(reduced.get("text"), str):
+            reduced["text"] = reduced["text"][:40_000] + "\\n[Output truncated before cloud upload.]"
+        else:
+            reduced = {"summary": str(value)[:40_000], "truncated": True}
+        bounded["result"] = reduced
+    else:
+        bounded["result"] = "Output was too large and has been truncated."
+    bounded["truncated"] = True
+    try:
+        bounded_size = len(json.dumps(bounded, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    except (TypeError, ValueError):
+        bounded_size = maximum_bytes + 1
+    if bounded_size > maximum_bytes:
+        return {
+            "name": str(result.get("name", "remote-tool")),
+            "status": str(result.get("status", "error")),
+            "result": "Output exceeded the safe cloud-upload limit and was truncated.",
+            "truncated": True,
+        }
+    return bounded
+
+
 def run_forever() -> int:
     global STOPPING
     load_local_environment()
@@ -158,7 +194,7 @@ def run_forever() -> int:
             if not job.get("job_id"):
                 continue
             lease_token = job.get("lease_token")
-            result = _execute(job)
+            result = _bound_result(_execute(job))
             status = result.get("status", "error")
             if status not in {"success", "error", "blocked"}:
                 status = "error"

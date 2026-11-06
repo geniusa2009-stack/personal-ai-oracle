@@ -108,6 +108,7 @@ Hosted model requests are sent to the selected provider. Ollama model requests r
 - Local tools run as the currently logged-in macOS user and use normal OS permissions. The agent does not escalate to root or bypass macOS privacy and safety protections.
 - The system does not extract credentials from the user's ordinary browser profile. Sign in manually in the dedicated Oracle browser.
 - Use HTTPS in production. Keep API tokens, model keys and device tokens out of source control.
+- Remote tool outputs are bounded before upload; cloud results are retained for a configurable period (24-hour default) and terminal job metadata for 7 days.
 
 ## Local operation
 

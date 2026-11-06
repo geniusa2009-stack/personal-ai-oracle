@@ -133,3 +133,44 @@ def test_cloud_api_rejects_unknown_remote_tool(tmp_path, monkeypatch):
             json={"tool_id": "shell.execute", "input": {"command": "anything"}},
         )
         assert response.status_code == 422
+
+
+
+def test_cloud_result_body_expires_after_retention_window(tmp_path, monkeypatch):
+    import time
+
+    monkeypatch.setenv("ORACLE_CLOUD_DB_PATH", str(tmp_path / "retention.db"))
+    monkeypatch.setenv("ORACLE_CLOUD_RESULT_RETENTION_HOURS", "24")
+    monkeypatch.setenv("ORACLE_CLOUD_JOB_RETENTION_DAYS", "7")
+    cloud_control.init_db()
+    now = time.time()
+    with cloud_control._db_connection() as connection:
+        connection.execute(
+            """INSERT INTO jobs(
+                job_id,tool_id,tool_input,task,status,created_at,updated_at,result_json
+            ) VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                "retention-test",
+                "local.read_file",
+                "{}",
+                "retention test",
+                "success",
+                now - 3600,
+                now - 25 * 3600,
+                '{"private":"example"}',
+            ),
+        )
+    cloud_control.init_db()
+    with cloud_control._db_connection() as connection:
+        row = connection.execute(
+            "SELECT result_json FROM jobs WHERE job_id='retention-test'"
+        ).fetchone()
+    assert row["result_json"] is None
+
+
+def test_cloud_agent_bounds_oversized_tool_output():
+    from cloud_agent import _bound_result
+
+    result = _bound_result({"name": "local.read_file", "status": "success", "result": "x" * 100_000})
+    assert result.get("truncated") is True
+    assert len(__import__("json").dumps(result).encode("utf-8")) < 65_536

@@ -7,6 +7,7 @@ API over HTTPS and receives bounded, allow-listed jobs. Tokens are stored hashed
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -70,8 +71,25 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def _db_connection():
+    connection = _connect()
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def _bounded_setting(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
 def init_db() -> None:
-    with _connect() as connection:
+    with _db_connection() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.executescript(
             """
@@ -104,6 +122,20 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS jobs_device_status
               ON jobs(device_id, status);
             """
+        )
+        now = time.time()
+        result_hours = _bounded_setting("ORACLE_CLOUD_RESULT_RETENTION_HOURS", 24, 1, 168)
+        job_days = _bounded_setting("ORACLE_CLOUD_JOB_RETENTION_DAYS", 7, 1, 90)
+        connection.execute(
+            """UPDATE jobs SET result_json=NULL
+               WHERE result_json IS NOT NULL AND status IN ('success','error','blocked')
+               AND updated_at < ?""",
+            (now - result_hours * 3600,),
+        )
+        connection.execute(
+            """DELETE FROM jobs WHERE status IN ('success','error','blocked')
+               AND created_at < ?""",
+            (now - job_days * 86400,),
         )
     try:
         os.chmod(_db_path(), 0o600)
@@ -140,7 +172,7 @@ def _require_control(authorization: str | None) -> None:
 def _require_device(authorization: str | None) -> sqlite3.Row:
     supplied = _bearer(authorization)
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         row = connection.execute(
             "SELECT device_id, name FROM devices WHERE token_hash=? AND disabled=0",
             (_hash_token(supplied),),
@@ -216,7 +248,7 @@ async def pair_device(
     device_token = secrets.token_urlsafe(48)
     now = time.time()
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         connection.execute(
             "INSERT INTO devices(device_id,name,token_hash,created_at,last_seen) VALUES(?,?,?,?,?)",
             (device_id, name.strip(), _hash_token(device_token), now, now),
@@ -255,7 +287,7 @@ async def create_job(
     job_id = str(uuid.uuid4())
     now = time.time()
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         try:
             connection.execute(
                 """INSERT INTO jobs(
@@ -281,7 +313,7 @@ def list_jobs(
     _require_control(authorization)
     limit = max(1, min(limit, 100))
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         rows = connection.execute(
             "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
@@ -295,7 +327,7 @@ def get_job(
 ) -> dict[str, Any]:
     _require_control(authorization)
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         row = connection.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -309,7 +341,7 @@ def list_devices(
     _require_control(authorization)
     init_db()
     now = time.time()
-    with _connect() as connection:
+    with _db_connection() as connection:
         rows = connection.execute(
             "SELECT device_id,name,created_at,last_seen,disabled FROM devices ORDER BY created_at"
         ).fetchall()
@@ -335,7 +367,7 @@ def disable_device(
 ) -> dict[str, str]:
     _require_control(authorization)
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         changed = connection.execute(
             "UPDATE devices SET disabled=1 WHERE device_id=?", (device_id,)
         ).rowcount
@@ -349,7 +381,7 @@ def agent_heartbeat(
     authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
     device = _require_device(authorization)
-    with _connect() as connection:
+    with _db_connection() as connection:
         connection.execute(
             "UPDATE devices SET last_seen=? WHERE device_id=?",
             (time.time(), device["device_id"]),
@@ -370,7 +402,7 @@ async def next_job(
         job = None
         lease_token = secrets.token_urlsafe(32)
         init_db()
-        with _connect() as connection:
+        with _db_connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """UPDATE jobs SET status='queued',device_id=NULL,lease_token_hash=NULL,
@@ -401,7 +433,7 @@ async def next_job(
                     job["lease_token"] = lease_token
             connection.commit()
         if job is not None:
-            with _connect() as connection:
+            with _db_connection() as connection:
                 connection.execute(
                     "UPDATE devices SET last_seen=? WHERE device_id=?",
                     (time.time(), device["device_id"]),
@@ -429,7 +461,7 @@ async def complete_job(
     result_json = _json_size(body.get("result", {}), MAX_RESULT_BYTES)
     now = time.time()
     init_db()
-    with _connect() as connection:
+    with _db_connection() as connection:
         row = connection.execute(
             """SELECT lease_token_hash FROM jobs
                WHERE job_id=? AND device_id=? AND status='leased'""",
