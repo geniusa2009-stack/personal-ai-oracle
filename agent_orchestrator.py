@@ -439,6 +439,7 @@ def _run_core(
     initial_results: list[dict[str, Any]] | None = None,
     initial_used_tool_calls: set[str] | None = None,
     resume_checkpoint_id: str | None = None,
+    initial_pending_step: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Plan, execute, observe and re-plan using the current local user account."""
     if not isinstance(task, str) or not task.strip():
@@ -466,18 +467,37 @@ def _run_core(
     if len(results) > allowed_steps:
         raise AgentError("Checkpoint contains more completed steps than the configured task limit.")
 
+    pending_step = dict(initial_pending_step) if isinstance(initial_pending_step, dict) else None
     for step_index in range(len(results), allowed_steps):
-        plan = _build_next_step(
-            task,
-            allowed_steps - step_index,
-            memory_scope,
-            results,
-            used_tool_calls,
-        )
-        clarifying_question = plan["clarifying_question"] or clarifying_question
-        step = plan["step"]
-        if step is None:
-            break
+        if pending_step is not None:
+            candidate_tool_id = pending_step.get("tool_id")
+            current_tools = {item["tool_id"]: item for item in available_tools()}
+            if not isinstance(candidate_tool_id, str) or candidate_tool_id not in current_tools:
+                raise AgentError("The approved checkpoint tool is no longer available.")
+            original_input = pending_step.get("input")
+            if not isinstance(original_input, str) or not original_input or len(original_input) > MAX_TOOL_INPUT_LENGTH:
+                raise AgentError("The approved checkpoint tool input is invalid.")
+            signature = candidate_tool_id + "\\0" + original_input
+            step = {
+                "tool_id": candidate_tool_id,
+                "call_signature": signature,
+                "input": original_input,
+                "tool": current_tools[candidate_tool_id],
+            }
+            pending_step = None
+            clarifying_question = ""
+        else:
+            plan = _build_next_step(
+                task,
+                allowed_steps - step_index,
+                memory_scope,
+                results,
+                used_tool_calls,
+            )
+            clarifying_question = plan["clarifying_question"] or clarifying_question
+            step = plan["step"]
+            if step is None:
+                break
         step_started = time.monotonic()
         if workflow_id and workflow_scope:
             try:
@@ -517,6 +537,10 @@ def _run_core(
                         "task": task, "memory_scope": memory_scope,
                         "max_steps": allowed_steps, "results": results,
                         "used_tool_calls": sorted(used_tool_calls),
+                        "pending_step": {
+                            "tool_id": step["tool_id"],
+                            "input": step["input"],
+                        },
                     },
                     checkpoint_id=resume_checkpoint_id,
                 )
@@ -629,6 +653,7 @@ def run(
     )
     initial_results: list[dict[str, Any]] = []
     initial_used_tool_calls: set[str] = set()
+    initial_pending_step: dict[str, Any] | None = None
     if checkpoint_id:
         if task is not None:
             raise AgentError("Pass either a new task or a checkpoint identifier, not both.")
@@ -642,6 +667,9 @@ def run(
         max_steps = state.get("max_steps")
         initial_results = state.get("results", [])
         initial_used_tool_calls = set(state.get("used_tool_calls", []))
+        initial_pending_step = state.get("pending_step")
+        if not isinstance(initial_pending_step, dict):
+            raise AgentError("Encrypted checkpoint is missing its pending action.")
         if not isinstance(task, str) or not task.strip():
             raise AgentError("Encrypted checkpoint does not contain a valid task.")
     if not isinstance(task, str) or not task.strip():
@@ -673,6 +701,7 @@ def run(
             initial_results=initial_results,
             initial_used_tool_calls=initial_used_tool_calls,
             resume_checkpoint_id=checkpoint_id,
+            initial_pending_step=initial_pending_step,
         )
     except Exception as exc:
         if workflow_id:

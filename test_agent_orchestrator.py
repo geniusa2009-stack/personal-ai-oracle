@@ -370,9 +370,8 @@ def test_agent_pauses_then_resumes_after_exact_owner_approval(monkeypatch, tmp_p
         "reason": "The requested single-file write is narrowly scoped.",
     })
     chat = Mock(side_effect=[
-        write_plan,          # Initial planner pauses before execution.
-        write_plan,          # Resume planner proposes the same exact payload.
-        executor_approval,   # Advisory model review after deterministic grant.
+        write_plan,          # Initial planner chooses the action.
+        executor_approval,   # Advisory review after exact approval.
         "Task completed.",   # Final reviewer.
     ])
     monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
@@ -387,6 +386,13 @@ def test_agent_pauses_then_resumes_after_exact_owner_approval(monkeypatch, tmp_p
     approval = execution_policy.list_approvals("user:oracle-owner", include_decided=False)
     assert len(approval) == 1
     assert approval[0]["checkpoint_id"] == paused["checkpoint_id"]
+    saved_state = workflow_checkpoints.load_checkpoint(
+        "user:oracle-owner", paused["checkpoint_id"]
+    )
+    assert saved_state["pending_step"] == {
+        "tool_id": "local.write_file",
+        "input": json.dumps(payload),
+    }
     assert execution_policy.decide_approval(
         paused["approval_id"], scope="user:oracle-owner", approve=True
     ) is True
