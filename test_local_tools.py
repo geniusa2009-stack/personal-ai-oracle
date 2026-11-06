@@ -59,10 +59,12 @@ def test_local_directory_listing_and_pattern_search(tmp_path):
 
 
 def test_local_command_runs_as_current_user_without_shell(tmp_path):
+    sample = tmp_path / "sample.py"
+    sample.write_text("value = 42\\n", encoding="utf-8")
     result = local_tools.execute(
         "local.run_command",
         {
-            "command": [sys.executable, "-c", "print('oracle-local-command')"],
+            "command": [sys.executable, "-m", "compileall", str(sample)],
             "cwd": str(tmp_path),
             "timeout": 10,
         },
@@ -114,3 +116,33 @@ def test_local_tools_are_explicit_and_discoverable():
     assert "local.read_file" in ids
     assert "local.write_file" in ids
     assert "local.open_app" in ids
+
+
+def test_local_agent_refuses_unrestricted_python_and_system_control_commands():
+    python_code = local_tools.execute(
+        "local.run_command",
+        {"command": [sys.executable, "-c", "print('not allowed')"]},
+    )
+    system_command = local_tools.execute(
+        "local.run_command",
+        {"command": ["sudo", "example"]},
+    )
+
+    assert python_code["status"] == "error"
+    assert "Only test, compile" in python_code["result"]
+    assert system_command["status"] == "error"
+    assert "system or age-safety protections" in system_command["result"]
+
+
+def test_local_tool_audit_does_not_store_file_contents(monkeypatch, tmp_path):
+    monkeypatch.setenv("ORACLE_AUDIT_DIR", str(tmp_path / "audit"))
+    secret_text = "local-private-content"
+    target = tmp_path / "private.txt"
+    target.write_text(secret_text, encoding="utf-8")
+
+    result = local_tools.execute("local.read_file", {"path": str(target)})
+
+    audit = (tmp_path / "audit" / "local-actions.jsonl").read_text(encoding="utf-8")
+    assert result["status"] == "success"
+    assert "local.read_file" in audit
+    assert secret_text not in audit
