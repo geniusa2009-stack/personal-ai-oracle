@@ -42,10 +42,11 @@ def available_tools() -> list[dict[str, Any]]:
     """Return Oracle features plus native local Mac tools."""
     tools = []
     for feature in features.FEATURES:
-        if feature.get("status") == "integration" and feature.get("kind") == "scaffold":
+        if feature.get("kind") == "scaffold":
             continue
         tools.append({
             "tool_id": f"feature:{feature['id']}",
+            "id": feature["id"],
             "feature_id": feature["id"],
             "name": feature["name"],
             "category": feature["cat"],
