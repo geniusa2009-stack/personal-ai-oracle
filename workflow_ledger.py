@@ -108,7 +108,7 @@ def begin_step(
         not isinstance(tool_id, str)
         or len(tool_id) > MAX_TOOL_ID_LENGTH
         or not re.fullmatch(
-            r"(?:local|web)\\.[a-z][a-z0-9_]*|feature:[1-9][0-9]*",
+            r"(?:local|web)\.[a-z][a-z0-9_]*|feature:[1-9][0-9]*",
             tool_id.strip(),
         )
     ):
