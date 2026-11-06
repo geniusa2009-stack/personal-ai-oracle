@@ -60,6 +60,7 @@ class AIRequest:
     task_type: str | None = None
     streaming: bool = False
     context: Context = field(default_factory=Context)
+    response_format: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.messages, (list, tuple)):
@@ -85,6 +86,10 @@ class AIRequest:
         object.__setattr__(self, "messages", tuple(normalized_messages))
         if not isinstance(self.context, Context):
             raise ValueError("context must be a Context instance")
+        if self.response_format is not None:
+            if not isinstance(self.response_format, Mapping):
+                raise ValueError("response_format must be a mapping")
+            object.__setattr__(self, "response_format", _freeze(self.response_format))
 
     def to_messages(self) -> list[dict]:
         """Create fresh provider-compatible message dictionaries."""
