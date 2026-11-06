@@ -284,3 +284,28 @@ def test_auto_routing_respects_explicit_role_provider_and_model(monkeypatch):
     assert request.requested_provider == "gemini"
     assert request.requested_model == "gemini-explicit-coder"
     assert request.task_type == "coding"
+
+
+def test_opt_in_auto_routing_applies_to_streaming_specialists(monkeypatch):
+    import ai_core
+
+    monkeypatch.setenv("ORACLE_DEFAULT_PROVIDER", "openrouter")
+    monkeypatch.setenv("ORACLE_AUTO_MODEL_ROUTING", "true")
+    monkeypatch.delenv("ORACLE_AGENT_RESEARCHER_PROVIDER", raising=False)
+    monkeypatch.delenv("ORACLE_AGENT_RESEARCHER_MODEL", raising=False)
+    executor = Mock()
+    executor.execute_stream.return_value = iter(["stream ", "response"])
+
+    with patch.object(ai_core, "_multi_executor", return_value=executor) as factory:
+        chunks = list(ai_core.stream(
+            [{"role": "user", "content": "Research this topic"}],
+            agent_role="researcher",
+        ))
+
+    assert chunks == ["stream ", "response"]
+    factory.assert_called_once_with(provider_name=None, api_key=None)
+    request = executor.execute_stream.call_args.args[0]
+    assert request.streaming is True
+    assert request.task_type == "research"
+    assert request.requested_provider is None
+    assert request.requested_model is None

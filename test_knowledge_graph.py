@@ -96,3 +96,26 @@ def test_graph_validates_bounds_and_query_types(monkeypatch, tmp_path):
         knowledge_graph.search_entities("owner:one", None)
     with pytest.raises(knowledge_graph.KnowledgeGraphError):
         knowledge_graph.retrieve_context("owner:one", "Project", max_entities=11)
+
+
+def test_graph_context_is_injected_into_ai_prompt_with_scope_isolation(monkeypatch, tmp_path):
+    import ai_core
+
+    _use_test_database(monkeypatch, tmp_path)
+    project = knowledge_graph.add_entity("owner:one", "Personal AI Oracle", "project")
+    agent = knowledge_graph.add_entity("owner:one", "Researcher agent", "tool")
+    knowledge_graph.link_entities("owner:one", project.id, agent.id, "contains")
+    knowledge_graph.add_entity("owner:two", "Private unrelated data", "concept")
+
+    messages = [
+        {"role": "system", "content": "You are Oracle."},
+        {"role": "user", "content": "Explain Personal AI Oracle and its researcher agent."},
+    ]
+    enriched = ai_core._messages_with_memory(messages, "owner:one")
+    other_scope = ai_core._messages_with_memory(messages, "owner:two")
+
+    assert "<personal_knowledge_graph>" in enriched[0]["content"]
+    assert "Personal AI Oracle" in enriched[0]["content"]
+    assert "Researcher agent" in enriched[0]["content"]
+    assert "<personal_knowledge_graph>" not in other_scope[0]["content"]
+    assert "Private unrelated data" not in other_scope[0]["content"]
