@@ -16,7 +16,6 @@ import re
 import json
 from datetime import datetime, timedelta
 
-import requests
 import streamlit as st
 
 import db
@@ -33,8 +32,6 @@ import discipline_oracle
 import advanced_scholarship
 import feature_hub  # يجمّع features + advanced_module + wealth_empire
 from access_control import AUTHENTICATED_SESSION_KEY, require_app_auth
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 MODELS = {
     "🧠 DeepSeek-V3 (العقل المفكّر العميق)": "deepseek/deepseek-chat",
@@ -115,11 +112,6 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # OpenRouter — البث الفوري + استخراج الكلمات المفتاحية
 # ---------------------------------------------------------------------------
-def _headers(api_key):
-    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:8501", "X-Title": "Personal AI Oracle"}
-
-
 def stream_openrouter(api_key, model, prompt):
     """Compatibility wrapper: route deep-analysis streaming through the shared AI core."""
     yield from ai_core.stream(
@@ -132,23 +124,30 @@ def stream_openrouter(api_key, model, prompt):
 
 
 def extract_keywords(api_key, model, text):
-    """يستخرج كلمات مفتاحية يستخدمها الرادار للبحث عن الفرص."""
+    """Extract radar keywords through the shared router with validated JSON output."""
+    prompt = (
+        "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
+        "مجالات يبحث فيها صاحبه عن فرص. أعد JSON فقط بهذا الشكل: "
+        '{"keywords":["..."]}.\\n\\nالنص:\\n' + text
+    )
     try:
-        payload = {"model": model, "temperature": 0.2,
-                   "response_format": {"type": "json_object"},
-                   "messages": [{"role": "user", "content":
-                       "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
-                       "مجالات يبحث فيها صاحبه عن فرص. أعد JSON فقط: "
-                       '{"keywords":["..."]}.\n\nالنص:\n' + text}]}
-        r = requests.post(OPENROUTER_URL, headers=_headers(api_key),
-                          data=json.dumps(payload), timeout=60)
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        data = json.loads(match.group(0) if match else content)
-        kws = data.get("keywords", [])
-        return [str(k).strip() for k in kws if str(k).strip()][:6]
-    except Exception:
+        content = ai_core.chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.2,
+            task_type="research",
+            requested_model=model,
+            api_key=api_key,
+            response_format={"type": "json_object"},
+        )
+        if not content or content.startswith(("⚠️", "(تعذّر")):
+            return []
+        data = json.loads(content)
+        keywords = data.get("keywords", [])
+        if not isinstance(keywords, list):
+            return []
+        return [str(keyword).strip() for keyword in keywords
+                if isinstance(keyword, str) and keyword.strip()][:6]
+    except (TypeError, ValueError, KeyError):
         return []
 
 
@@ -248,9 +247,6 @@ with tab_analyze:
                     if kws:
                         st.caption("🧠 كلمات أُضيفت لرادارك: " + "، ".join(kws))
                     st.toast("🎯 تم التحليل وتغذية الرادار بنجاح!", icon="✅")
-                except requests.exceptions.HTTPError as e:
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    st.error(f"خطأ من الخادم: تأكد من المفتاح والرصيد. {e}")
                 except Exception as e:
                     st.markdown("</div>", unsafe_allow_html=True)
                     st.error(f"حدث خطأ أثناء الاتصال: {e}")
