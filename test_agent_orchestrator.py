@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -57,7 +58,7 @@ def test_agent_replans_after_observing_each_tool_result(monkeypatch):
     second_planner_prompt = planner_calls.call_args_list[1].args[0][1]["content"]
     assert f"result-{first_id}" in second_planner_prompt
     available_catalog = second_planner_prompt.split("نتائج الخطوات السابقة", 1)[0]
-    assert f'"id": {first_id}' not in available_catalog
+    assert not re.search(rf'"id":\\s*{first_id}(?!\\d)', available_catalog)
 
 
 def test_agent_ignores_unavailable_and_repeated_tool_ids(monkeypatch):
