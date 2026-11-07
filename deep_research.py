@@ -681,6 +681,25 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             )
         },
         "evidence_summary": report.get("evidence_summary", {}),
+        "freshness_assessment": {
+            "profile": str(report.get("freshness_assessment", {}).get("profile") or "general")[:40],
+            "policy_source": str(report.get("freshness_assessment", {}).get("policy_source") or "unknown")[:40],
+            "max_age_days": report.get("freshness_assessment", {}).get("max_age_days"),
+            "assessed_source_count": report.get("freshness_assessment", {}).get("assessed_source_count", 0),
+            "counts": report.get("freshness_assessment", {}).get("counts", {}),
+            "results": [
+                {
+                    "citation_id": str(item.get("citation_id") or "")[:12],
+                    "status": str(item.get("status") or "unknown")[:30],
+                    "reference_date": item.get("reference_date"),
+                    "reference_kind": item.get("reference_kind"),
+                    "age_days": item.get("age_days"),
+                    "max_age_days": item.get("max_age_days"),
+                }
+                for item in report.get("freshness_assessment", {}).get("results", [])[:8]
+                if isinstance(item, dict)
+            ],
+        },
         "semantic_verification": {
             "status": str(report.get("semantic_verification", {}).get("status") or "not_performed")[:30],
             "semantic_entailment_checked": report.get("semantic_verification", {}).get("semantic_entailment_checked") is True,
@@ -748,6 +767,8 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "extracted_at": source.get("extracted_at"),
             "date_metadata_origin": str(source.get("date_metadata_origin") or "unknown")[:40],
             "evidence_level": str(source.get("evidence_level") or "")[:40],
+            "freshness_status": str(source.get("freshness", {}).get("status") or "not_assessed")[:30],
+            "freshness_age_days": source.get("freshness", {}).get("age_days"),
         }
         source_by_id[source_id] = item
     cited = compact["citation_validation"]["valid_source_ids"]
@@ -769,6 +790,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "url": str(citation.get("url") or "")[:500],
             "domain": str(citation.get("domain") or "")[:180],
             "page_status": str(citation.get("page_status") or "")[:50],
+            "freshness": citation.get("freshness", {}),
         }
     compact["citations"] = [citation_by_id[item] for item in selected_ids if item in citation_by_id]
 
