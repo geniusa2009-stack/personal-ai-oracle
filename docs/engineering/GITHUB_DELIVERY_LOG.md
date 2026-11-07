@@ -248,3 +248,28 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** Graph edge extraction/entity resolution remains explicit-only; expansion is one-hop lexical; no temporal edge validity, graph contradiction handling, automatic memory consolidation, graph embeddings or benchmark-calibrated RRF weights.
 - **Pull Request:** [PR #11 — Integrate Knowledge Graph into hybrid memory retrieval](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/11)
 - **PR status:** Open, draft; base `oracle/phase-02-memory-lifecycle` (PR #10). Initial published head: `ee03ba9292f19f9b2327ff9a862d0c33f8f3dd2f`. No earlier PR was merged or retargeted.
+
+
+### Phase 02e — Review-only memory consolidation discovery
+
+- **Branch:** `oracle/phase-02-memory-consolidation`
+- **Base:** `oracle/phase-02-graph-aware-retrieval` (PR #11).
+- **Dependency:** PR #12 → PR #11 → PR #10 → PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `memory_consolidation.py` — deterministic scope-local duplicate/related/possible-contradiction candidate discovery, proposal review and run-history APIs.
+  - `test_memory_consolidation.py` — scan classification, source immutability, scope isolation, repeat observations, accept/dismiss, stale-source checks, validity expiry, bounded scans and explicit deletion cleanup.
+  - `docs/architecture/MEMORY_CONSOLIDATION.md`.
+- **Files updated:**
+  - `database.py` — run/proposal/member/observation tables and sensitive-table wipe allowlist.
+  - `memory.py` — explicit memory deletion clears proposals and observations that depend on the deleted source.
+  - `docs/architecture/MEMORY_ARCHITECTURE.md`, `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Implemented scope:** bounded comparisons within one memory type and one exact scope; lexical duplicate/related classification; possible contradiction signals from negation-presence and numeric-value differences; source IDs and SHA-256 hashes; proposal observations; run counters and partial status; human accept/dismiss reviews; stale detection before review.
+- **Safety contract:** scanning and reviewing do not edit source memories. No automatic merge, overwrite, supersession or deletion exists. Expired, revised, deleted or superseded sources prevent a proposal from being accepted/dismissed as if it were current.
+- **Limitations:** deterministic token heuristics are not semantic contradiction verification. Units, date semantics, Arabic morphology, conditional claims and paraphrase reasoning are not fully handled. UI, automatic scheduling, duplicate clusters, entity resolution, retention and conflict resolution remain unfinished.
+- **Validation:** GitHub Actions run `42412196590` passed on code/documentation head `d007ca12166bf62da423203faaff31b950fee607`.
+  - Ubuntu: **276 passed, 1 warning**.
+  - macOS: **276 passed, 1 warning**.
+  - Python compile and full pytest steps passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Pull Request:** [PR #12 — Add review-only memory consolidation and conflict candidate discovery](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/12)
+- **PR status:** Open, draft; base `oracle/phase-02-graph-aware-retrieval` (PR #11). Published head: `9833720dccd553ceca25c8d232f2e7d8c3ab7fee`. No earlier PR was merged or retargeted.
