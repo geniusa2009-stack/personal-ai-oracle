@@ -845,6 +845,12 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "answer": compact["answer"][:answer_limit],
             "citations": minimal_citations,
             "sources": minimal_sources,
+            "freshness_assessment": {
+                "profile": compact["freshness_assessment"]["profile"],
+                "policy_source": compact["freshness_assessment"]["policy_source"],
+                "max_age_days": compact["freshness_assessment"]["max_age_days"],
+                "counts": compact["freshness_assessment"]["counts"],
+            },
             "limitations": ["Research report was compacted to fit the agent context."],
             "context_truncated": True,
         }
