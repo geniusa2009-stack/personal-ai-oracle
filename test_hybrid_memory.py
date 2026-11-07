@@ -31,6 +31,8 @@ class FakeEmbeddingClient:
                 vectors.append([0.0, 1.0, 0.0])
             elif "workflow" in normalized or "procedure" in normalized:
                 vectors.append([0.0, 0.0, 1.0])
+            elif "unrelated" in normalized or "music" in normalized:
+                vectors.append([0.0, 0.0, 1.0])
             else:
                 vectors.append([0.5, 0.5, 0.0])
         return vectors
@@ -241,3 +243,94 @@ def test_ai_core_uses_hybrid_retrieval_without_leaking_other_scopes(monkeypatch,
     assert "Studies galaxy clusters privately" not in content
     assert "<personal_memory>" in content
     assert private.id != own.id
+
+
+def test_vector_search_filters_low_similarity_matches(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    record = memory.write_memory(
+        "Studies galaxy clusters", "fact", "owner:one", "manual"
+    )
+    client = FakeEmbeddingClient()
+    memory_embeddings.index_memory_scope("owner:one", client=client)
+
+    matches = memory_embeddings.retrieve_vector_matches(
+        "owner:one", "unrelated music", client=client
+    )
+
+    assert matches == []
+    with pytest.raises(memory_embeddings.EmbeddingError):
+        memory_embeddings.retrieve_vector_matches(
+            "owner:one", "astronomy", client=client, min_similarity=2.0
+        )
+
+
+def test_openai_compatible_embedding_client_sorts_and_validates_response_indexes(monkeypatch):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    captured = {}
+
+    def post(url, *, headers, json, timeout):
+        captured.update({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return FakeResponse({
+            "data": [
+                {"index": 1, "embedding": [0.0, 1.0]},
+                {"index": 0, "embedding": [1.0, 0.0]},
+            ]
+        })
+
+    monkeypatch.setattr(memory_embeddings.requests, "post", post)
+    client = memory_embeddings.OpenAICompatibleEmbeddingClient(
+        base_url="http://127.0.0.1:11434/v1",
+        model_name="nomic-embed-text",
+        api_key="local-token",
+    )
+    vectors = client.embed(["first", "second"])
+
+    assert vectors == [[1.0, 0.0], [0.0, 1.0]]
+    assert captured["url"] == "http://127.0.0.1:11434/v1/embeddings"
+    assert captured["json"] == {"model": "nomic-embed-text", "input": ["first", "second"]}
+    assert captured["headers"]["Authorization"] == "Bearer local-token"
+    assert captured["timeout"] == memory_embeddings.EMBEDDING_TIMEOUT_SECONDS
+
+    def duplicate_index_post(*args, **kwargs):
+        return FakeResponse({
+            "data": [
+                {"index": 0, "embedding": [1.0, 0.0]},
+                {"index": 0, "embedding": [0.0, 1.0]},
+            ]
+        })
+
+    monkeypatch.setattr(memory_embeddings.requests, "post", duplicate_index_post)
+    with pytest.raises(memory_embeddings.EmbeddingError):
+        client.embed(["first", "second"])
+
+
+def test_embedding_provider_failure_is_normalized_without_leaking_response_text(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            raise memory_embeddings.requests.HTTPError("private provider response body")
+
+    monkeypatch.setattr(
+        memory_embeddings.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+    client = memory_embeddings.OpenAICompatibleEmbeddingClient(
+        base_url="https://embeddings.example/v1",
+        model_name="embedding-model",
+        api_key="secret-token",
+    )
+
+    with pytest.raises(memory_embeddings.EmbeddingError) as exc:
+        client.embed(["text"])
+
+    assert "private provider response body" not in str(exc.value)
+    assert "secret-token" not in str(exc.value)
