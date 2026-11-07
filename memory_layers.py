@@ -197,6 +197,8 @@ def record_event(
     event_type = _identifier(event_type, "event_type", MAX_EVENT_TYPE_LENGTH)
     summary = _text(summary, "summary", MAX_SUMMARY_LENGTH)
     source = _identifier(source, "source", MAX_SOURCE_LENGTH)
+    if _looks_like_secret(source):
+        raise MemoryLayerError("credentials and secrets cannot be stored in memory")
     happened = _timestamp(happened_at, field="happened_at")
 
     if details is None:
@@ -334,6 +336,8 @@ def record_procedure(
     name = _text(name, "name", MAX_PROCEDURE_NAME_LENGTH)
     description = _text(description, "description", MAX_PROCEDURE_DESCRIPTION_LENGTH)
     source = _identifier(source, "source", MAX_SOURCE_LENGTH)
+    if _looks_like_secret(source):
+        raise MemoryLayerError("credentials and secrets cannot be stored in memory")
     if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)):
         raise MemoryLayerError("steps must be a sequence of text steps")
     normalized_steps = tuple(
@@ -382,7 +386,9 @@ def list_procedures(
     limit: int = 50,
 ) -> list[ProceduralMemory]:
     scope = _identifier(scope, "scope", MAX_SCOPE_LENGTH)
-    if status is not None and status not in VALID_PROCEDURE_STATUSES:
+    if status is not None and (
+        not isinstance(status, str) or status not in VALID_PROCEDURE_STATUSES
+    ):
         raise MemoryLayerError("status must be candidate, validated, retired, or None")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
         raise MemoryLayerError("limit must be an integer from 1 to 200")
@@ -449,7 +455,7 @@ def set_procedure_status(scope: str, procedure_id: int, status: str) -> Procedur
     scope = _identifier(scope, "scope", MAX_SCOPE_LENGTH)
     if isinstance(procedure_id, bool) or not isinstance(procedure_id, int) or procedure_id < 1:
         raise MemoryLayerError("procedure_id must be a positive integer")
-    if status not in VALID_PROCEDURE_STATUSES:
+    if not isinstance(status, str) or status not in VALID_PROCEDURE_STATUSES:
         raise MemoryLayerError("status must be candidate, validated, or retired")
 
     now = _timestamp(None, field="updated_at")
