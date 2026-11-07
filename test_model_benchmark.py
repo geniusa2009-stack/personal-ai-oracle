@@ -371,3 +371,50 @@ def test_benchmark_data_is_included_in_explicit_panic_wipe(monkeypatch, tmp_path
     assert wiped["oracle_model_benchmark_runs"] == 1
     assert model_benchmark.get_run("owner:one", run.run_id) is None
     assert model_benchmark.list_results("owner:one") == []
+
+
+
+def test_quality_evaluator_failure_does_not_convert_provider_success_to_error(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+
+    def evaluator(_case, _answer):
+        raise RuntimeError("private evaluator detail")
+
+    run = model_benchmark.run_benchmark(
+        "owner:one",
+        _suite(),
+        [model_benchmark.ModelCandidate("ollama", "evaluator-failure-model")],
+        runner=lambda _candidate, _request: "answer",
+        quality_evaluator=evaluator,
+        quality_evaluator_id="reviewer_v1",
+    )
+    results = model_benchmark.list_results("owner:one", run_id=run.run_id)
+
+    assert run.status == "completed"
+    assert run.success_count == len(_suite().cases)
+    assert run.failure_count == 0
+    assert all(item["outcome"] == "success" for item in results)
+    assert all(item["quality_score"] is None for item in results)
+    assert all(item["evaluation_error_code"] == "RuntimeError" for item in results)
+    assert all(item["evaluator_id"] == "reviewer_v1" for item in results)
+    assert "private evaluator detail" not in json.dumps(results)
+
+
+def test_non_callable_runner_and_evaluator_are_rejected_before_any_run(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    candidate = model_benchmark.ModelCandidate("ollama", "validation-model")
+
+    with pytest.raises(model_benchmark.ModelBenchmarkError, match="runner must be callable"):
+        model_benchmark.run_benchmark("owner:one", _suite(), [candidate], runner="not-callable")
+
+    with pytest.raises(model_benchmark.ModelBenchmarkError, match="quality_evaluator must be callable"):
+        model_benchmark.run_benchmark(
+            "owner:one",
+            _suite(),
+            [candidate],
+            runner=lambda _candidate, _request: "answer",
+            quality_evaluator="not-callable",
+            quality_evaluator_id="manual_v1",
+        )
+
+    assert model_benchmark.list_results("owner:one") == []
