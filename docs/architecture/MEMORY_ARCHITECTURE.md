@@ -102,3 +102,19 @@ This is an additive schema-initialization increment, not yet a general versioned
 4. Add provenance-backed links between memories, events, procedures, tasks, and knowledge-graph entities.
 5. Add reviewable memory consolidation and entity resolution.
 6. Measure retrieval quality with a bilingual evaluation set.
+
+
+## 6. Optional hybrid retrieval increment
+
+The `oracle/phase-02-hybrid-retrieval` branch adds an opt-in semantic retrieval path alongside lexical retrieval.
+
+- `memory_embeddings.py` defines a provider-independent embedding interface and an OpenAI-compatible endpoint adapter.
+- The default provider profile is local Ollama; a hosted OpenAI-compatible endpoint requires explicit configuration.
+- SQLite stores vectors, content hashes, scope/type/record identifiers, model name, and dimensions without duplicating raw memory text.
+- Indexing is bounded, hash-aware, and does not run automatically unless explicitly configured.
+- `hybrid_memory.py` combines lexical and vector rankings using Reciprocal Rank Fusion and filters low cosine-similarity results.
+- `ai_core.py` uses the hybrid result when embeddings are enabled and otherwise preserves lexical fallback.
+
+New environment variables, privacy considerations, limitations, and test scope are documented in `docs/architecture/HYBRID_MEMORY_RETRIEVAL.md`.
+
+This does not yet integrate metadata/temporal ranking, Knowledge Graph traversal into RRF, or automatic memory consolidation. Real provider compatibility and production retrieval quality remain unverified.
