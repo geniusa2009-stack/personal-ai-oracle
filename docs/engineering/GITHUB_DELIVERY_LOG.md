@@ -148,7 +148,7 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **CI after the subsequent delivery-log-only update:** Pending for the new branch head.
 
 
-### Phase 02b — Hybrid lexical/vector memory retrieval (implementation in progress)
+### Phase 02b — Hybrid lexical/vector memory retrieval
 
 - **Branch:** `oracle/phase-02-hybrid-retrieval`
 - **Base:** `oracle/phase-02-memory-evolution`
@@ -166,6 +166,6 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Implemented scope:** Explicit opt-in embeddings, local Ollama default profile, hosted OpenAI-compatible option only when configured, scope/model-specific vector records, SHA-256 content checks, bounded indexing, weak-similarity filtering, RRF, and fail-soft lexical fallback.
 - **Safety/privacy constraints:** No hosted provider is selected by default. Embedding calls are disabled unless explicitly enabled with a model. Auto-indexing is off by default. Raw memory text is not duplicated in the vector table.
 - **Important limitations:** No real embedding endpoint was exercised by offline CI; tests use deterministic fake vectors. No benchmark-derived similarity threshold. Metadata/temporal/Knowledge Graph fusion and memory consolidation remain unfinished.
-- **Tests:** Added `test_hybrid_memory.py`. Early CI revealed syntax errors in AI Core context string composition before tests ran; these were corrected. Current branch CI is pending on the newest code/documentation commits; no local test execution is claimed.
-- **Pull Request:** Pending creation after CI validation.
-- **PR status / CI:** Pending.
+- **Validation:** GitHub Actions run `42399859389` passed on code head `24f0717ab6cf4dd7d52a0c0c7c334cc7c570c2e6`. Ubuntu: **251 passed, 1 warning**. macOS: **251 passed, 1 warning**. Both `compileall` and `pytest -q` passed. The warning is the existing Starlette/httpx TestClient deprecation warning. No local test execution is claimed.
+- **Pull Request:** Pending creation; this milestone will be published as a draft stacked PR on PR #8.
+- **PR status / CI:** CI successful on the verified code head.
