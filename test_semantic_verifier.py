@@ -153,6 +153,7 @@ def test_verifier_uses_insufficient_evidence_without_calling_model_when_no_sourc
 
     assert calls == []
     assert report["results"][0]["status"] == "INSUFFICIENT_EVIDENCE"
+    assert report["results"][0]["evaluation_kind"] == "deterministic_precheck"
 
 
 def test_verifier_keeps_omitted_and_over_limit_claims_unverified():
