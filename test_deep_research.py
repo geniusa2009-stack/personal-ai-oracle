@@ -98,6 +98,14 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
     assert report["limitations"][0] == "The sample is limited to retrieved public sources."
     assert report["citations"][0]["id"] == "S1"
     assert report["citations"][1]["page_status"] == "extracted"
+    assert report["sources"][0]["retrieved_at"]
+    assert report["sources"][0]["extracted_at"]
+    assert report["sources"][0]["evidence_level"] == "extracted_page"
+    assert report["evidence_summary"]["source_count"] == 2
+    assert report["evidence_summary"]["semantic_verification"] == "not_performed"
+    assert len(report["claim_records"]) == 1
+    assert report["claim_records"][0]["verification_status"] == "UNVERIFIED"
+    assert report["evidence_manifest"][0]["evidence_level"] == "extracted_page"
 
 
 def test_research_flags_invalid_model_citations(monkeypatch):
@@ -269,3 +277,26 @@ def test_claim_evidence_rejects_invalid_source_ids_and_limits():
         deep_research.map_claim_evidence("claim", ["not-a-source"])
     with pytest.raises(deep_research.ResearchError):
         deep_research.map_claim_evidence("claim", ["S1"], max_claims=0)
+
+
+def test_search_results_preserve_provider_date_hints_as_unverified_metadata(monkeypatch):
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: [{
+            "title": "Dated source",
+            "url": "https://example.org/report",
+            "snippet": "Summary",
+            "source": "test",
+            "publisher": "Example Publisher",
+            "published_at": "2026-09-01",
+            "updated_at": "2026-10-01T00:00:00Z",
+        }],
+    )
+
+    sources = deep_research._collect_search_results(["query"], 3)
+
+    assert sources[0]["publisher"] == "Example Publisher"
+    assert sources[0]["published_at"] == "2026-09-01"
+    assert sources[0]["updated_at"] == "2026-10-01T00:00:00Z"
+    assert sources[0]["date_metadata_origin"] == "search_provider"
