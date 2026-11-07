@@ -223,3 +223,28 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** Graph extraction/entity resolution is still explicit-only. Query expansion is one-hop and lexical; graph vector embeddings, temporal edge validity, graph contradiction review, automatic consolidation, and benchmark-calibrated RRF weights are not implemented. The weights remain heuristics.
 - **Pull Request:** Pending final documentation CI validation; planned as draft PR #11 based on PR #10.
 - **PR status:** Not yet created. No prior PR was merged or retargeted.
+
+
+### Phase 02d — Graph-aware hybrid memory retrieval
+
+- **Branch:** `oracle/phase-02-graph-aware-retrieval`
+- **Base:** `oracle/phase-02-memory-lifecycle` (PR #10).
+- **Dependency:** Stacked on PR #10 → PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files updated:**
+  - `knowledge_graph.py` — typed `GraphRetrieval`, bounded seeds/neighbors, relation direction/evidence, name expansion terms, and prompt-boundary escaping for graph-owned names/evidence.
+  - `hybrid_memory.py` — original lexical, optional vector and graph-expanded lexical channels fused through weighted RRF; graph and provider failures are independent fail-soft paths.
+  - `ai_core.py` — consumes the graph context from hybrid retrieval rather than issuing a duplicate graph query; retains a compatibility fallback.
+  - `test_knowledge_graph.py` — graph bounds, scope isolation, provenance and markup-escaping coverage.
+  - `test_hybrid_memory.py` — graph recall for facts, episodic events and validated procedures; scope isolation, opt-out, failure fallback, channel-weight ordering and AI Core integration.
+  - `docs/architecture/GRAPH_AWARE_MEMORY_RETRIEVAL.md`, `docs/architecture/MEMORY_ARCHITECTURE.md`, `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Ranking design:** Weighted RRF: vector 1.00, original lexical 0.70, graph-expanded lexical 0.45. Graph expansions contain explicit seed/neighbor entity names only; relation evidence remains provenance and is not used as query expansion.
+- **Scope/privacy:** All graph queries stay within the provided scope. Graph text is escaped before being placed inside the system-context boundary. No external graph provider call is made.
+- **Fallback behavior:** Graph errors preserve lexical/vector retrieval. Embedding errors preserve lexical/graph retrieval. Graph can be disabled explicitly for baseline evaluation.
+- **Validation:** GitHub Actions run `42405656759` passed on implementation/documentation head `3dd48c579cae5e7f2153c7e136e57c996576b5bf`.
+  - Ubuntu: **267 passed, 1 warning**.
+  - macOS: **267 passed, 1 warning**.
+  - Compile and full pytest steps both passed.
+  - Warning: existing Starlette/httpx TestClient deprecation.
+- **Limitations:** Graph edge extraction/entity resolution remains explicit-only; expansion is one-hop lexical; no temporal edge validity, graph contradiction handling, automatic memory consolidation, graph embeddings or benchmark-calibrated RRF weights.
+- **Pull Request:** Pending final documentation CI validation; planned as draft PR #11 stacked on PR #10.
+- **PR status:** Not yet created. No earlier PR was merged or retargeted.
