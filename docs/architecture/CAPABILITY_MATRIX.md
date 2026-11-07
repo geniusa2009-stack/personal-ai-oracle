@@ -41,8 +41,8 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Citation benchmark | `answer_quality_benchmark.py`, `benchmarks/answer_quality_cases.json` | Deterministic fixtures | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality_benchmark.py`, latest PR #3 CI | Expand beyond 10 synthetic citation-classification cases |
 | Representative research benchmark | Not present | Human-reviewed bilingual annotations | `PLANNED` | Synthetic baseline only | Arabic/English evidence and semantic support dataset |
 | Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | More lifecycle metadata and memory categories |
-| Episodic memory | No dedicated integrated implementation found | Task/event lifecycle | `PLANNED` | No dedicated episodic tests found | Durable event records with links to tasks and outcomes |
-| Procedural memory | No dedicated integrated implementation found | Validated workflow outcomes | `PLANNED` | No dedicated procedural tests found | Store and retrieve validated reusable procedures |
+| Episodic memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_events`, explicit source/time metadata, lexical retrieval | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Explicit event capture and bounded scope-local retrieval; no automatic extraction or graph linking |
+| Procedural memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_procedures`, explicit validation status, outcome counters | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Candidate procedures require explicit validation before retrieval; no revision history or automatic promotion |
 | Hybrid/vector retrieval | `memory.py` currently lexical | Embedding provider, vector index, fallback | `PLANNED` | Lexical retrieval tests only | Optional vectors, hybrid ranking, deterministic offline fallback |
 | Explicit knowledge graph | `knowledge_graph.py` | SQLite entity/relation tables | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py` | Temporal/versioned graph edges and evidence lifecycle |
 | Automatic graph extraction | Not evidenced as integrated | Claim/entity extraction and provenance | `PLANNED` | Explicit graph write tests only | Evidence-backed entity resolution and relation extraction |
@@ -80,7 +80,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 
 ### Memory path
 
-`ai_core memory_scope → memory.retrieve_memories + knowledge_graph.retrieve_context → bounded context injection`
+`ai_core memory_scope → memory.retrieve_memories + memory_layers.retrieve_events/retrieve_procedures + knowledge_graph.retrieve_context → bounded JSON/context injection`
 
 ### Local/cloud path
 
@@ -152,3 +152,19 @@ The `oracle/phase-01-temporal-evidence` branch adds the following integrated cap
 | Temporal conflict resolution | `evidence_verification.py` structured candidates only | `PARTIALLY_IMPLEMENTED` | Structured same-subject/predicate conflicts with temporal overlap checks | No atomic free-text extraction, source supersession model, or integrated research review workflow |
 
 Freshness compares publisher/update date metadata, not retrieval time. A stale source is not necessarily false. See `docs/architecture/FRESHNESS_POLICY.md`.
+
+
+## Phase 02 — Episodic and procedural memory increment
+
+The `oracle/phase-02-memory-evolution` branch adds:
+
+| Increment | Owning modules | Status on this branch | Scope and limitations |
+|---|---|---|---|
+| Episodic event storage | `memory_layers.py`, `database.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicit scope-bound events with summary, details, source, occurred/recorded timestamps and deterministic duplicate detection |
+| Episodic retrieval | `memory_layers.py`, `ai_core.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Bounded lexical relevance; no unrelated recent-event injection when query tokens are absent |
+| Procedural candidate storage | `memory_layers.py`, `database.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicit workflow name/description/steps and provenance; new entries start as candidates |
+| Validated procedure retrieval | `memory_layers.py`, `ai_core.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Only procedures explicitly marked `validated` are included in AI context; outcome counts do not automatically validate |
+| Additive schema initialization | `database.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Adds event/procedure tables without rewriting legacy `memories` rows; not a general migration framework |
+| Memory prompt integration | `ai_core.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Bounded JSON context; markup delimiters are escaped; new memory-layer failures are fail-soft |
+
+Vector retrieval, cross-layer semantic ranking, automatic memory extraction, consolidation/version history, and graph links remain planned. See `docs/architecture/MEMORY_ARCHITECTURE.md`.

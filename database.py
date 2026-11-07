@@ -241,6 +241,46 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_memories_scope_created
             ON memories(scope, created_at DESC, id DESC);
 
+        -- Episodic memory: explicitly recorded events with source and time provenance.
+        CREATE TABLE IF NOT EXISTS memory_events (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope              TEXT NOT NULL,
+            event_type         TEXT NOT NULL,
+            summary            TEXT NOT NULL,
+            normalized_summary TEXT NOT NULL,
+            details_json       TEXT NOT NULL DEFAULT '{}',
+            source             TEXT NOT NULL,
+            happened_at        TEXT NOT NULL,
+            recorded_at        TEXT NOT NULL,
+            UNIQUE(scope, event_type, normalized_summary, happened_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_events_scope_time
+            ON memory_events(scope, happened_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_memory_events_scope_type_time
+            ON memory_events(scope, event_type, happened_at DESC);
+
+        -- Procedural memory: candidate workflows become retrievable only after validation.
+        CREATE TABLE IF NOT EXISTS memory_procedures (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope           TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            description     TEXT NOT NULL,
+            steps_json      TEXT NOT NULL,
+            source          TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'candidate',
+            success_count   INTEGER NOT NULL DEFAULT 0,
+            failure_count   INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            UNIQUE(scope, normalized_name),
+            CHECK(status IN ('candidate', 'validated', 'retired')),
+            CHECK(success_count >= 0),
+            CHECK(failure_count >= 0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_procedures_scope_status
+            ON memory_procedures(scope, status, updated_at DESC);
+
         CREATE TABLE IF NOT EXISTS knowledge_entities (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             scope           TEXT NOT NULL,

@@ -124,3 +124,25 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Verified code head:** `c9dbdce524a4af4547957144cf41638440343a5c`.
 - **CI run:** `42397400916`; Ubuntu **228 passed, 1 warning**; macOS **228 passed, 1 warning**. Both compile and test steps passed. The warning is the existing Starlette/httpx TestClient deprecation warning.
 - **Validation scope:** This verifies the configured offline test suite for this commit. It does not validate live search-provider date accuracy, live reviewer-model behavior, physical Mac execution, or production deployment.
+
+
+### Phase 02a — Episodic and procedural memory (implementation in progress)
+
+- **Branch:** `oracle/phase-02-memory-evolution`
+- **Base:** `oracle/phase-01-temporal-evidence`
+- **Dependency:** Stacked on PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `memory_layers.py`
+  - `test_memory_layers.py`
+  - `docs/architecture/MEMORY_ARCHITECTURE.md`
+- **Files integrated/updated:**
+  - `database.py` — additive `memory_events` and `memory_procedures` tables.
+  - `ai_core.py` — bounded episodic and validated procedural memory context.
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Explicit scope-bound event storage/retrieval, separate event occurrence and record timestamps, source metadata, candidate/validated/retired procedures, success/failure counters, explicit procedure validation, validated-only procedure retrieval, additive database initialization, and AI Core context integration.
+- **Important limitations:** Retrieval is lexical only; no embeddings/vector search, automatic memory extraction, consolidation, revision history, or automatic Knowledge Graph links. The phase does not add any memory deletion API.
+- **Tests:** Initial CI reported 237 passed, 1 failed, 1 warning; the single failure was an incorrect test expectation about the deliberately populated second scope. The assertion was corrected to verify per-scope isolation. CI run `42397781790` passed on corrected code head `733ca24e6daf9ef5d1587c9e80cfbd63f30f2886`: Ubuntu **238 passed, 1 warning**; macOS **238 passed, 1 warning**. The warning is the existing Starlette/httpx TestClient deprecation warning. No local test execution is claimed.
+- **Pull Request:** [PR #8 — Add episodic and validated procedural memory layers](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/8)
+- **PR status:** Open, draft; base is `oracle/phase-01-temporal-evidence` (PR #7).
+- **Verified code head:** `733ca24e6daf9ef5d1587c9e80cfbd63f30f2886`.
+- **CI after the subsequent delivery-log-only update:** Pending for the new branch head.
