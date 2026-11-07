@@ -90,6 +90,7 @@ def test_retrieval_excludes_future_and_expired_memories(monkeypatch, tmp_path):
     memory_lifecycle.set_memory_metadata(
         expired.id,
         "owner:one",
+        valid_from=now - timedelta(days=10),
         valid_until=now - timedelta(days=1),
         reason="This information is no longer valid",
     )
