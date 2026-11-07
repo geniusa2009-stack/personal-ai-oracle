@@ -171,6 +171,8 @@ def assess_source_freshness(
         }
 
     current = _timestamp(as_of) if as_of is not None else datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if current is None:
+        raise EvidenceError("as_of must be a valid ISO date or datetime")
     current_dt = datetime.fromisoformat(current.replace("Z", "+00:00"))
     reference_dt = datetime.fromisoformat(reference_value.replace("Z", "+00:00"))
     age_seconds = (current_dt - reference_dt).total_seconds()
