@@ -322,10 +322,11 @@ def _synthesize(
     queries: list[str],
     sources: list[dict[str, Any]],
     memory_scope: str | None,
-) -> tuple[str, list[str], list[str], list[str], list[str]]:
+) -> tuple[str, list[str], list[str], list[str], list[str], list[dict[str, Any]]]:
     if not sources:
         return (
             "لم أتمكن من جمع مصادر صالحة للسؤال ده. جرّب إعادة صياغة السؤال أو التأكد من إعداد محرك البحث.",
+            [],
             [],
             [],
             [],
@@ -341,11 +342,17 @@ def _synthesize(
         "reasonable interpretation and gaps. Prefer primary/official evidence where present, "
         "but do not treat a domain label as proof of truth. If sources conflict, explain the "
         "conflict instead of choosing silently. Do not invent dates, numbers, quotes or citations. "
-        "Return JSON only: {"
+        "Also return optional structured_claims for at most 80 sentence-level claim candidates. "
+        "Each item must use claim_id C1, C2, ... matching the answer sentence order, with a concise "
+        "subject, predicate, object, source_ids explicitly cited in that sentence, and optional "
+        "valid_from/valid_until dates only when supplied by the evidence. Omit a tuple when the "
+        "sentence cannot be represented safely as one simple proposition. Structured tuples are "
+        "candidate metadata, not additional facts. Return JSON only: {"
         '"answer":"...",'
         '"key_findings":["..."],'
         '"limitations":["..."],'
-        '"cited_source_ids":["S1"]'
+        '"cited_source_ids":["S1"],'
+        '"structured_claims":[{"claim_id":"C1","subject":"...","predicate":"...","object":"...","source_ids":["S1"],"valid_from":null,"valid_until":null}]'
         "}."
     )
     response = ai_core.chat(
@@ -373,7 +380,8 @@ def _synthesize(
         data = {}
     if not isinstance(data, dict) or not isinstance(data.get("answer"), str):
         fallback = str(response or "تعذّر إنشاء تقرير البحث.")[:MAX_ANSWER_LENGTH]
-        return fallback, [], [], [], []
+        return fallback, [], [], [], [], []
+
     answer = data["answer"].strip()[:MAX_ANSWER_LENGTH]
     findings = data.get("key_findings", [])
     limitations = data.get("limitations", [])
@@ -385,7 +393,54 @@ def _synthesize(
     used = list(dict.fromkeys(in_text + declared))
     invalid = [item for item in used if item not in allowed_ids]
     valid = [item for item in used if item in allowed_ids]
-    return answer, findings, limitations, valid, invalid
+
+    # A structured tuple must map to a sentence candidate and only cite sources
+    # that the same sentence explicitly cites. Invalid/unmapped tuples are dropped.
+    candidates = evidence_verification.build_claim_candidates(answer, sources)
+    candidates_by_id = {item["claim_id"]: item for item in candidates}
+    raw_structured = data.get("structured_claims", [])
+    structured_claims: list[dict[str, Any]] = []
+    if isinstance(raw_structured, list):
+        for item in raw_structured[:80]:
+            if not isinstance(item, dict):
+                continue
+            claim_id = item.get("claim_id")
+            subject = item.get("subject")
+            predicate = item.get("predicate")
+            object_value = item.get("object")
+            source_ids = item.get("source_ids")
+            candidate = candidates_by_id.get(claim_id) if isinstance(claim_id, str) else None
+            if (
+                candidate is None
+                or any(
+                    not isinstance(value, str) or not value.strip() or len(value.strip()) > 200
+                    for value in (subject, predicate, object_value)
+                )
+                or not isinstance(source_ids, list)
+                or not source_ids
+                or any(not isinstance(source_id, str) for source_id in source_ids)
+            ):
+                continue
+            cited_for_claim = set(candidate["source_ids"])
+            if any(source_id not in cited_for_claim or source_id not in allowed_ids for source_id in source_ids):
+                continue
+            normalized_ids = list(dict.fromkeys(source_ids))[:6]
+            if not normalized_ids:
+                continue
+            structured = {
+                "claim_id": claim_id,
+                "subject": subject.strip(),
+                "predicate": predicate.strip(),
+                "object": object_value.strip(),
+                "source_ids": normalized_ids,
+            }
+            for date_field in ("valid_from", "valid_until"):
+                date_value = item.get(date_field)
+                if isinstance(date_value, str) and date_value.strip() and len(date_value) <= 100:
+                    structured[date_field] = date_value.strip()
+            structured_claims.append(structured)
+
+    return answer, findings, limitations, valid, invalid, structured_claims
 
 
 def map_claim_evidence(answer: str, valid_source_ids: list[str], *, max_claims: int = 80) -> list[dict[str, Any]]:
@@ -463,7 +518,14 @@ def run_research(
     for index, source in enumerate(sources, start=1):
         source["citation_id"] = f"S{index}"
 
-    answer, key_findings, model_limitations, cited_ids, invalid_ids = _synthesize(
+    (
+        answer,
+        key_findings,
+        model_limitations,
+        cited_ids,
+        invalid_ids,
+        structured_claims,
+    ) = _synthesize(
         normalized_query,
         queries,
         sources,
