@@ -18,6 +18,8 @@ from db import get_conn
 
 READ_ONLY_TOOLS = frozenset({
     "local.list_directory", "local.read_file", "local.find_files",
+    "local.get_system_info", "local.list_processes", "local.list_applications",
+    "local.get_mac_intelligence_status",
     "web.search", "web.navigate", "web.extract", "web.links", "web.open_browser",
 })
 APPROVAL_TOOLS = frozenset({

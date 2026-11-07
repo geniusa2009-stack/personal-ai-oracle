@@ -134,6 +134,10 @@ def authorize_workspace_action(tool_id: str, payload: dict[str, Any]) -> dict[st
     """Authorize only an explicitly configured action inside a configured workspace."""
     try:
         policy = _load_policy()
+        # Move and delete are deliberately never covered by trusted-workspace
+        # automation; they continue through the exact one-time approval gate.
+        if tool_id in {"local.move_path", "local.delete_path"}:
+            return {"allowed": False, "reason": "explicit_approval_required"}
         auto_tools = set(policy["auto_allow_tools"])
         if tool_id not in auto_tools:
             return {"allowed": False, "reason": "manual_approval_required"}

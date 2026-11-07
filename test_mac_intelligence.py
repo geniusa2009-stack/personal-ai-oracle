@@ -93,16 +93,19 @@ def test_app_launch_requires_exact_local_allowlist(monkeypatch, tmp_path):
     )["allowed"] is False
 
 
-def test_recursive_delete_is_never_auto_allowed(monkeypatch, tmp_path):
+def test_move_and_delete_always_require_explicit_approval(monkeypatch, tmp_path):
     workspace = tmp_path / "Projects"
     workspace.mkdir()
-    policy = _policy(workspace, auto_allow_tools=["local.delete_path"])
+    policy = _policy(workspace, auto_allow_tools=["local.move_path", "local.delete_path"])
     _write_policy(monkeypatch, tmp_path, policy)
-    result = mac_intelligence.authorize_workspace_action(
-        "local.delete_path", {"path": str(workspace / "old.txt"), "recursive": True}
+    moved = mac_intelligence.authorize_workspace_action(
+        "local.move_path", {"source": str(workspace / "a"), "destination": str(workspace / "b")}
     )
-    assert result["allowed"] is False
-    assert result["reason"] == "recursive_delete_never_auto_allowed"
+    deleted = mac_intelligence.authorize_workspace_action(
+        "local.delete_path", {"path": str(workspace / "old.txt"), "recursive": False}
+    )
+    assert moved == {"allowed": False, "reason": "explicit_approval_required"}
+    assert deleted == {"allowed": False, "reason": "explicit_approval_required"}
 
 
 def test_remote_mutation_requires_local_policy_and_never_exposes_delete(monkeypatch, tmp_path):

@@ -17,6 +17,17 @@ def test_read_only_tools_are_allowed_without_approval(monkeypatch, tmp_path):
     assert execution_policy.list_approvals("owner-a") == []
 
 
+def test_mac_diagnostic_tools_are_read_only_without_approval(monkeypatch, tmp_path):
+    _database(monkeypatch, tmp_path)
+    for tool_id in (
+        "local.get_system_info", "local.list_processes",
+        "local.list_applications", "local.get_mac_intelligence_status",
+    ):
+        result = execution_policy.authorize_action(tool_id, {}, scope="owner-a")
+        assert result == {"allowed": True, "reason": "read_only"}
+    assert execution_policy.list_approvals("owner-a") == []
+
+
 def test_mutation_requires_exact_one_time_owner_approval(monkeypatch, tmp_path):
     _database(monkeypatch, tmp_path)
     payload = {"path": "/tmp/note.txt", "content": "private content"}
