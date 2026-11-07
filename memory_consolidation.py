@@ -183,7 +183,7 @@ def _classify_pair(
 
     left_negations = left_tokens & NEGATION_TOKENS
     right_negations = right_tokens & NEGATION_TOKENS
-    polarity_mismatch = left_negations != right_negations
+    polarity_mismatch = bool(left_negations) != bool(right_negations)
 
     left_numbers = _numeric_values(left["content"])
     right_numbers = _numeric_values(right["content"])
