@@ -112,7 +112,7 @@ For hosted candidates, the caller must explicitly pass \`allow_remote=True\`.
 - Phrase matching does not detect semantic paraphrases, fabricated reasoning, or unsupported factual claims.
 - No real provider benchmark was executed by CI; CI verifies the runner and persistence using fake providers.
 - Provider adapters currently discard token-usage metadata, and cost is not measured or inferred.
-- Quality scores are only comparable when they use the same evaluator ID and compatible suite semantics.
+- Quality scores are only comparable when they use the same suite ID, evaluator ID and compatible rubric semantics.
 - ModelRouter continues to follow explicit/category/tier configuration. Scorecards do not automatically change the router.
 - No token throughput, memory usage, energy use, or hardware-normalized metrics are recorded.
 - A future router integration must keep manual provider/model overrides, privacy boundaries, and cost controls authoritative.
