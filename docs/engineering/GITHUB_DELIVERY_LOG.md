@@ -124,3 +124,23 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Verified code head:** `c9dbdce524a4af4547957144cf41638440343a5c`.
 - **CI run:** `42397400916`; Ubuntu **228 passed, 1 warning**; macOS **228 passed, 1 warning**. Both compile and test steps passed. The warning is the existing Starlette/httpx TestClient deprecation warning.
 - **Validation scope:** This verifies the configured offline test suite for this commit. It does not validate live search-provider date accuracy, live reviewer-model behavior, physical Mac execution, or production deployment.
+
+
+### Phase 02a — Episodic and procedural memory (implementation in progress)
+
+- **Branch:** `oracle/phase-02-memory-evolution`
+- **Base:** `oracle/phase-01-temporal-evidence`
+- **Dependency:** Stacked on PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `memory_layers.py`
+  - `test_memory_layers.py`
+  - `docs/architecture/MEMORY_ARCHITECTURE.md`
+- **Files integrated/updated:**
+  - `database.py` — additive `memory_events` and `memory_procedures` tables.
+  - `ai_core.py` — bounded episodic and validated procedural memory context.
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Explicit scope-bound event storage/retrieval, separate event occurrence and record timestamps, source metadata, candidate/validated/retired procedures, success/failure counters, explicit procedure validation, validated-only procedure retrieval, additive database initialization, and AI Core context integration.
+- **Important limitations:** Retrieval is lexical only; no embeddings/vector search, automatic memory extraction, consolidation, revision history, or automatic Knowledge Graph links. The phase does not add any memory deletion API.
+- **Tests:** Unit and integration tests have been added, including legacy memory-table compatibility and prompt-context markup escaping. CI has not yet run for this branch; no local test execution is claimed.
+- **Pull Request:** Pending creation.
+- **PR status / CI:** Pending.
