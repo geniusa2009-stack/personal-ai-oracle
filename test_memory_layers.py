@@ -194,7 +194,8 @@ def test_ai_core_injects_relevant_episodic_and_validated_procedural_context(monk
     assert "<personal_procedural_memory_json>" in system_content
     assert "GitHub delivery workflow" in system_content
     assert "Private unrelated Oracle event" not in system_content
-    assert "<personal_episodic_memory_json>" not in other_scope[0]["content"]
+    assert "Completed the Oracle architecture audit" not in other_scope[0]["content"]
+    assert "Private unrelated Oracle event" in other_scope[0]["content"]
 
 
 def test_memory_context_json_escapes_markup_delimiters(monkeypatch, tmp_path):
