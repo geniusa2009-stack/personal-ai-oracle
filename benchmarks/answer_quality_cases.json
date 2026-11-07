@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "oracle-answer-quality-v1",
+  "scope": "citation_integrity_and_source_availability_only",
+  "limitations": [
+    "This dataset evaluates citation structure and evidence availability, not semantic entailment.",
+    "A correct citation classification does not establish that a source supports a claim or that the claim is true.",
+    "Cases are synthetic fixtures for deterministic regression testing, not a representative sample of all production research."
+  ],
+  "cases": [
+    {
+      "id": "single_extracted_citation",
+      "answer": "The report was published in 2024 [S1].",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": ["citation_present_unverified"]
+    },
+    {
+      "id": "snippet_only_citation",
+      "answer": "The search result describes a new policy [S1].",
+      "sources": [{"citation_id": "S1", "page_status": "not_fetched"}],
+      "expected_statuses": ["citation_present_unverified"]
+    },
+    {
+      "id": "uncited_claim",
+      "answer": "The policy changed last year.",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": ["uncited"]
+    },
+    {
+      "id": "unknown_reference",
+      "answer": "The policy changed last year [S9].",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": ["invalid_reference"]
+    },
+    {
+      "id": "mixed_claims",
+      "answer": "The first result is documented [S1]. The second claim has no source. The third cites a missing source [S8].",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": ["citation_present_unverified", "uncited", "invalid_reference"]
+    },
+    {
+      "id": "multiple_valid_references",
+      "answer": "Two sources mention the same event [S1] [S2].",
+      "sources": [
+        {"citation_id": "S1", "page_status": "extracted"},
+        {"citation_id": "S2", "page_status": "not_fetched"}
+      ],
+      "expected_statuses": ["citation_present_unverified"]
+    },
+    {
+      "id": "valid_and_invalid_reference",
+      "answer": "The claim cites one known and one unknown source [S1] [S7].",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": ["invalid_reference"]
+    },
+    {
+      "id": "empty_answer",
+      "answer": "",
+      "sources": [{"citation_id": "S1", "page_status": "extracted"}],
+      "expected_statuses": []
+    },
+    {
+      "id": "malformed_source_identifier",
+      "answer": "The claim refers to a malformed source [S1].",
+      "sources": [{"citation_id": "../S1", "page_status": "extracted"}],
+      "expected_statuses": ["invalid_reference"]
+    },
+    {
+      "id": "mixed_evidence_availability",
+      "answer": "An extracted page is cited [S1]. A snippet is cited [S2]. An uncited statement follows.",
+      "sources": [
+        {"citation_id": "S1", "page_status": "extracted"},
+        {"citation_id": "S2", "page_status": "not_fetched"}
+      ],
+      "expected_statuses": ["citation_present_unverified", "citation_present_unverified", "uncited"]
+    }
+  ]
+}

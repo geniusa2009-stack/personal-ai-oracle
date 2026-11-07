@@ -228,3 +228,32 @@ directed relationships, searching the saved graph context, and running Deep
 Research directly from the dashboard. Workflow history remains digest-only;
 Knowledge Graph records are explicitly user-entered (the system does not silently
 infer or save relationships from private conversations).
+
+## Answer-quality benchmark
+
+Run the deterministic regression benchmark from the repository root:
+
+```bash
+python3 answer_quality_benchmark.py
+```
+
+The runner uses the curated, versioned cases in `benchmarks/answer_quality_cases.json`
+and emits a machine-readable JSON report. To save a report explicitly:
+
+```bash
+python3 answer_quality_benchmark.py --output benchmark-results/answer-quality.json
+```
+
+The benchmark currently measures citation classification (valid reference present,
+uncited claim, invalid reference) and distinguishes extracted-page references from
+search-snippet-only references. It reports exact case pass rate, claim classification
+accuracy, per-label precision/recall/F1 and a confusion matrix. A non-perfect exact
+case pass rate exits with status 1 so regressions can fail CI.
+
+**Important limitation:** this is a deterministic structural baseline, not a semantic
+answer-quality score. It does not evaluate whether a source entails a claim, whether
+a claim is factually true, source authority, freshness, completeness or usefulness.
+The included fixtures are synthetic regression cases, not a representative production
+sample. Semantic evaluation requires a separately validated human-labelled dataset
+and an independent evaluation method; do not compare model quality using this score
+alone.
