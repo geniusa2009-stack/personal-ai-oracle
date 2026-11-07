@@ -447,6 +447,7 @@ def run_research(
     if fetch_pages and os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
         limitations.append("Page extraction depends on the paired Mac agent being online.")
     result_status = "error" if not sources else ("partial" if limitations else "success")
+    quality_assessment = answer_quality.assess_claim_citations(answer, output_sources)
     return {
         "status": result_status,
         "query": normalized_query,
@@ -460,8 +461,8 @@ def run_research(
             "valid_source_ids": cited_ids,
             "invalid_source_ids": invalid_ids,
         },
-        "claim_evidence": answer_quality.assess_claim_citations(answer, output_sources)["claims"],
-        "quality_assessment": answer_quality.assess_claim_citations(answer, output_sources),
+        "claim_evidence": quality_assessment["claims"],
+        "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
             "source_count": len(sources),
@@ -494,7 +495,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             key: report.get("quality_assessment", {}).get(key)
             for key in (
                 "status", "assessment_scope", "semantic_entailment_checked",
-                "truth_verified", "claim_count", "claims_with_citations",
+                "truth_verified", "claim_count", "claims_with_citations", "claims_with_any_reference",
                 "uncited_claim_count", "invalid_reference_claim_count",
                 "citation_coverage", "extracted_page_references",
                 "snippet_only_references",
