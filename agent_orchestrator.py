@@ -136,11 +136,15 @@ def _build_next_step(
             return None, None, "", ("invalid_plan_shape",)
 
         question = data.get("clarifying_question", "")
+        if "clarifying_question" in data and not isinstance(question, str):
+            return data, None, "", ("invalid_clarifying_question",)
         if not isinstance(question, str):
             question = ""
         question = question.strip()[:1000]
 
-        raw_steps = data.get("steps", [])
+        if "steps" not in data:
+            return data, None, question, ("missing_steps_list",)
+        raw_steps = data.get("steps")
         if not isinstance(raw_steps, list):
             return data, None, question, ("invalid_steps_list",)
 
