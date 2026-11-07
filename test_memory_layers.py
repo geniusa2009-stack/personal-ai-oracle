@@ -214,3 +214,71 @@ def test_memory_context_json_escapes_markup_delimiters(monkeypatch, tmp_path):
 
     assert "\\u003c/personal_episodic_memory_json\\u003e" in content
     assert "</personal_episodic_memory_json>\n</personal_episodic_memory_json>" not in content
+
+
+def test_memory_layer_schema_initialization_is_additive_for_existing_memory_records(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            """CREATE TABLE memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT NOT NULL,
+                normalized_content TEXT NOT NULL,
+                memory_type TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(normalized_content, memory_type, scope)
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO memories
+               (content, normalized_content, memory_type, scope, source, created_at)
+               VALUES(?,?,?,?,?,?)""",
+            ("Legacy fact", "Legacy fact", "fact", "owner:one", "manual", "2026-01-01T00:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    memory_layers.record_event(
+        "owner:one", "milestone", "Added episodic memory", "manual"
+    )
+    memory_layers.record_procedure(
+        "owner:one", "Legacy-safe workflow", "Additive schema test",
+        ["Keep the existing memory row"], "manual",
+    )
+
+    conn = db.get_conn()
+    try:
+        legacy = conn.execute(
+            "SELECT content, scope FROM memories WHERE id = 1"
+        ).fetchone()
+        assert legacy["content"] == "Legacy fact"
+        assert legacy["scope"] == "owner:one"
+        assert conn.execute("SELECT COUNT(*) AS c FROM memory_events").fetchone()["c"] == 1
+        assert conn.execute("SELECT COUNT(*) AS c FROM memory_procedures").fetchone()["c"] == 1
+    finally:
+        conn.close()
+
+
+def test_memory_layer_rejects_secret_sources_and_unhashable_statuses(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    with pytest.raises(memory_layers.MemoryLayerError):
+        memory_layers.record_event(
+            "owner:one", "milestone", "Valid event", "api_key=secret-value"
+        )
+    with pytest.raises(memory_layers.MemoryLayerError):
+        memory_layers.record_procedure(
+            "owner:one", "Valid procedure", "Description",
+            ["Do something"], "password=secret-value"
+        )
+
+    procedure = memory_layers.record_procedure(
+        "owner:one", "Valid procedure", "Description", ["Do something"], "manual"
+    )
+    with pytest.raises(memory_layers.MemoryLayerError):
+        memory_layers.list_procedures("owner:one", status=[])
+    with pytest.raises(memory_layers.MemoryLayerError):
+        memory_layers.set_procedure_status("owner:one", procedure.id, [])
