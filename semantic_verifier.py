@@ -118,10 +118,10 @@ def _prepare(
             continue
         if not isinstance(source_ids, list):
             source_ids = []
-        allowed_ids = [
-            source_id for source_id in dict.fromkeys(source_ids)
+        allowed_ids = list(dict.fromkeys(
+            source_id for source_id in source_ids
             if isinstance(source_id, str) and source_id in source_map
-        ][:MAX_SOURCES_PER_CLAIM]
+        ))[:MAX_SOURCES_PER_CLAIM]
 
         evidence_items = []
         for source_id in allowed_ids:
@@ -248,7 +248,7 @@ def verify_claims(
                 status = row.get("status")
                 supported_raw = row.get("supported_source_ids", [])
                 contradicted_raw = row.get("contradicting_source_ids", [])
-                if status not in ALLOWED_STATUSES:
+                if not isinstance(status, str) or status not in ALLOWED_STATUSES:
                     result_by_id[claim_id] = _unverified(
                         item, "The verifier returned an unsupported classification."
                     )
@@ -275,7 +275,7 @@ def verify_claims(
                 contradiction_ids = list(dict.fromkeys(contradicted_raw))
                 if (
                     status == "SUPPORTED" and not support_ids
-                    or status == "PARTIALLY_SUPPORTED" and not (support_ids or contradiction_ids)
+                    or status == "PARTIALLY_SUPPORTED" and not support_ids
                     or status == "CONTRADICTED" and not contradiction_ids
                     or status == "CONFLICTING_EVIDENCE" and (not support_ids or not contradiction_ids)
                 ):
