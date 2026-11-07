@@ -152,3 +152,21 @@ The follow-on `oracle/phase-02-graph-aware-retrieval` branch integrates explicit
 Detailed interfaces, weighting, result modes, privacy and limitations: `docs/architecture/GRAPH_AWARE_MEMORY_RETRIEVAL.md`.
 
 This enables graph-linked memory recall but does not implement automatic graph extraction, contradiction resolution, temporal graph-edge validity or memory consolidation.
+
+
+## 9. Review-only memory consolidation
+
+The `oracle/phase-02-memory-consolidation` branch adds a bounded candidate-discovery layer above lifecycle metadata.
+
+- Active, currently valid records within one memory scope are compared by memory type.
+- Lexical overlap can produce potential-duplicate or related-memory proposals.
+- A narrow negation/numeric-difference heuristic can produce potential-contradiction proposals.
+- Each proposal stores source IDs, content hashes, classifier signals, observations and a review state.
+- Repeated scans update proposal observations without modifying source memory content.
+- Reviews record accept/dismiss decisions only; they never merge, rewrite, supersede or delete source records.
+- Content changes, supersession, source deletion and validity expiry make proposals stale or remove dependent proposals during explicit deletion.
+- Scan limits produce explicit partial-run status instead of implying exhaustive coverage.
+
+Detailed algorithm, thresholds, review APIs and limitations: `docs/architecture/MEMORY_CONSOLIDATION.md`.
+
+This is heuristic candidate discovery, not semantic contradiction verification, and no automated consolidation action is enabled.
