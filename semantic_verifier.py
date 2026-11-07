@@ -130,9 +130,13 @@ def _prepare(
         for source_id in allowed_ids:
             source = source_map[source_id]
             excerpt = source.get("evidence_excerpt") or ""
-            # Snippets can be included for context but cannot independently support
-            # decisive classifications in the result-enforcement layer below.
-            if not excerpt and source.get("snippet"):
+            # Only genuine search-snippet records may fall back to snippets.
+            # An unavailable page or an extracted-but-empty page is not evidence.
+            if (
+                not excerpt
+                and source.get("evidence_level") in {"search_snippet_only", "unknown"}
+                and source.get("snippet")
+            ):
                 excerpt = source["snippet"]
             if not excerpt:
                 continue
