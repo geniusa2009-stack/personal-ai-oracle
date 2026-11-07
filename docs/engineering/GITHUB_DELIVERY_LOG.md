@@ -104,7 +104,7 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **CI:** Successful on Ubuntu and macOS for the verified code head. Subsequent documentation-only commits, if any, require their own CI verification.
 
 
-### Phase 01c — Domain-aware research freshness (implementation in progress)
+### Phase 01c — Domain-aware research freshness
 
 - **Branch:** `oracle/phase-01-temporal-evidence`
 - **Base:** `oracle/phase-01-semantic-verifier`
@@ -119,6 +119,8 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - `docs/architecture/CAPABILITY_MATRIX.md`
 - **Implemented scope:** Domain-specific starting freshness profiles, conservative bilingual query-hint selection, explicit profile override, no universal general-purpose expiry, per-source/citation freshness fields in Deep Research, compact report support, and stale/unknown/future-date limitations.
 - **Important limitations:** Thresholds are starting heuristics requiring calibration. Publication/update date hints are not authoritative proof. This does not detect source supersession or resolve cross-source contradictions.
-- **Tests:** Unit and Deep Research integration tests have been added. This branch's CI has not yet completed; no local test execution is claimed.
-- **Pull Request:** Pending creation.
-- **PR status / CI:** Pending.
+- **Pull Request:** [PR #7 — Integrate domain-aware source freshness into deep research](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/7)
+- **PR status:** Open, draft; base is `oracle/phase-01-semantic-verifier`.
+- **Verified code head:** `c9dbdce524a4af4547957144cf41638440343a5c`.
+- **CI run:** `42397400916`; Ubuntu **228 passed, 1 warning**; macOS **228 passed, 1 warning**. Both compile and test steps passed. The warning is the existing Starlette/httpx TestClient deprecation warning.
+- **Validation scope:** This verifies the configured offline test suite for this commit. It does not validate live search-provider date accuracy, live reviewer-model behavior, physical Mac execution, or production deployment.
