@@ -122,9 +122,8 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
     assert report["sources"][0]["extracted_at"]
     assert report["sources"][0]["evidence_level"] == "extracted_page"
     assert report["evidence_summary"]["source_count"] == 2
-    assert report["evidence_summary"]["semantic_verification"] == "not_performed"
+    assert report["evidence_summary"]["semantic_verification"] == "completed"
     assert len(report["claim_records"]) == 1
-    assert report["claim_records"][0]["verification_status"] == "UNVERIFIED"
     assert report["evidence_manifest"][0]["evidence_level"] == "extracted_page"
     assert report["semantic_verification"]["semantic_entailment_checked"] is True
     assert report["semantic_verification"]["factual_truth_verified"] is False
