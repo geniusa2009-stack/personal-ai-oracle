@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import ai_core
 import answer_quality
 import evidence_verification
+import freshness_policy
 import semantic_verifier
 import search
 
@@ -44,7 +45,7 @@ def available_tool() -> dict[str, Any]:
         "description": (
             "Run multi-query research, deduplicate sources, extract selected public pages, "
             "and return a cited evidence report. Input JSON: "
-            "{query, max_queries?, max_sources?, fetch_pages?, verify_claims?}."
+            "{query, max_queries?, max_sources?, fetch_pages?, verify_claims?, freshness_profile?}."
         ),
         "input_schema": {
             "query": "string",
@@ -52,6 +53,7 @@ def available_tool() -> dict[str, Any]:
             "max_sources": "integer 1-12?",
             "fetch_pages": "boolean?",
             "verify_claims": "boolean?",
+            "freshness_profile": "string? one of general, scholarship_deadline, event_schedule, pricing, government_policy, software_api, scientific_research",
         },
     }
 
@@ -431,6 +433,7 @@ def run_research(
     max_sources: int = 8,
     fetch_pages: bool = True,
     verify_claims: bool = True,
+    freshness_profile: str | None = None,
 ) -> dict[str, Any]:
     """Run bounded multi-query research and return evidence with source IDs."""
     if not isinstance(query, str) or not query.strip() or len(query) > MAX_QUERY_LENGTH:
@@ -443,6 +446,13 @@ def run_research(
         raise ResearchError("fetch_pages must be a boolean")
     if not isinstance(verify_claims, bool):
         raise ResearchError("verify_claims must be a boolean")
+    try:
+        freshness_resolution = freshness_policy.resolve_policy(
+            query,
+            requested_profile=freshness_profile,
+        )
+    except freshness_policy.FreshnessPolicyError as exc:
+        raise ResearchError(str(exc)) from exc
 
     normalized_query = " ".join(query.split())
     queries = _query_plan(normalized_query, max_queries, memory_scope)
@@ -518,7 +528,50 @@ def run_research(
     result_status = "error" if not sources else ("partial" if limitations else "success")
     quality_assessment = answer_quality.assess_claim_citations(answer, output_sources)
     evidence_manifest = evidence_verification.normalize_sources(output_sources)
+    freshness_report = freshness_policy.assess_sources(
+        evidence_manifest,
+        normalized_query,
+        requested_profile=freshness_profile,
+    )
+    freshness_by_id = {
+        item["citation_id"]: item
+        for item in freshness_report["results"]
+        if item.get("citation_id")
+    }
     evidence_by_id = {item["citation_id"]: item for item in evidence_manifest}
+    for source in evidence_manifest:
+        assessment = freshness_by_id.get(source["citation_id"])
+        if assessment:
+            source["freshness"] = {
+                "status": assessment["status"],
+                "reference_date": assessment["reference_date"],
+                "reference_kind": assessment["reference_kind"],
+                "age_days": assessment["age_days"],
+                "max_age_days": assessment["max_age_days"],
+                "policy_profile": assessment["policy_profile"],
+            }
+    for source in output_sources:
+        assessment = freshness_by_id.get(source["citation_id"])
+        if assessment:
+            source["freshness"] = {
+                "status": assessment["status"],
+                "reference_date": assessment["reference_date"],
+                "reference_kind": assessment["reference_kind"],
+                "age_days": assessment["age_days"],
+                "max_age_days": assessment["max_age_days"],
+                "policy_profile": assessment["policy_profile"],
+            }
+    for citation in citations:
+        assessment = freshness_by_id.get(citation["id"])
+        if assessment:
+            citation["freshness"] = {
+                "status": assessment["status"],
+                "reference_date": assessment["reference_date"],
+                "reference_kind": assessment["reference_kind"],
+                "age_days": assessment["age_days"],
+                "max_age_days": assessment["max_age_days"],
+                "policy_profile": assessment["policy_profile"],
+            }
     for source in output_sources:
         metadata = evidence_by_id.get(source["citation_id"], {})
         source["evidence_level"] = metadata.get("evidence_level", "unknown")
@@ -549,6 +602,12 @@ def run_research(
             claim["verification_reason"] = str(assessed.get("reason") or "")[:700]
             claim["supported_source_ids"] = list(assessed.get("supported_source_ids", []))[:6]
             claim["contradicting_source_ids"] = list(assessed.get("contradicting_source_ids", []))[:6]
+    if freshness_report["counts"]["stale"]:
+        limitations.append("Some sources exceed the active domain-specific freshness threshold.")
+    if freshness_report["counts"]["unknown"] and freshness_report["max_age_days"] is not None:
+        limitations.append("Some sources have no usable publication or update date for freshness assessment.")
+    if limitations and result_status == "success":
+        result_status = "partial"
     evidence_summary = {
         "source_count": len(evidence_manifest),
         "extracted_page_count": sum(item["evidence_level"] == "extracted_page" for item in evidence_manifest),
@@ -556,6 +615,8 @@ def run_research(
         "unavailable_or_partial_count": sum(item["evidence_level"] == "unavailable_or_partial" for item in evidence_manifest),
         "claim_candidate_count": len(claim_records),
         "semantic_verification": semantic_report.get("status", "not_performed"),
+        "freshness_profile": freshness_report["profile"],
+        "freshness_counts": freshness_report["counts"],
     }
     if semantic_report.get("status") in {"partial", "error"}:
         limitations.append("Some claims could not receive a usable semantic evidence assessment.")
@@ -578,6 +639,7 @@ def run_research(
         "claim_records": claim_records,
         "evidence_manifest": evidence_manifest,
         "evidence_summary": evidence_summary,
+        "freshness_assessment": freshness_report,
         "semantic_verification": semantic_report,
         "quality_assessment": quality_assessment,
         "stats": {
@@ -792,6 +854,7 @@ def execute(
             max_sources=tool_input.get("max_sources", 8),
             fetch_pages=tool_input.get("fetch_pages", True),
             verify_claims=tool_input.get("verify_claims", True),
+            freshness_profile=tool_input.get("freshness_profile"),
         )
     except ResearchError as exc:
         return {"name": "web.deep_research", "status": "error", "result": str(exc)}
