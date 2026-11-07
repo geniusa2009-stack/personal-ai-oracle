@@ -103,7 +103,7 @@ def _matches_hint(query: str, hint: str) -> bool:
     if " " in normalized_hint:
         return normalized_hint in query
     return re.search(
-        rf"(?<![\\w]){re.escape(normalized_hint)}(?![\\w])",
+        rf"(?<!\w){re.escape(normalized_hint)}(?!\w)",
         query,
         flags=re.UNICODE,
     ) is not None
