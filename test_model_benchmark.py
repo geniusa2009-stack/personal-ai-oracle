@@ -260,6 +260,31 @@ def test_scorecards_keep_different_evaluators_separate(monkeypatch, tmp_path):
     }
     assert len(cards) == 2
 
+    # Same evaluator ID but a different suite version must remain a separate scorecard.
+    second_phrase_suite = model_benchmark.BenchmarkSuite(
+        "phrase-suite-v2",
+        (
+            model_benchmark.BenchmarkCase(
+                f"v2-{index}", "fast",
+                ({"role": "user", "content": f"case {index}"},),
+                expected_contains=("ready",),
+            )
+            for index in range(3)
+        ),
+    )
+    model_benchmark.run_benchmark(
+        "owner:one",
+        second_phrase_suite,
+        [candidate],
+        runner=lambda _candidate, _request: "ready",
+    )
+    cards = model_benchmark.scorecards(
+        "owner:one", min_samples=1, min_quality_samples=1
+    )
+    phrase_cards = [item for item in cards if item.evaluator_id == "phrase_rubric_v1"]
+    assert {item.suite_id for item in phrase_cards} == {"test-suite-v1", "phrase-suite-v2"}
+    assert len(phrase_cards) == 2
+
 
 def test_suite_rejects_mixed_phrase_rubric_coverage():
     with pytest.raises(model_benchmark.ModelBenchmarkError, match="same built-in phrase-rubric"):
@@ -316,3 +341,11 @@ def test_phrase_rubric_scores_each_required_and_forbidden_condition():
     assert clean_but_incorrect[0] == 0.5
     assert explicit_violation[0] == 0.0
     assert correct[0] == 1.0
+
+    case_insensitive = model_benchmark.BenchmarkCase(
+        "case-insensitive-rubric",
+        "fast",
+        ({"role": "user", "content": "Name a sea."},),
+        expected_contains=("Mediterranean Sea",),
+    )
+    assert model_benchmark._rubric_score(case_insensitive, "mediterranean sea")[0] == 1.0
