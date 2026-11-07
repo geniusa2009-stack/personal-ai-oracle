@@ -4,7 +4,7 @@
 **Baseline snapshot SHA:** `0763f14e006554cb20af4a22526394a4d4ce0ade`  
 **Baseline reviewed:** 2026-11-07 UTC  
 **Baseline incremental update:** `oracle/phase-01-evidence-foundation`  
-**Current update:** `oracle/phase-01-semantic-verifier` (CI pending)
+**Current update:** `oracle/phase-01-semantic-verifier` (CI passed on head `2592d1818e4753a350f1d223bfb356b2b2736bb8`; documentation update may trigger a fresh CI run)
 
 This matrix records evidence-backed status, not product aspirations. A module's existence or a feature registry label is not sufficient to mark a capability complete.
 
@@ -36,8 +36,8 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Citation integrity assessment | `answer_quality.py`, `deep_research.py` | Source IDs, final answer claims | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality.py`, `test_deep_research.py` | Maintain explicit non-entailment limitation |
 | Semantic claim verification | `semantic_verifier.py`, `deep_research.py` | Reviewer model, cited evidence excerpts, validated response contract | `IMPLEMENTED_BUT_UNVERIFIED` | `test_semantic_verifier.py`, `test_deep_research.py` | Bounded reviewer-model assessment for cited evidence; requires extracted-page evidence for decisive labels; never proves factual truth; CI for this branch pending |
 | Evidence provenance store | Research source objects only; no complete normalized evidence subsystem verified | Source extraction, DB persistence | `PARTIALLY_IMPLEMENTED` | Deep-research tests | Normalize source metadata and claim/source edges; define persistence policy |
-| Source contradiction detection | Not found as integrated engine | Claim normalization, temporal evidence | `PLANNED` | No dedicated contradiction test suite found | Distinguish true contradictions from temporal/definition differences |
-| Temporal freshness engine | Not found as integrated engine | Published/updated/retrieved timestamps | `PLANNED` | No dedicated freshness tests found | Domain-specific freshness policies and stale labels |
+| Source contradiction detection | `evidence_verification.py` | Explicit structured subject/predicate/object input | `PARTIALLY_IMPLEMENTED` | `test_evidence_verification.py` | Currently generates potential conflicts only for already-structured claims; no free-text extraction or end-to-end research report integration |
+| Temporal freshness engine | `evidence_verification.py`, `deep_research.py` provenance | Explicit per-call max-age policy and source date metadata | `PARTIALLY_IMPLEMENTED` | `test_evidence_verification.py` | Freshness primitive is tested but no domain policy registry or automatic research-report integration exists |
 | Citation benchmark | `answer_quality_benchmark.py`, `benchmarks/answer_quality_cases.json` | Deterministic fixtures | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality_benchmark.py`, latest PR #3 CI | Expand beyond 10 synthetic citation-classification cases |
 | Representative research benchmark | Not present | Human-reviewed bilingual annotations | `PLANNED` | Synthetic baseline only | Arabic/English evidence and semantic support dataset |
 | Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | More lifecycle metadata and memory categories |
@@ -128,3 +128,13 @@ The `oracle/phase-01-semantic-verifier` branch builds on PR #5 with a bounded mo
 | Research report integration | `deep_research.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Separate `semantic_verification` object; citation-integrity assessment remains unchanged; factual truth is always reported as not verified |
 
 The following remain incomplete: atomic claim extraction, domain-specific freshness policy integration, free-text contradiction resolution, a persistent evidence store, and a human-reviewed bilingual benchmark. See `docs/architecture/SEMANTIC_VERIFICATION.md`.
+
+
+### Phase 01b validation update
+
+- Latest verified Phase 01b code head: `2592d1818e4753a350f1d223bfb356b2b2736bb8`.
+- GitHub Actions run `42396961333` completed successfully.
+- Ubuntu: **213 passed, 1 warning**.
+- macOS: **213 passed, 1 warning**.
+- The warning is the existing Starlette/httpx TestClient deprecation warning.
+- This validates the configured CI suite for this commit. It does not validate a live provider call, a physical Mac, cloud deployment, or factual truth of model assessments.
