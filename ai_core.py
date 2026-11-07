@@ -174,6 +174,8 @@ def _messages_with_memory(messages: list | tuple, memory_scope: str | None) -> l
     retrieval_mode = "lexical_fallback"
     episodic_records = []
     validated_procedures = []
+    graph_context = ""
+    graph_retrieval_included = False
     try:
         import hybrid_memory
         memory_context = hybrid_memory.retrieve_memory_context(
@@ -184,8 +186,10 @@ def _messages_with_memory(messages: list | tuple, memory_scope: str | None) -> l
         episodic_records = list(memory_context.events)
         validated_procedures = list(memory_context.procedures)
         retrieval_mode = memory_context.retrieval_mode
+        graph_context = getattr(memory_context, "graph_context", "")
+        graph_retrieval_included = True
     except Exception:
-        # Keep the original deterministic lexical path as a fail-safe.
+        # Keep the deterministic legacy path as a fail-safe.
         import memory
         records = memory.retrieve_memories(memory_scope, user_query, limit=8)
         try:
@@ -202,26 +206,29 @@ def _messages_with_memory(messages: list | tuple, memory_scope: str | None) -> l
 
     memory_lines = [f"- [{record.memory_type}] {record.content}" for record in records]
 
-    # Knowledge-graph context is opt-in through explicitly stored, scope-owned
-    # entities and relations. Retrieval is deliberately bounded and fail-soft.
-    graph_context = ""
-    try:
-        import knowledge_graph
-        graph_context = knowledge_graph.retrieve_context(
-            memory_scope,
-            user_query,
-            max_entities=5,
-            max_relations=12,
-        )
-    except Exception:
-        graph_context = ""
+    # Compatibility fallback for an older/broken hybrid-memory implementation.
+    # New graph-aware retrieval returns this same context with ranking metadata.
+    if not graph_retrieval_included:
+        try:
+            import knowledge_graph
+            graph_context = knowledge_graph.retrieve_context(
+                memory_scope,
+                user_query,
+                max_entities=5,
+                max_relations=12,
+            )
+        except Exception:
+            graph_context = ""
 
     context_parts = []
     if memory_lines:
-        memory_header = (
-            "معلومات ذاكرة شخصية تم استرجاعها بالبحث الدلالي والمفرداتي. "
-            if retrieval_mode == "hybrid"
-            else "معلومات ذاكرة شخصية صرّح المستخدم بحفظها في نطاقه الخاص. "
+        memory_header = {
+            "hybrid": "معلومات ذاكرة شخصية تم استرجاعها بالبحث المفرداتي والدلالي. ",
+            "hybrid_graph": "معلومات ذاكرة شخصية تم ترتيبها بالبحث المفرداتي والدلالي وروابط الرسم المعرفي. ",
+            "graph_lexical": "معلومات ذاكرة شخصية تم استرجاعها بالبحث المفرداتي وروابط الرسم المعرفي. ",
+        }.get(
+            retrieval_mode,
+            "معلومات ذاكرة شخصية صرّح المستخدم بحفظها في نطاقه الخاص. ",
         )
         context_parts.append(
             memory_header
