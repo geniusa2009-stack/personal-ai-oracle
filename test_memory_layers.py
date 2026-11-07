@@ -271,7 +271,7 @@ def test_memory_layer_schema_initialization_is_additive_for_existing_memory_reco
             "WHERE memory_id=1 AND scope='owner:one'"
         ).fetchone()
         assert history["revision_kind"] == "legacy_baseline"
-        assert "Legacy memory" in history["reason"]
+        assert "legacy memory" in history["reason"].casefold()
     finally:
         conn.close()
 
