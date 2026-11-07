@@ -452,3 +452,187 @@ def test_research_applies_domain_freshness_policy_and_flags_old_sources(monkeypa
     assert report["citations"][0]["freshness"]["status"] == "stale"
     assert any("freshness threshold" in item for item in report["limitations"])
     assert report["status"] == "partial"
+
+
+
+def test_research_correction_repairs_invalid_citation_without_repeating_search(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["query"])
+    search_calls = []
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: (
+            search_calls.append(True)
+            or [{
+                "title": "Primary source",
+                "url": "https://example.com/report",
+                "snippet": "The report states the verified result.",
+                "source": "test",
+            }]
+        ),
+    )
+    model_outputs = [
+        json.dumps({
+            "answer": "The result is confirmed [S99].",
+            "cited_source_ids": ["S99"],
+        }),
+        json.dumps({
+            "answer": "The report records the result [S1].",
+            "cited_source_ids": ["S1"],
+            "key_findings": ["The result is recorded."],
+            "limitations": [],
+        }),
+    ]
+    calls = []
+
+    def fake_chat(messages, **kwargs):
+        calls.append(messages)
+        return model_outputs.pop(0)
+
+    monkeypatch.setattr(deep_research.ai_core, "chat", fake_chat)
+
+    report = deep_research.run_research(
+        "Check a reported result",
+        max_queries=1,
+        max_sources=1,
+        fetch_pages=False,
+    )
+
+    assert len(search_calls) == 1
+    assert len(calls) == 2
+    assert report["answer"] == "The report records the result [S1]."
+    assert report["citation_validation"]["valid_source_ids"] == ["S1"]
+    assert report["citation_validation"]["invalid_source_ids"] == []
+    assert report["self_correction"]["status"] == "corrected"
+    assert report["self_correction"]["retry_count"] == 1
+    assert report["self_correction"]["corrected"] is True
+    assert report["self_correction"]["stop_reason"] == "validated_after_retry"
+    assert report["self_correction"]["final_issue_codes"] == []
+    assert "previous_model_output_untrusted" in calls[1][1]["content"]
+
+
+def test_research_correction_stops_on_repeated_invalid_output(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["query"])
+    search_calls = []
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: (
+            search_calls.append(True)
+            or [{
+                "title": "Primary source",
+                "url": "https://example.com/",
+                "snippet": "Evidence.",
+                "source": "test",
+            }]
+        ),
+    )
+    invalid = json.dumps({
+        "answer": "Unsupported [S99].",
+        "cited_source_ids": ["S99"],
+    })
+    chat = Mock(return_value=invalid)
+    monkeypatch.setattr(deep_research.ai_core, "chat", chat)
+
+    report = deep_research.run_research(
+        "Check a result",
+        max_queries=1,
+        max_sources=1,
+        fetch_pages=False,
+        max_correction_retries=2,
+    )
+
+    assert chat.call_count == 2
+    assert len(search_calls) == 1
+    assert report["citation_validation"]["invalid_source_ids"] == ["S99"]
+    assert report["self_correction"]["stop_reason"] == "repeated_output"
+    assert report["self_correction"]["attempt_count"] == 2
+    assert report["self_correction"]["retry_count"] == 1
+    assert "invalid_citation_ids" in report["self_correction"]["final_issue_codes"]
+
+
+def test_provider_error_is_not_retried_during_research_synthesis(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["query"])
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: [{
+            "title": "Source",
+            "url": "https://example.com/",
+            "snippet": "Evidence.",
+            "source": "test",
+        }],
+    )
+    chat = Mock(return_value="(تعذّر التشغيل: provider unavailable)")
+    monkeypatch.setattr(deep_research.ai_core, "chat", chat)
+
+    report = deep_research.run_research(
+        "Research this",
+        max_queries=1,
+        max_sources=1,
+        fetch_pages=False,
+    )
+
+    assert chat.call_count == 1
+    assert report["self_correction"]["stop_reason"] == "non_retryable_issue"
+    assert report["self_correction"]["final_issue_codes"] == ["provider_error"]
+
+
+def test_research_can_disable_bounded_correction(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["query"])
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: [{
+            "title": "Source",
+            "url": "https://example.com/",
+            "snippet": "Evidence.",
+            "source": "test",
+        }],
+    )
+    response = json.dumps({
+        "answer": "Unsupported [S99].",
+        "cited_source_ids": ["S99"],
+    })
+    chat = Mock(return_value=response)
+    monkeypatch.setattr(deep_research.ai_core, "chat", chat)
+
+    report = deep_research.run_research(
+        "Research this",
+        max_queries=1,
+        max_sources=1,
+        fetch_pages=False,
+        max_correction_retries=0,
+    )
+
+    assert chat.call_count == 1
+    assert report["self_correction"]["retry_count"] == 0
+    assert report["self_correction"]["stop_reason"] == "retry_limit_reached"
+
+
+def test_research_validates_bounded_correction_budget():
+    for retries in (-1, 3, True):
+        with pytest.raises(deep_research.ResearchError):
+            deep_research.run_research("valid query", max_correction_retries=retries)
+
+
+def test_compact_report_preserves_correction_metadata():
+    report = {
+        "status": "partial",
+        "answer": "A concise result [S1].",
+        "self_correction": {
+            "status": "corrected",
+            "attempt_count": 2,
+            "retry_count": 1,
+            "corrected": True,
+            "stop_reason": "validated_after_retry",
+            "final_issue_codes": [],
+            "attempts": [],
+        },
+    }
+
+    compact = json.loads(deep_research.compact_report_json(report, max_bytes=1024))
+
+    assert compact["self_correction"]["status"] == "corrected"
+    assert compact["self_correction"]["retry_count"] == 1
+    assert compact["self_correction"]["stop_reason"] == "validated_after_retry"
