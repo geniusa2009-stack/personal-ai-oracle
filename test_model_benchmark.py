@@ -156,7 +156,7 @@ def test_scorecards_require_minimum_measured_quality_samples_and_rank_models(mon
     def runner(candidate, request):
         prompt = request.to_messages()[-1]["content"]
         if candidate.model == "weak-model":
-            return "incorrect"
+            return "negative failure"
         return {
             "Compute 2 + 2.": "4",
             "Classify a happy outcome.": "positive",
@@ -297,3 +297,22 @@ def test_benchmark_enforces_matrix_and_candidate_limits(monkeypatch, tmp_path):
         model_benchmark.run_benchmark(
             "owner:one", huge_suite, candidates, runner=lambda _c, _r: "x"
         )
+
+
+
+def test_phrase_rubric_scores_each_required_and_forbidden_condition():
+    case = model_benchmark.BenchmarkCase(
+        "classification-rubric",
+        "fast",
+        ({"role": "user", "content": "Classify this."},),
+        expected_contains=("positive",),
+        forbidden_contains=("negative",),
+    )
+
+    clean_but_incorrect = model_benchmark._rubric_score(case, "uncertain")
+    explicit_violation = model_benchmark._rubric_score(case, "negative")
+    correct = model_benchmark._rubric_score(case, "positive")
+
+    assert clean_but_incorrect[0] == 0.5
+    assert explicit_violation[0] == 0.0
+    assert correct[0] == 1.0
