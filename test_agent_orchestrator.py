@@ -500,3 +500,30 @@ def test_planner_treats_completed_tool_call_repetition_as_invalid_plan(monkeypat
 
     assert chat.call_count == 2
     assert plan["step"] is None
+
+
+
+def test_planner_repairs_json_object_that_is_missing_steps_field(monkeypatch):
+    tool = agent_orchestrator.available_tools()[0]
+    chat = Mock(side_effect=[
+        json.dumps({"clarifying_question": ""}),
+        json.dumps({
+            "steps": [{"tool_id": tool["tool_id"], "input": "safe input"}],
+            "clarifying_question": "",
+        }),
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+    executor = Mock()
+    monkeypatch.setattr(features, "run_feature", executor)
+
+    plan = agent_orchestrator._build_next_step(
+        "Use a valid Oracle tool",
+        1,
+        None,
+        [],
+        set(),
+    )
+
+    assert chat.call_count == 2
+    assert plan["step"]["tool_id"] == tool["tool_id"]
+    executor.assert_not_called()
