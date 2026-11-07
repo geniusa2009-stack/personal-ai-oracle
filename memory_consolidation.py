@@ -524,9 +524,14 @@ def _proposal_from_conn(conn: Any, proposal_id: int, scope: str) -> Consolidatio
         signals = json.loads(row["signals_json"])
     except (TypeError, ValueError):
         signals = {}
+    effective_status = row["status"]
+    if effective_status == "pending_review" and stale_ids:
+        # Surface stale source data immediately without mutating the proposal row
+        # during a read. review_proposal persists the stale transition atomically.
+        effective_status = "stale"
     return ConsolidationProposal(
         id=int(row["id"]), scope=row["scope"], proposal_type=row["proposal_type"],
-        status=row["status"], similarity=float(row["similarity"]),
+        status=effective_status, similarity=float(row["similarity"]),
         explanation=row["explanation"],
         signals=signals if isinstance(signals, dict) else {},
         first_seen_at=row["first_seen_at"], last_seen_at=row["last_seen_at"],
@@ -591,11 +596,8 @@ def list_proposals(
             for row in rows
         ]
         result = [proposal for proposal in proposals if proposal is not None]
-        if status == "stale":
-            return [
-                proposal for proposal in result
-                if proposal.status == "stale" or proposal.stale_member_ids
-            ]
+        if status is not None:
+            return [proposal for proposal in result if proposal.status == status]
         return result
     finally:
         conn.close()
