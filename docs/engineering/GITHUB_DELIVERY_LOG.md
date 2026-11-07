@@ -197,3 +197,29 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - The warning is the existing Starlette/httpx TestClient deprecation warning.
 - **Pull Request:** [PR #10 — Add memory lifecycle metadata and non-destructive revision history](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/10)
 - **PR status:** Open, draft; base `oracle/phase-02-hybrid-retrieval` (PR #9). Head at initial publication: `240fe73cd9acaea23610ba163b325efeef256ae9`. No PR is merged automatically.
+
+
+### Phase 02d — Graph-aware hybrid memory retrieval
+
+- **Branch:** `oracle/phase-02-graph-aware-retrieval`
+- **Base:** `oracle/phase-02-memory-lifecycle` (PR #10).
+- **Dependency:** Stacked on PR #10 → PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:** `docs/architecture/GRAPH_AWARE_MEMORY_RETRIEVAL.md`.
+- **Files updated:**
+  - `knowledge_graph.py` — typed `GraphRetrieval` contract, bounded seed and neighbor lookup, relation direction/evidence, expansion terms, prompt-boundary escaping.
+  - `hybrid_memory.py` — original lexical, optional vector and graph-expanded lexical result lists fused with weighted RRF; graph/vector failures leave remaining channels active.
+  - `ai_core.py` — uses the graph context returned by hybrid retrieval, avoiding a second graph query; preserves a fail-soft compatibility fallback.
+  - `test_knowledge_graph.py` — graph expansion bounds, scope isolation, stored evidence and markup escaping.
+  - `test_hybrid_memory.py` — graph recall for facts, episodic events and validated procedures; graph disable/failure fallback; channel-weight ordering; AI Core integration.
+  - `docs/architecture/CAPABILITY_MATRIX.md`, `docs/architecture/MEMORY_ARCHITECTURE.md`.
+- **Ranking design:** Weighted RRF; vector 1.00, original lexical 0.70, graph-expanded lexical 0.45. Graph expansion adds only explicitly stored seed/neighbor entity names, not relation evidence. Limits are bounded (default five seed entities, twelve relations, twenty expansion terms).
+- **Prompt/data handling:** Relation evidence is shown as stored provenance, not asserted as truth. Graph-owned entity names/evidence have markup delimiters escaped before inclusion in the system context. All graph queries remain exact-scope isolated.
+- **Fallback behavior:** Graph failures do not disable lexical/vector retrieval. Embedding provider failures do not disable lexical/graph retrieval. Graph lookup itself makes no external API request.
+- **Validation:** GitHub Actions run `42405405994` passed on implementation head `c5b7a7b695c30bf8d4e3ce8aeef58ceece0f0f6b`.
+  - Ubuntu: **267 passed, 1 warning**.
+  - macOS: **267 passed, 1 warning**.
+  - Both compile and full pytest steps passed.
+  - The warning remains the existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** Graph extraction/entity resolution is still explicit-only. Query expansion is one-hop and lexical; graph vector embeddings, temporal edge validity, graph contradiction review, automatic consolidation, and benchmark-calibrated RRF weights are not implemented. The weights remain heuristics.
+- **Pull Request:** Pending final documentation CI validation; planned as draft PR #11 based on PR #10.
+- **PR status:** Not yet created. No prior PR was merged or retargeted.
