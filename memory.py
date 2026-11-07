@@ -230,6 +230,26 @@ def delete_memory(memory_id: int, scope: str) -> bool:
     init_database()
     conn = get_conn()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT memory_type FROM memories WHERE id = ? AND scope = ?",
+            (memory_id, scope),
+        ).fetchone()
+        if row is None:
+            conn.rollback()
+            return False
+        conn.execute(
+            "DELETE FROM memory_embeddings WHERE scope = ? AND memory_type = ? AND record_id = ?",
+            (scope, row["memory_type"], memory_id),
+        )
+        conn.execute(
+            "DELETE FROM memory_revision_history WHERE memory_id = ? AND scope = ?",
+            (memory_id, scope),
+        )
+        conn.execute(
+            "DELETE FROM memory_metadata WHERE memory_id = ? AND scope = ?",
+            (memory_id, scope),
+        )
         cur = conn.execute("DELETE FROM memories WHERE id = ? AND scope = ?", (memory_id, scope))
         conn.commit()
         return cur.rowcount == 1
