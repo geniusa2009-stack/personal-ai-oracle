@@ -819,6 +819,34 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
                 if isinstance(item, dict)
             ],
         },
+        "structured_claims": [
+            {
+                "claim_id": str(item.get("claim_id") or "")[:80],
+                "subject": str(item.get("subject") or "")[:160],
+                "predicate": str(item.get("predicate") or "")[:120],
+                "object": str(item.get("object") or "")[:160],
+                "source_ids": list(item.get("source_ids", []))[:4],
+                "valid_from": item.get("valid_from"),
+                "valid_until": item.get("valid_until"),
+            }
+            for item in report.get("structured_claims", [])[:8]
+            if isinstance(item, dict)
+        ],
+        "structured_conflicts": [
+            {
+                "conflict_id": str(item.get("conflict_id") or "")[:16],
+                "claim_ids": list(item.get("claim_ids", []))[:4],
+                "source_ids": list(item.get("source_ids", []))[:4],
+                "subject": str(item.get("subject") or "")[:160],
+                "predicate": str(item.get("predicate") or "")[:120],
+                "values": list(item.get("values", []))[:2],
+                "temporal_overlap": str(item.get("temporal_overlap") or "unknown")[:20],
+                "status": str(item.get("status") or "POTENTIAL_CONTRADICTION")[:40],
+                "requires_review": item.get("requires_review") is True,
+            }
+            for item in report.get("structured_conflicts", [])[:6]
+            if isinstance(item, dict)
+        ],
         "claim_records": [
             {
                 "claim_id": str(item.get("claim_id") or "")[:16],
@@ -953,6 +981,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
                 "max_age_days": compact["freshness_assessment"]["max_age_days"],
                 "counts": compact["freshness_assessment"]["counts"],
             },
+            "structured_conflict_count": len(report.get("structured_conflicts", [])),
             "limitations": ["Research report was compacted to fit the agent context."],
             "context_truncated": True,
         }
