@@ -50,6 +50,8 @@ def _result(
     supported: list[str],
     contradicting: list[str],
     reason: str,
+    *,
+    evaluation_kind: str = "model_assisted_evidence_assessment",
 ) -> dict[str, Any]:
     return {
         "claim_id": str(claim.get("claim_id") or "")[:80],
@@ -58,7 +60,7 @@ def _result(
         "contradicting_source_ids": contradicting,
         "reason": reason[:MAX_REASON_CHARS],
         "semantic_support": status,
-        "evaluation_kind": "model_assisted_evidence_assessment",
+        "evaluation_kind": evaluation_kind,
     }
 
 
@@ -211,15 +213,16 @@ def verify_claims(
             result_by_id[item["claim_id"]] = _result(
                 item, "INSUFFICIENT_EVIDENCE", [], [],
                 "The claim has no valid cited source in the supplied evidence set.",
+                evaluation_kind="deterministic_precheck",
             )
         elif not item["evidence"]:
             result_by_id[item["claim_id"]] = _result(
                 item, "INSUFFICIENT_EVIDENCE", [], [],
                 "No usable excerpt or search snippet was available for the cited sources.",
+                evaluation_kind="deterministic_precheck",
             )
 
     evaluation_error = ""
-    model_checked = 0
     if eligible:
         payload = {
             "task": "Assess evidence relevance and support for each claim.",
@@ -324,7 +327,6 @@ def verify_claims(
                     contradiction_ids,
                     reason or "No explanation was provided.",
                 )
-                model_checked += 1
         except Exception as exc:
             evaluation_error = type(exc).__name__
             for item in eligible:
