@@ -116,7 +116,7 @@ def test_correction_report_contains_metadata_only_not_answer_content():
     result = bounded_correction.run_bounded_correction(
         lambda: "secret invalid output",
         lambda *_: "secret valid output",
-        lambda text: [] if "valid" in text else ["invalid_shape"],
+        lambda text: [] if text == "secret valid output" else ["invalid_shape"],
     )
     serialized = str(result.to_dict())
 
