@@ -78,6 +78,7 @@ def assess_claim_citations(
 
     total = len(claims)
     cited = sum(bool(item["source_ids"]) for item in claims)
+    any_reference = sum(bool(item["source_ids"] or item["invalid_source_ids"]) for item in claims)
     uncited = sum(item["citation_status"] == "uncited" for item in claims)
     invalid = sum(item["citation_status"] == "invalid_reference" for item in claims)
     extracted = sum(
@@ -104,6 +105,7 @@ def assess_claim_citations(
         "truth_verified": False,
         "claim_count": total,
         "claims_with_citations": cited,
+        "claims_with_any_reference": any_reference,
         "uncited_claim_count": uncited,
         "invalid_reference_claim_count": invalid,
         "citation_coverage": coverage,
