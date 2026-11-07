@@ -142,6 +142,8 @@ def assess_source_freshness(
     as_of: datetime | date | str | None = None,
 ) -> dict[str, Any]:
     """Evaluate source-date freshness without treating retrieval time as publication."""
+    if not isinstance(source, Mapping):
+        raise EvidenceError("source must be a mapping")
     if max_age_days is not None and (
         isinstance(max_age_days, bool)
         or not isinstance(max_age_days, int)
