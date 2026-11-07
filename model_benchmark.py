@@ -109,6 +109,14 @@ class BenchmarkSuite:
         ids = [case.case_id for case in cases]
         if len(set(ids)) != len(ids):
             raise ModelBenchmarkError("benchmark case IDs must be unique")
+        rubric_presence = [
+            bool(case.expected_contains or case.forbidden_contains)
+            for case in cases
+        ]
+        if any(rubric_presence) and not all(rubric_presence):
+            raise ModelBenchmarkError(
+                "all cases must use the same built-in phrase-rubric evaluation mode"
+            )
         object.__setattr__(self, "suite_id", suite_id)
         object.__setattr__(self, "cases", cases)
 
@@ -133,6 +141,7 @@ class BenchmarkRun:
 class ModelScorecard:
     provider: str
     model: str
+    evaluator_id: str | None
     sample_count: int
     success_rate: float
     quality_sample_count: int
@@ -494,6 +503,7 @@ def list_results(
         where += " AND run_id=?"
         params.append(run_id)
     params.append(limit)
+    init_database()
     conn = get_conn()
     try:
         rows = conn.execute(
@@ -558,7 +568,7 @@ def scorecards(
     conn = get_conn()
     try:
         rows = conn.execute(
-            """SELECT r.provider,r.model,r.latency_ms,r.outcome,r.quality_score
+            """SELECT r.provider,r.model,r.evaluator_id,r.latency_ms,r.outcome,r.quality_score
                FROM oracle_model_benchmark_results AS r
                JOIN oracle_model_benchmark_runs AS b
                  ON b.run_id=r.run_id AND b.scope=r.scope
@@ -569,9 +579,9 @@ def scorecards(
     finally:
         conn.close()
 
-    groups: dict[tuple[str, str], list[Any]] = defaultdict(list)
+    groups: dict[tuple[str, str, str | None], list[Any]] = defaultdict(list)
     for row in rows:
-        groups[(row["provider"], row["model"])].append(row)
+        groups[(row["provider"], row["model"], row["evaluator_id"])].append(row)
 
     runtime = {}
     try:
@@ -584,7 +594,7 @@ def scorecards(
         runtime = {}
 
     results = []
-    for (provider, model), items in groups.items():
+    for (provider, model, evaluator_id), items in groups.items():
         latencies = [int(item["latency_ms"]) for item in items]
         successes = sum(item["outcome"] == "success" for item in items)
         quality_values = [
@@ -623,7 +633,8 @@ def scorecards(
                 f"observed {sample_count} samples and {quality_count} scored cases"
             )
         results.append(ModelScorecard(
-            provider=provider, model=model, sample_count=sample_count,
+            provider=provider, model=model, evaluator_id=evaluator_id,
+            sample_count=sample_count,
             success_rate=round(benchmark_success, 4),
             quality_sample_count=quality_count,
             quality_coverage=round(quality_count / sample_count, 4),
