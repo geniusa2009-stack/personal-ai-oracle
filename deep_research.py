@@ -661,6 +661,42 @@ def run_research(
             claim["verification_reason"] = str(assessed.get("reason") or "")[:700]
             claim["supported_source_ids"] = list(assessed.get("supported_source_ids", []))[:6]
             claim["contradicting_source_ids"] = list(assessed.get("contradicting_source_ids", []))[:6]
+
+    # Only tuples independently marked SUPPORTED by the semantic verifier may
+    # participate in structured contradiction discovery. This is still a
+    # review candidate, never a factual contradiction verdict.
+    supported_structured_claims: list[dict[str, Any]] = []
+    if verify_claims:
+        for item in structured_claims:
+            assessed = semantic_by_claim.get(item["claim_id"])
+            if not isinstance(assessed, dict) or assessed.get("status") != "SUPPORTED":
+                continue
+            model_supported_ids = assessed.get("supported_source_ids", [])
+            if not isinstance(model_supported_ids, list):
+                continue
+            supported_ids = set(
+                source_id for source_id in model_supported_ids
+                if isinstance(source_id, str)
+            )
+            confirmed_ids = [
+                source_id for source_id in item["source_ids"]
+                if source_id in supported_ids
+            ]
+            if not confirmed_ids:
+                continue
+            supported_item = dict(item)
+            supported_item["source_ids"] = confirmed_ids
+            supported_item["verification_status"] = "SUPPORTED"
+            supported_structured_claims.append(supported_item)
+
+    structured_conflicts = evidence_verification.detect_structured_contradictions(
+        supported_structured_claims
+    )
+    if structured_conflicts:
+        limitations.append(
+            "Some independently supported structured claims specify different values for the same subject and predicate; review dates and context before treating them as contradictions."
+        )
+
     if freshness_report["counts"]["stale"]:
         limitations.append("Some sources exceed the active domain-specific freshness threshold.")
     if freshness_report["counts"]["unknown"] and freshness_report["max_age_days"] is not None:
@@ -673,6 +709,8 @@ def run_research(
         "snippet_only_count": sum(item["evidence_level"] == "search_snippet_only" for item in evidence_manifest),
         "unavailable_or_partial_count": sum(item["evidence_level"] == "unavailable_or_partial" for item in evidence_manifest),
         "claim_candidate_count": len(claim_records),
+        "structured_claim_count": len(supported_structured_claims),
+        "structured_conflict_candidate_count": len(structured_conflicts),
         "semantic_verification": semantic_report.get("status", "not_performed"),
         "freshness_profile": freshness_report["profile"],
         "freshness_policy_source": freshness_report["policy_source"],
@@ -702,6 +740,8 @@ def run_research(
         "evidence_summary": evidence_summary,
         "freshness_assessment": freshness_report,
         "semantic_verification": semantic_report,
+        "structured_claims": supported_structured_claims,
+        "structured_conflicts": structured_conflicts,
         "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
