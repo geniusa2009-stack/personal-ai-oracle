@@ -637,3 +637,30 @@ def test_compact_report_preserves_correction_metadata():
     assert compact["self_correction"]["status"] == "corrected"
     assert compact["self_correction"]["retry_count"] == 1
     assert compact["self_correction"]["stop_reason"] == "validated_after_retry"
+
+
+
+def test_synthesis_validation_rejects_non_string_declared_citation_ids():
+    issues = deep_research._synthesis_validation_issues(
+        json.dumps({
+            "answer": "Supported by [S1].",
+            "cited_source_ids": ["S1", 17, None],
+        }),
+        {"S1"},
+    )
+
+    assert "invalid_cited_source_ids" in issues
+    assert "missing_inline_citations" not in issues
+    assert "invalid_citation_ids" not in issues
+
+
+def test_synthesis_validation_rejects_non_list_declared_citations():
+    issues = deep_research._synthesis_validation_issues(
+        json.dumps({
+            "answer": "Supported by [S1].",
+            "cited_source_ids": "S1",
+        }),
+        {"S1"},
+    )
+
+    assert issues == ("invalid_cited_source_ids",)
