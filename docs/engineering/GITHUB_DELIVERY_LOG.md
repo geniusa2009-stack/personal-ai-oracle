@@ -266,9 +266,9 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Implemented scope:** bounded comparisons within one memory type and one exact scope; lexical duplicate/related classification; possible contradiction signals from negation-presence and numeric-value differences; source IDs and SHA-256 hashes; proposal observations; run counters and partial status; human accept/dismiss reviews; stale detection before review.
 - **Safety contract:** scanning and reviewing do not edit source memories. No automatic merge, overwrite, supersession or deletion exists. Expired, revised, deleted or superseded sources prevent a proposal from being accepted/dismissed as if it were current.
 - **Limitations:** deterministic token heuristics are not semantic contradiction verification. Units, date semantics, Arabic morphology, conditional claims and paraphrase reasoning are not fully handled. UI, automatic scheduling, duplicate clusters, entity resolution, retention and conflict resolution remain unfinished.
-- **Validation:** GitHub Actions run `42411964499` passed on code/documentation head `9a37a301ea8f40f5c3fafac0bba1f134f84a41b1`.
-  - Ubuntu: **275 passed, 1 warning**.
-  - macOS: **275 passed, 1 warning**.
-  - Python compile and full pytest steps passed on both platforms.
+- **Validation:** GitHub Actions validation is pending on the latest code/documentation head; earlier head `9a37a301ea8f40f5c3fafac0bba1f134f84a41b1` passed 275 tests on both Ubuntu and macOS.
+  - Ubuntu: pending for the latest head (previous head: **275 passed, 1 warning**).
+  - macOS: pending for the latest head (previous head: **275 passed, 1 warning**).
+  - Python compile and full pytest steps passed on the previous head; latest status awaits CI.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Pull Request:** Pending creation after this final capability-matrix status update; planned as draft PR #12 based on PR #11.
