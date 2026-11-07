@@ -346,6 +346,8 @@ def _synthesis_validation_issues(
         declared = []
     else:
         raw_declared = data.get("cited_source_ids", [])
+        if any(not isinstance(item, str) for item in raw_declared):
+            issues.append("invalid_cited_source_ids")
         declared = [item for item in raw_declared if isinstance(item, str)]
 
     in_text = re.findall(r"\[(S[1-9][0-9]*)\]", answer)
