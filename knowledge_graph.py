@@ -75,6 +75,18 @@ class GraphRetrieval:
         return len(self.related_entities)
 
 
+def _context_atom(value: Any) -> str:
+    """Keep graph-owned text inert inside the system-prompt context boundary."""
+    return (
+        str(value)
+        .replace("&", r"\u0026")
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("\\r", " ")
+        .replace("\\n", " ")
+    )
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
@@ -524,7 +536,9 @@ def retrieve_graph(
 
     for seed in seeds:
         add_term(seed.name)
-        lines.append(f"- {seed.name} ({seed.entity_type})")
+        lines.append(
+            f"- {_context_atom(seed.name)} ({_context_atom(seed.entity_type)})"
+        )
         remaining = max_relations - len(related)
         if remaining <= 0:
             continue
@@ -539,13 +553,13 @@ def retrieve_graph(
             add_term(neighbor.entity.name)
             if neighbor.direction == "outgoing":
                 relation_line = (
-                    f"  {seed.name} → {neighbor.relation_type}: "
-                    f"{neighbor.entity.name} ({neighbor.entity.entity_type})"
+                    f"  {_context_atom(seed.name)} → {neighbor.relation_type}: "
+                    f"{_context_atom(neighbor.entity.name)} ({_context_atom(neighbor.entity.entity_type)})"
                 )
             else:
                 relation_line = (
-                    f"  {neighbor.entity.name} → {neighbor.relation_type}: "
-                    f"{seed.name} ({seed.entity_type})"
+                    f"  {_context_atom(neighbor.entity.name)} → {neighbor.relation_type}: "
+                    f"{_context_atom(seed.name)} ({_context_atom(seed.entity_type)})"
                 )
             lines.append(relation_line)
             if neighbor.evidence:
