@@ -603,8 +603,8 @@ def run_research(
         limitations.append("Some sources exceed the active domain-specific freshness threshold.")
     if freshness_report["counts"]["unknown"] and freshness_report["max_age_days"] is not None:
         limitations.append("Some sources have no usable publication or update date for freshness assessment.")
-    if limitations and result_status == "success":
-        result_status = "partial"
+    if freshness_report["counts"]["future_dated"]:
+        limitations.append("Some sources report publication or update dates in the future; verify their date metadata.")
     evidence_summary = {
         "source_count": len(evidence_manifest),
         "extracted_page_count": sum(item["evidence_level"] == "extracted_page" for item in evidence_manifest),
@@ -613,6 +613,8 @@ def run_research(
         "claim_candidate_count": len(claim_records),
         "semantic_verification": semantic_report.get("status", "not_performed"),
         "freshness_profile": freshness_report["profile"],
+        "freshness_policy_source": freshness_report["policy_source"],
+        "freshness_max_age_days": freshness_report["max_age_days"],
         "freshness_counts": freshness_report["counts"],
     }
     if semantic_report.get("status") in {"partial", "error"}:
