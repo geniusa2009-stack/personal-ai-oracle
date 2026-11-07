@@ -97,6 +97,7 @@ Superseding a memory is not deletion. It preserves the old record and history.
 - Automatic memory extraction, entity resolution, contradiction review, deduplication across different content, and retention/consolidation policies remain unfinished.
 - Access frequency is recorded but is not yet used for ranking.
 - The score multiplier is an initial deterministic heuristic and needs evaluation against a reviewed bilingual memory-retrieval benchmark.
+- New lifecycle validity starts are written as explicit UTC timestamps. Legacy `created_at` values are timezone-naive, so their baseline validity start is interpreted as UTC; the original timezone cannot be reconstructed reliably from the old schema.
 - Revision history stores metadata and content hashes, not full historical content snapshots. Prior content remains present as its own memory row unless explicitly deleted.
 - The memory-revision API has not yet been exercised against a real production database workload.
 
