@@ -57,3 +57,24 @@ This file tracks completed, tested, committed, and published milestones. A miles
 | Control Center and observability integration | `oracle/phase-08-observability-and-control-center` | Not started | Task, memory, research, agent and model APIs |
 
 Do not mark a planned milestone complete until its implementation, tests, documentation, commit, push, and PR have all been verified.
+
+
+### Phase 01 — Evidence foundation (implementation in progress)
+
+- **Branch:** `oracle/phase-01-evidence-foundation`
+- **Base:** `oracle/phase-00-architecture-audit`
+- **Dependency:** Stacked on PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `evidence_verification.py`
+  - `test_evidence_verification.py`
+  - `docs/architecture/EVIDENCE_VERIFICATION.md`
+- **Files integrated/updated:**
+  - `deep_research.py`
+  - `test_deep_research.py`
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Bounded source-provenance normalization, distinct publication/update/retrieval/extraction timestamps, evidence-level classification, sentence-level claim candidates kept explicitly UNVERIFIED, an explicit-policy freshness assessment primitive, and a structured potential-conflict candidate detector for supplied subject/predicate/object data.
+- **Important limitations:** No semantic entailment verifier, no free-text subject/predicate/object extraction, no domain-specific freshness defaults, no persistent evidence database, and no claim of factual truth. Potential conflicts require review.
+- **Commits:** Initial feature `d1205839a986f5a30755b643c8f4ad6da0f88679`; follow-up integration/tests and documentation commits are on this branch. Confirm the final branch head before recording final delivery.
+- **Tests:** New unit and integration assertions have been added. They have not yet been executed in this environment. Await the branch's GitHub Actions run before claiming a passing result.
+- **Pull Request:** Pending creation.
+- **PR status / CI:** Not yet available.
