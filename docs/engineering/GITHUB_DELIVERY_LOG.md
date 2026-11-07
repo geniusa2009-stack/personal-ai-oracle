@@ -80,3 +80,23 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **PR status:** Open, draft; base is `oracle/phase-00-architecture-audit` (PR #4).
 - **Head before this delivery-log update:** `8f279aa29be2a04dceec7875fbbd603c1f2dbebe`.
 - **CI:** Ubuntu test job passed on the current head. macOS job was still running at the time of this update; final PR CI remains pending.
+
+
+### Phase 01b — Semantic verifier integration (implementation in progress)
+
+- **Branch:** `oracle/phase-01-semantic-verifier`
+- **Base:** `oracle/phase-01-evidence-foundation`
+- **Dependency:** Stacked on PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `semantic_verifier.py`
+  - `test_semantic_verifier.py`
+  - `docs/architecture/SEMANTIC_VERIFICATION.md`
+- **Files integrated/updated:**
+  - `deep_research.py`
+  - `test_deep_research.py`
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Bounded reviewer-model assessments for sentence-level candidates; strict status/source-ID validation; snippet-only, unavailable and empty-page evidence cannot yield decisive support/contradiction classifications; model errors leave claims unverified; deep-research reports include a separate semantic-verification object.
+- **Important limitations:** This remains model-assisted evidence assessment, not proof of factual truth. Sentence-level claims are not guaranteed atomic. No representative human-reviewed production benchmark, automatic temporal conflict resolution, domain freshness registry, or persisted evidence store is included.
+- **Tests:** New unit and integration tests have been added. CI has not yet run for this branch. No local test execution is claimed.
+- **Pull Request:** Pending creation.
+- **PR status / CI:** Pending.
