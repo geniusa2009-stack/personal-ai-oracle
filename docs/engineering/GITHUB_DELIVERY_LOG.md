@@ -102,3 +102,23 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **PR status:** Open, draft; base is `oracle/phase-01-evidence-foundation` (PR #5).
 - **Verified code head:** `2592d1818e4753a350f1d223bfb356b2b2736bb8`.
 - **CI:** Successful on Ubuntu and macOS for the verified code head. Subsequent documentation-only commits, if any, require their own CI verification.
+
+
+### Phase 01c — Domain-aware research freshness (implementation in progress)
+
+- **Branch:** `oracle/phase-01-temporal-evidence`
+- **Base:** `oracle/phase-01-semantic-verifier`
+- **Dependency:** Stacked on PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `freshness_policy.py`
+  - `test_freshness_policy.py`
+  - `docs/architecture/FRESHNESS_POLICY.md`
+- **Files integrated/updated:**
+  - `deep_research.py`
+  - `test_deep_research.py`
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Domain-specific starting freshness profiles, conservative bilingual query-hint selection, explicit profile override, no universal general-purpose expiry, per-source/citation freshness fields in Deep Research, compact report support, and stale/unknown/future-date limitations.
+- **Important limitations:** Thresholds are starting heuristics requiring calibration. Publication/update date hints are not authoritative proof. This does not detect source supersession or resolve cross-source contradictions.
+- **Tests:** Unit and Deep Research integration tests have been added. This branch's CI has not yet completed; no local test execution is claimed.
+- **Pull Request:** Pending creation.
+- **PR status / CI:** Pending.
