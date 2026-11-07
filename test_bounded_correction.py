@@ -124,3 +124,34 @@ def test_correction_report_contains_metadata_only_not_answer_content():
     assert "secret valid output" not in serialized
     assert "secret invalid output" not in serialized
     assert result.attempts[0].output_fingerprint
+
+
+
+def test_generation_exception_is_counted_as_failed_attempt_without_retry():
+    result = bounded_correction.run_bounded_correction(
+        lambda: (_ for _ in ()).throw(RuntimeError("sensitive provider response")),
+        lambda *_: "should not run",
+        lambda _value: [],
+    )
+
+    assert result.stop_reason == "generation_error"
+    assert result.retry_count == 0
+    assert len(result.attempts) == 1
+    assert result.attempts[0].passed is False
+    assert result.final_issue_codes == ("runtimeerror",)
+    assert "sensitive provider response" not in str(result.to_dict())
+
+
+def test_repair_exception_is_counted_as_a_retry_attempt():
+    result = bounded_correction.run_bounded_correction(
+        lambda: "invalid",
+        lambda *_: (_ for _ in ()).throw(TimeoutError("sensitive timeout detail")),
+        lambda _value: ["invalid_shape"],
+    )
+
+    assert result.stop_reason == "repair_error"
+    assert result.retry_count == 1
+    assert len(result.attempts) == 2
+    assert result.attempts[-1].passed is False
+    assert result.final_issue_codes == ("timeouterror",)
+    assert "sensitive timeout detail" not in str(result.to_dict())
