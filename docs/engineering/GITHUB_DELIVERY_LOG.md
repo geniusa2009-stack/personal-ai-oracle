@@ -80,3 +80,25 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **PR status:** Open, draft; base is `oracle/phase-00-architecture-audit` (PR #4).
 - **Head before this delivery-log update:** `8f279aa29be2a04dceec7875fbbd603c1f2dbebe`.
 - **CI:** Ubuntu test job passed on the current head. macOS job was still running at the time of this update; final PR CI remains pending.
+
+
+### Phase 01b — Semantic verifier integration (implementation in progress)
+
+- **Branch:** `oracle/phase-01-semantic-verifier`
+- **Base:** `oracle/phase-01-evidence-foundation`
+- **Dependency:** Stacked on PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `semantic_verifier.py`
+  - `test_semantic_verifier.py`
+  - `docs/architecture/SEMANTIC_VERIFICATION.md`
+- **Files integrated/updated:**
+  - `deep_research.py`
+  - `test_deep_research.py`
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Bounded reviewer-model assessments for sentence-level candidates; strict status/source-ID validation; snippet-only, unavailable and empty-page evidence cannot yield decisive support/contradiction classifications; model errors leave claims unverified; deep-research reports include a separate semantic-verification object.
+- **Important limitations:** This remains model-assisted evidence assessment, not proof of factual truth. Sentence-level claims are not guaranteed atomic. No representative human-reviewed production benchmark, automatic temporal conflict resolution, domain freshness registry, or persisted evidence store is included.
+- **Tests:** GitHub Actions run `42396961333` completed successfully on commit `2592d1818e4753a350f1d223bfb356b2b2736bb8`: Ubuntu **213 passed, 1 warning**; macOS **213 passed, 1 warning**. The warning is the existing Starlette/httpx TestClient deprecation warning. No local execution is claimed.
+- **Pull Request:** [PR #6 — Integrate bounded semantic claim verification into deep research](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/6)
+- **PR status:** Open, draft; base is `oracle/phase-01-evidence-foundation` (PR #5).
+- **Verified code head:** `2592d1818e4753a350f1d223bfb356b2b2736bb8`.
+- **CI:** Successful on Ubuntu and macOS for the verified code head. Subsequent documentation-only commits, if any, require their own CI verification.

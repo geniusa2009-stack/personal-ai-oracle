@@ -88,6 +88,26 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
             "cited_source_ids": ["S1", "S2"],
         }),
     )
+    monkeypatch.setattr(
+        deep_research.semantic_verifier,
+        "verify_claims",
+        lambda claims, sources: {
+            "status": "completed",
+            "semantic_entailment_checked": True,
+            "factual_truth_verified": False,
+            "checked_claim_count": len(claims),
+            "unverified_claim_count": 0,
+            "results": [{
+                "claim_id": claims[0]["claim_id"],
+                "status": "SUPPORTED",
+                "supported_source_ids": ["S1", "S2"],
+                "contradicting_source_ids": [],
+                "reason": "Both extracted pages support the finding.",
+                "semantic_support": "SUPPORTED",
+            }],
+            "limitations": ["Model-assisted evidence judgment; not factual proof."],
+        },
+    )
 
     report = deep_research.run_research("water evidence", fetch_pages=True)
 
@@ -102,10 +122,13 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
     assert report["sources"][0]["extracted_at"]
     assert report["sources"][0]["evidence_level"] == "extracted_page"
     assert report["evidence_summary"]["source_count"] == 2
-    assert report["evidence_summary"]["semantic_verification"] == "not_performed"
+    assert report["evidence_summary"]["semantic_verification"] == "completed"
     assert len(report["claim_records"]) == 1
-    assert report["claim_records"][0]["verification_status"] == "UNVERIFIED"
     assert report["evidence_manifest"][0]["evidence_level"] == "extracted_page"
+    assert report["semantic_verification"]["semantic_entailment_checked"] is True
+    assert report["semantic_verification"]["factual_truth_verified"] is False
+    assert report["claim_records"][0]["verification_status"] == "SUPPORTED"
+    assert report["claim_records"][0]["supported_source_ids"] == ["S1", "S2"]
 
 
 def test_research_flags_invalid_model_citations(monkeypatch):
@@ -300,3 +323,47 @@ def test_search_results_preserve_provider_date_hints_as_unverified_metadata(monk
     assert sources[0]["published_at"] == "2026-09-01"
     assert sources[0]["updated_at"] == "2026-10-01T00:00:00Z"
     assert sources[0]["date_metadata_origin"] == "search_provider"
+
+
+def test_research_can_disable_semantic_verification_and_keeps_candidates_unverified(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["query"])
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: [{
+            "title": "One result",
+            "url": "https://example.com/",
+            "snippet": "Snippet content",
+            "source": "test",
+        }],
+    )
+    monkeypatch.setattr(
+        deep_research.ai_core,
+        "chat",
+        lambda *args, **kwargs: json.dumps({
+            "answer": "Claim [S1].",
+            "cited_source_ids": ["S1"],
+        }),
+    )
+    calls = []
+    monkeypatch.setattr(
+        deep_research.semantic_verifier,
+        "verify_claims",
+        lambda *_args, **_kwargs: calls.append(True),
+    )
+
+    report = deep_research.run_research(
+        "test",
+        max_queries=1,
+        fetch_pages=False,
+        verify_claims=False,
+    )
+
+    assert calls == []
+    assert report["semantic_verification"]["status"] == "not_performed"
+    assert report["claim_records"][0]["verification_status"] == "UNVERIFIED"
+
+
+def test_research_rejects_non_boolean_semantic_verification_flag():
+    with pytest.raises(deep_research.ResearchError):
+        deep_research.run_research("valid query", verify_claims="yes")

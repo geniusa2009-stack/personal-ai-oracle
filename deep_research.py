@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import ai_core
 import answer_quality
 import evidence_verification
+import semantic_verifier
 import search
 
 
@@ -43,13 +44,14 @@ def available_tool() -> dict[str, Any]:
         "description": (
             "Run multi-query research, deduplicate sources, extract selected public pages, "
             "and return a cited evidence report. Input JSON: "
-            "{query, max_queries?, max_sources?, fetch_pages?}."
+            "{query, max_queries?, max_sources?, fetch_pages?, verify_claims?}."
         ),
         "input_schema": {
             "query": "string",
             "max_queries": "integer 1-4?",
             "max_sources": "integer 1-12?",
             "fetch_pages": "boolean?",
+            "verify_claims": "boolean?",
         },
     }
 
@@ -428,6 +430,7 @@ def run_research(
     max_queries: int = 3,
     max_sources: int = 8,
     fetch_pages: bool = True,
+    verify_claims: bool = True,
 ) -> dict[str, Any]:
     """Run bounded multi-query research and return evidence with source IDs."""
     if not isinstance(query, str) or not query.strip() or len(query) > MAX_QUERY_LENGTH:
@@ -438,6 +441,8 @@ def run_research(
         raise ResearchError("max_sources must be an integer from 1 to 12")
     if not isinstance(fetch_pages, bool):
         raise ResearchError("fetch_pages must be a boolean")
+    if not isinstance(verify_claims, bool):
+        raise ResearchError("verify_claims must be a boolean")
 
     normalized_query = " ".join(query.split())
     queries = _query_plan(normalized_query, max_queries, memory_scope)
@@ -481,6 +486,11 @@ def run_research(
             "url": source["url"],
             "domain": source["domain"],
             "snippet": source["snippet"],
+            "evidence_excerpt": (
+                source["page_text"][:1800]
+                if source["page_status"] == "extracted"
+                else source["snippet"][:1800]
+            ),
             "page_status": source["page_status"],
             "http_status": source["http_status"],
             "source_class": source["source_class"],
@@ -513,14 +523,44 @@ def run_research(
         metadata = evidence_by_id.get(source["citation_id"], {})
         source["evidence_level"] = metadata.get("evidence_level", "unknown")
     claim_records = evidence_verification.build_claim_candidates(answer, evidence_manifest)
+    semantic_report = (
+        semantic_verifier.verify_claims(claim_records, evidence_manifest)
+        if verify_claims
+        else {
+            "status": "not_performed",
+            "semantic_entailment_checked": False,
+            "factual_truth_verified": False,
+            "checked_claim_count": 0,
+            "unverified_claim_count": len(claim_records),
+            "results": [],
+            "limitations": ["Semantic claim verification was disabled for this research run."],
+        }
+    )
+    semantic_by_claim = {
+        item["claim_id"]: item
+        for item in semantic_report.get("results", [])
+        if isinstance(item, dict) and isinstance(item.get("claim_id"), str)
+    }
+    for claim in claim_records:
+        assessed = semantic_by_claim.get(claim["claim_id"])
+        if assessed:
+            claim["verification_status"] = assessed.get("status", "UNVERIFIED")
+            claim["semantic_support"] = assessed.get("semantic_support", "not_evaluated")
+            claim["verification_reason"] = str(assessed.get("reason") or "")[:700]
+            claim["supported_source_ids"] = list(assessed.get("supported_source_ids", []))[:6]
+            claim["contradicting_source_ids"] = list(assessed.get("contradicting_source_ids", []))[:6]
     evidence_summary = {
         "source_count": len(evidence_manifest),
         "extracted_page_count": sum(item["evidence_level"] == "extracted_page" for item in evidence_manifest),
         "snippet_only_count": sum(item["evidence_level"] == "search_snippet_only" for item in evidence_manifest),
         "unavailable_or_partial_count": sum(item["evidence_level"] == "unavailable_or_partial" for item in evidence_manifest),
         "claim_candidate_count": len(claim_records),
-        "semantic_verification": "not_performed",
+        "semantic_verification": semantic_report.get("status", "not_performed"),
     }
+    if semantic_report.get("status") in {"partial", "error"}:
+        limitations.append("Some claims could not receive a usable semantic evidence assessment.")
+    if limitations and result_status == "success":
+        result_status = "partial"
     return {
         "status": result_status,
         "query": normalized_query,
@@ -538,6 +578,7 @@ def run_research(
         "claim_records": claim_records,
         "evidence_manifest": evidence_manifest,
         "evidence_summary": evidence_summary,
+        "semantic_verification": semantic_report,
         "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
@@ -578,6 +619,24 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             )
         },
         "evidence_summary": report.get("evidence_summary", {}),
+        "semantic_verification": {
+            "status": str(report.get("semantic_verification", {}).get("status") or "not_performed")[:30],
+            "semantic_entailment_checked": report.get("semantic_verification", {}).get("semantic_entailment_checked") is True,
+            "factual_truth_verified": False,
+            "checked_claim_count": report.get("semantic_verification", {}).get("checked_claim_count", 0),
+            "unverified_claim_count": report.get("semantic_verification", {}).get("unverified_claim_count", 0),
+            "results": [
+                {
+                    "claim_id": str(item.get("claim_id") or "")[:80],
+                    "status": str(item.get("status") or "UNVERIFIED")[:40],
+                    "supported_source_ids": list(item.get("supported_source_ids", []))[:4],
+                    "contradicting_source_ids": list(item.get("contradicting_source_ids", []))[:4],
+                    "reason": str(item.get("reason") or "")[:180],
+                }
+                for item in report.get("semantic_verification", {}).get("results", [])[:8]
+                if isinstance(item, dict)
+            ],
+        },
         "claim_records": [
             {
                 "claim_id": str(item.get("claim_id") or "")[:16],
@@ -587,8 +646,9 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
                 "source_ids": list(item.get("source_ids", []))[:4],
                 "invalid_source_ids": list(item.get("invalid_source_ids", []))[:4],
                 "citation_status": str(item.get("citation_status") or "uncited")[:40],
-                "verification_status": "UNVERIFIED",
-                "semantic_support": "not_evaluated",
+                "verification_status": str(item.get("verification_status") or "UNVERIFIED")[:40],
+                "semantic_support": str(item.get("semantic_support") or "not_evaluated")[:40],
+                "verification_reason": str(item.get("verification_reason") or "")[:180],
             }
             for item in report.get("claim_records", [])[:8] if isinstance(item, dict)
         ],
@@ -731,6 +791,7 @@ def execute(
             max_queries=tool_input.get("max_queries", 3),
             max_sources=tool_input.get("max_sources", 8),
             fetch_pages=tool_input.get("fetch_pages", True),
+            verify_claims=tool_input.get("verify_claims", True),
         )
     except ResearchError as exc:
         return {"name": "web.deep_research", "status": "error", "result": str(exc)}

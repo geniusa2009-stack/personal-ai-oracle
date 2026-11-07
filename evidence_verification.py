@@ -91,12 +91,20 @@ def normalize_source(source: Mapping[str, Any]) -> dict[str, Any]:
 
     if page_status == "extracted":
         evidence_level = "extracted_page"
+        evidence_excerpt = _text(source.get("evidence_excerpt"), _MAX_SOURCE_TEXT)
+        evidence_excerpt_origin = "extracted_page" if evidence_excerpt else "none"
     elif page_status == "not_fetched":
         evidence_level = "search_snippet_only" if snippet else "no_content"
+        evidence_excerpt = snippet
+        evidence_excerpt_origin = "search_snippet" if snippet else "none"
     elif page_status in {"unknown", ""}:
         evidence_level = "unknown"
+        evidence_excerpt = snippet
+        evidence_excerpt_origin = "search_snippet" if snippet else "none"
     else:
         evidence_level = "unavailable_or_partial"
+        evidence_excerpt = ""
+        evidence_excerpt_origin = "none"
 
     return {
         "citation_id": source_id,
@@ -108,6 +116,8 @@ def normalize_source(source: Mapping[str, Any]) -> dict[str, Any]:
         "page_status": page_status,
         "evidence_level": evidence_level,
         "snippet": snippet,
+        "evidence_excerpt": evidence_excerpt,
+        "evidence_excerpt_origin": evidence_excerpt_origin,
         "published_at": _timestamp(source.get("published_at")),
         "updated_at": _timestamp(source.get("updated_at")),
         "retrieved_at": _timestamp(source.get("retrieved_at")),
