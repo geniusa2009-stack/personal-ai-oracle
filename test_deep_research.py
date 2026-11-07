@@ -129,6 +129,9 @@ def test_research_runs_multiple_queries_fetches_pages_and_validates_citations(mo
     assert report["semantic_verification"]["factual_truth_verified"] is False
     assert report["claim_records"][0]["verification_status"] == "SUPPORTED"
     assert report["claim_records"][0]["supported_source_ids"] == ["S1", "S2"]
+    assert report["freshness_assessment"]["profile"] == "general"
+    assert report["freshness_assessment"]["counts"]["not_assessed"] == 2
+    assert report["sources"][0]["freshness"]["status"] == "not_assessed"
 
 
 def test_research_flags_invalid_model_citations(monkeypatch):
@@ -192,6 +195,7 @@ def test_research_handles_mac_browser_unavailable_without_losing_search_results(
     {"max_queries": 5},
     {"max_sources": 13},
     {"fetch_pages": "yes"},
+    {"freshness_profile": "weekly"},
 ])
 def test_research_rejects_invalid_limits(kwargs):
     options = {"query": "valid query"}
@@ -226,6 +230,14 @@ def test_compact_report_json_is_valid_bounded_and_keeps_source_references():
         ],
         "citation_validation": {"valid_source_ids": [f"S{i}" for i in range(1, 9)], "invalid_source_ids": []},
         "stats": {"source_count": 8},
+        "freshness_assessment": {
+            "profile": "pricing",
+            "policy_source": "explicit",
+            "max_age_days": 7,
+            "assessed_source_count": 8,
+            "counts": {"fresh": 4, "stale": 2, "unknown": 2, "future_dated": 0, "not_assessed": 0},
+            "results": [{"citation_id": "S1", "status": "stale", "age_days": 90}],
+        },
     }
 
     serialized = deep_research.compact_report_json(report, max_bytes=9000)
@@ -234,6 +246,8 @@ def test_compact_report_json_is_valid_bounded_and_keeps_source_references():
     assert len(serialized.encode("utf-8")) <= 9000
     assert restored["context_truncated"] is True
     assert restored["citations"]
+    assert restored["freshness_assessment"]["profile"] == "pricing"
+    assert restored["freshness_assessment"]["counts"]["stale"] == 2
     assert all(citation["id"] in {s["citation_id"] for s in restored["sources"]} for citation in restored["citations"])
 
 
@@ -367,3 +381,73 @@ def test_research_can_disable_semantic_verification_and_keeps_candidates_unverif
 def test_research_rejects_non_boolean_semantic_verification_flag():
     with pytest.raises(deep_research.ResearchError):
         deep_research.run_research("valid query", verify_claims="yes")
+
+
+def test_research_applies_domain_freshness_policy_and_flags_old_sources(monkeypatch):
+    monkeypatch.setattr(deep_research, "_query_plan", lambda *_: ["scholarship deadline query"])
+    monkeypatch.setattr(
+        deep_research.search,
+        "web_search",
+        lambda *_args, **_kwargs: [{
+            "title": "Scholarship application page",
+            "url": "https://example.org/scholarship",
+            "snippet": "Applications close on 30 November.",
+            "source": "test",
+            "published_at": "2026-01-01",
+        }],
+    )
+    monkeypatch.setattr(
+        deep_research,
+        "_navigate",
+        lambda *_: {
+            "status": "success",
+            "result": {
+                "title": "Scholarship application page",
+                "text": "The application deadline is 30 November.",
+                "http_status": 200,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        deep_research.ai_core,
+        "chat",
+        lambda *args, **kwargs: json.dumps({
+            "answer": "Applications close on 30 November [S1].",
+            "cited_source_ids": ["S1"],
+        }),
+    )
+    monkeypatch.setattr(
+        deep_research.semantic_verifier,
+        "verify_claims",
+        lambda claims, sources: {
+            "status": "completed",
+            "semantic_entailment_checked": True,
+            "factual_truth_verified": False,
+            "checked_claim_count": 1,
+            "unverified_claim_count": 0,
+            "results": [{
+                "claim_id": "C1",
+                "status": "SUPPORTED",
+                "supported_source_ids": ["S1"],
+                "contradicting_source_ids": [],
+                "reason": "The extracted page contains the stated deadline.",
+                "semantic_support": "SUPPORTED",
+            }],
+            "limitations": [],
+        },
+    )
+
+    report = deep_research.run_research(
+        "Find current scholarship deadlines",
+        max_queries=1,
+        max_sources=1,
+        freshness_profile="scholarship_deadline",
+    )
+
+    assert report["freshness_assessment"]["profile"] == "scholarship_deadline"
+    assert report["freshness_assessment"]["policy_source"] == "explicit"
+    assert report["freshness_assessment"]["counts"]["stale"] == 1
+    assert report["sources"][0]["freshness"]["status"] == "stale"
+    assert report["citations"][0]["freshness"]["status"] == "stale"
+    assert any("freshness threshold" in item for item in report["limitations"])
+    assert report["status"] == "partial"
