@@ -37,7 +37,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Semantic claim verification | `semantic_verifier.py`, `deep_research.py` | Reviewer model, cited evidence excerpts, validated response contract | `IMPLEMENTED_BUT_UNVERIFIED` | `test_semantic_verifier.py`, `test_deep_research.py` | Bounded reviewer-model assessment for cited evidence; requires extracted-page evidence for decisive labels; never proves factual truth; CI for this branch pending |
 | Evidence provenance store | Research source objects only; no complete normalized evidence subsystem verified | Source extraction, DB persistence | `PARTIALLY_IMPLEMENTED` | Deep-research tests | Normalize source metadata and claim/source edges; define persistence policy |
 | Source contradiction detection | `evidence_verification.py` | Explicit structured subject/predicate/object input | `PARTIALLY_IMPLEMENTED` | `test_evidence_verification.py` | Currently generates potential conflicts only for already-structured claims; no free-text extraction or end-to-end research report integration |
-| Temporal freshness engine | `evidence_verification.py`, `deep_research.py` provenance | Explicit per-call max-age policy and source date metadata | `PARTIALLY_IMPLEMENTED` | `test_evidence_verification.py` | Freshness primitive is tested but no domain policy registry or automatic research-report integration exists |
+| Domain-aware research freshness | `freshness_policy.py`, `evidence_verification.py`, `deep_research.py` | Publisher/update date metadata and explicit or query-hint policy | `PARTIALLY_IMPLEMENTED` | `test_freshness_policy.py`, `test_deep_research.py` | Integrated per-source freshness labels and report summary; initial heuristic thresholds need calibration; source date authority and supersession are not verified |
 | Citation benchmark | `answer_quality_benchmark.py`, `benchmarks/answer_quality_cases.json` | Deterministic fixtures | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality_benchmark.py`, latest PR #3 CI | Expand beyond 10 synthetic citation-classification cases |
 | Representative research benchmark | Not present | Human-reviewed bilingual annotations | `PLANNED` | Synthetic baseline only | Arabic/English evidence and semantic support dataset |
 | Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | More lifecycle metadata and memory categories |
@@ -138,3 +138,17 @@ The following remain incomplete: atomic claim extraction, domain-specific freshn
 - macOS: **213 passed, 1 warning**.
 - The warning is the existing Starlette/httpx TestClient deprecation warning.
 - This validates the configured CI suite for this commit. It does not validate a live provider call, a physical Mac, cloud deployment, or factual truth of model assessments.
+
+
+## Phase 01c — Domain-aware freshness policy
+
+The `oracle/phase-01-temporal-evidence` branch adds the following integrated capability; CI is pending for this branch.
+
+| Increment | Owning modules | Status | Evidence and scope | Remaining work |
+|---|---|---|---|---|
+| Domain freshness profiles | `freshness_policy.py` | `IMPLEMENTED_BUT_UNVERIFIED` | General, scholarship deadline, event schedule, pricing, government policy, software API, and scientific research profiles | Calibrate initial age thresholds; add settings-based customization and source/jurisdiction overrides |
+| Conservative query-hint selection | `freshness_policy.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Bilingual keyword hints; explicit profile override; generic queries remain unassessed | Improve ambiguity handling using reviewed query cases |
+| Deep Research freshness integration | `deep_research.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Per-source and citation freshness, top-level assessment, compact report summary, stale/unknown/future-date limitations | Test against real source date providers and UI display |
+| Temporal conflict resolution | `evidence_verification.py` structured candidates only | `PARTIALLY_IMPLEMENTED` | Structured same-subject/predicate conflicts with temporal overlap checks | No atomic free-text extraction, source supersession model, or integrated research review workflow |
+
+Freshness compares publisher/update date metadata, not retrieval time. A stale source is not necessarily false. See `docs/architecture/FRESHNESS_POLICY.md`.
