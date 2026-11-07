@@ -285,7 +285,7 @@ def verify_claims(
                     continue
 
                 decisive_ids = (
-                    support_ids if status == "SUPPORTED"
+                    support_ids if status in {"SUPPORTED", "PARTIALLY_SUPPORTED"}
                     else contradiction_ids if status == "CONTRADICTED"
                     else list(dict.fromkeys(support_ids + contradiction_ids))
                 )
@@ -294,7 +294,7 @@ def verify_claims(
                     for source_id in decisive_ids
                     if source_id in source_map
                 ]
-                if status in {"SUPPORTED", "CONTRADICTED", "CONFLICTING_EVIDENCE"} and (
+                if status in {"SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "CONFLICTING_EVIDENCE"} and (
                     not decisive_levels or any(level != "extracted_page" for level in decisive_levels)
                 ):
                     result_by_id[claim_id] = _result(
