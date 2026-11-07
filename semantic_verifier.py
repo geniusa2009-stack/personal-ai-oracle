@@ -253,17 +253,18 @@ def verify_claims(
                         item, "The verifier returned an unsupported classification."
                     )
                     continue
-                if not isinstance(supported_raw, list) or not isinstance(contradicted_raw, list):
+                if (
+                    not isinstance(supported_raw, list)
+                    or not isinstance(contradicted_raw, list)
+                    or any(not isinstance(value, str) for value in supported_raw + contradicted_raw)
+                ):
                     result_by_id[claim_id] = _unverified(
                         item, "The verifier returned malformed source ID lists."
                     )
                     continue
 
                 allowed = set(item["allowed_source_ids"])
-                raw_ids = [
-                    value for value in supported_raw + contradicted_raw
-                    if isinstance(value, str)
-                ]
+                raw_ids = supported_raw + contradicted_raw
                 if any(value not in allowed for value in raw_ids):
                     result_by_id[claim_id] = _unverified(
                         item, "The verifier referenced a source ID not supplied for this claim."
@@ -274,6 +275,7 @@ def verify_claims(
                 contradiction_ids = list(dict.fromkeys(contradicted_raw))
                 if (
                     status == "SUPPORTED" and not support_ids
+                    or status == "PARTIALLY_SUPPORTED" and not (support_ids or contradiction_ids)
                     or status == "CONTRADICTED" and not contradiction_ids
                     or status == "CONFLICTING_EVIDENCE" and (not support_ids or not contradiction_ids)
                 ):
