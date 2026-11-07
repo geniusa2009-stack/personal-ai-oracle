@@ -505,10 +505,18 @@ def _proposal_from_conn(conn: Any, proposal_id: int, scope: str) -> Consolidatio
             stale_ids.append(int(item["memory_id"]))
             continue
         metadata = conn.execute(
-            "SELECT status FROM memory_metadata WHERE memory_id=? AND scope=?",
+            """SELECT status,valid_from,valid_until FROM memory_metadata
+               WHERE memory_id=? AND scope=?""",
             (item["memory_id"], scope),
         ).fetchone()
-        if metadata is not None and metadata["status"] != "active":
+        if metadata is not None and not _is_active_and_valid(
+            {
+                "metadata_status": metadata["status"],
+                "valid_from": metadata["valid_from"],
+                "valid_until": metadata["valid_until"],
+            },
+            datetime.now(timezone.utc),
+        ):
             stale_ids.append(int(item["memory_id"]))
             continue
         current_records.append(memory._record_from_row(source_row))
@@ -632,7 +640,8 @@ def review_proposal(
         stale = len(member_rows) < 2
         for item in member_rows:
             row = conn.execute(
-                """SELECT m.content,md.status AS metadata_status
+                """SELECT m.content,md.status AS metadata_status,
+                          md.valid_from,md.valid_until
                    FROM memories AS m
                    LEFT JOIN memory_metadata AS md
                      ON md.memory_id=m.id AND md.scope=m.scope
@@ -642,7 +651,7 @@ def review_proposal(
             if (
                 row is None
                 or _content_hash(row["content"]) != item["content_hash"]
-                or (row["metadata_status"] or "active") != "active"
+                or not _is_active_and_valid(row, datetime.now(timezone.utc))
             ):
                 stale = True
                 break
