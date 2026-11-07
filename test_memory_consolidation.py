@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import db
@@ -236,3 +238,43 @@ def test_explicit_memory_deletion_cleans_proposals_that_reference_it(monkeypatch
         ).fetchone()["c"] == 0
     finally:
         conn.close()
+
+
+
+def test_review_marks_expired_source_memory_stale(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    first = memory.write_memory(
+        "Oracle project stores durable records in SQLite",
+        "fact", "owner:one", "manual",
+    )
+    memory.write_memory(
+        "Oracle project stores durable records in a SQLite database",
+        "fact", "owner:one", "manual",
+    )
+    memory_consolidation.scan_scope("owner:one")
+    proposal = next(
+        item for item in memory_consolidation.list_proposals("owner:one")
+        if first.id in item.member_ids
+    )
+
+    now = datetime.now(timezone.utc)
+    memory_lifecycle.set_memory_metadata(
+        first.id,
+        "owner:one",
+        valid_from=now - timedelta(days=10),
+        valid_until=now - timedelta(seconds=1),
+        reason="The source information has expired",
+    )
+
+    listed = memory_consolidation.get_proposal("owner:one", proposal.id)
+    assert first.id in listed.stale_member_ids
+
+    reviewed = memory_consolidation.review_proposal(
+        "owner:one",
+        proposal.id,
+        decision="accepted",
+        reviewer="owner",
+        reason="Review after expiry",
+    )
+    assert reviewed.status == "stale"
+    assert first.id in reviewed.stale_member_ids
