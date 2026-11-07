@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import ai_core
+import answer_quality
 import search
 
 
@@ -459,7 +460,8 @@ def run_research(
             "valid_source_ids": cited_ids,
             "invalid_source_ids": invalid_ids,
         },
-        "claim_evidence": map_claim_evidence(answer, list(source_map)),
+        "claim_evidence": answer_quality.assess_claim_citations(answer, output_sources)["claims"],
+        "quality_assessment": answer_quality.assess_claim_citations(answer, output_sources),
         "stats": {
             "query_count": len(queries),
             "source_count": len(sources),
@@ -488,6 +490,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "valid_source_ids": list(report.get("citation_validation", {}).get("valid_source_ids", []))[:8],
             "invalid_source_ids": list(report.get("citation_validation", {}).get("invalid_source_ids", []))[:8],
         },
+        "quality_assessment": report.get("quality_assessment", {}),
         "claim_evidence": [
             {
                 "claim": str(item.get("claim") or "")[:240],
