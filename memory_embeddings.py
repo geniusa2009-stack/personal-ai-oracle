@@ -121,10 +121,18 @@ class OpenAICompatibleEmbeddingClient:
             raise EmbeddingError("embedding provider returned an unexpected item count")
 
         try:
-            ordered = sorted(
-                data,
-                key=lambda item: item.get("index", 0) if isinstance(item, Mapping) else 0,
-            )
+            indices = [
+                item.get("index") if isinstance(item, Mapping) else None
+                for item in data
+            ]
+            if any(
+                isinstance(index, bool) or not isinstance(index, int)
+                for index in indices
+            ):
+                raise EmbeddingError("embedding provider returned invalid item indexes")
+            if sorted(indices) != list(range(len(normalized))):
+                raise EmbeddingError("embedding provider returned duplicate or missing item indexes")
+            ordered = sorted(data, key=lambda item: item["index"])
             vectors = [_validate_vector(item.get("embedding")) for item in ordered]
         except (TypeError, AttributeError) as exc:
             raise EmbeddingError("embedding provider returned malformed vectors") from exc
@@ -390,6 +398,7 @@ def retrieve_vector_matches(
     client: EmbeddingClientProtocol | None = None,
     limit: int = 12,
     max_vectors: int = 1500,
+    min_similarity: float = 0.2,
 ) -> list[VectorMatch]:
     """Return semantic matches only for current, scope-owned memory records."""
     if not isinstance(scope, str) or not scope.strip() or len(scope) > 255:
@@ -404,6 +413,13 @@ def retrieve_vector_matches(
         or not 1 <= max_vectors <= 3000
     ):
         raise EmbeddingError("max_vectors must be from 1 to 3000")
+    if (
+        isinstance(min_similarity, bool)
+        or not isinstance(min_similarity, (int, float))
+        or not math.isfinite(float(min_similarity))
+        or not -1.0 <= float(min_similarity) <= 1.0
+    ):
+        raise EmbeddingError("min_similarity must be a finite number from -1 to 1")
 
     selected_client = client or embedding_client_from_environment()
     if selected_client is None:
@@ -447,6 +463,8 @@ def retrieve_vector_matches(
         if int(row["dimensions"]) != len(vector) or len(vector) != len(query_vector):
             continue
         similarity = cosine_similarity(query_vector, vector)
+        if similarity < float(min_similarity):
+            continue
         matches.append(VectorMatch(
             memory_type=document.memory_type,
             record_id=document.record_id,
