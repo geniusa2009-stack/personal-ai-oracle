@@ -38,8 +38,10 @@ This file tracks completed, tested, committed, and published milestones. A miles
 - **Code changes:** None. This milestone is documentation/audit only.
 - **Tests:** No code tests were run for the documentation-only files. GitHub Actions should still be observed after the PR is opened; no CI result is claimed in advance.
 - **Known limitations:** This is a baseline inventory and source-level audit of core paths, not a line-by-line audit of every feature module or a live physical-Mac/cloud validation.
-- **Pull Request:** To be recorded after PR creation.
-- **PR status / CI:** Pending.
+- **Pull Request:** [PR #4 — Add architecture audit and evidence-based capability matrix](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/4)
+- **PR status:** Open, draft; base is `feature/oracle-answer-quality-benchmark` (stacked on PR #3).
+- **CI:** Pending at the time of this log update; run `42395904281` was queued and run `42395886119` was in progress.
+- **Current branch head before this log update:** `6749d030851576491a0306d0e140f13875b3f472`.
 
 ## Next planned milestones (not delivered)
 
