@@ -40,13 +40,15 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Domain-aware research freshness | `freshness_policy.py`, `evidence_verification.py`, `deep_research.py` | Publisher/update date metadata and explicit or query-hint policy | `PARTIALLY_IMPLEMENTED` | `test_freshness_policy.py`, `test_deep_research.py` | Integrated per-source freshness labels and report summary; initial heuristic thresholds need calibration; source date authority and supersession are not verified |
 | Citation benchmark | `answer_quality_benchmark.py`, `benchmarks/answer_quality_cases.json` | Deterministic fixtures | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality_benchmark.py`, latest PR #3 CI | Expand beyond 10 synthetic citation-classification cases |
 | Representative research benchmark | Not present | Human-reviewed bilingual annotations | `PLANNED` | Synthetic baseline only | Arabic/English evidence and semantic support dataset |
-| Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | More lifecycle metadata and memory categories |
-| Episodic memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_events`, explicit source/time metadata, lexical retrieval | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Explicit event capture and bounded scope-local retrieval; no automatic extraction or graph linking |
-| Procedural memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_procedures`, explicit validation status, outcome counters | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Candidate procedures require explicit validation before retrieval; no revision history or automatic promotion |
+| Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table; legacy `MemoryRecord` API retained | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | Add episodic/semantic categorization across more entity types |
+| Memory lifecycle metadata | `memory_lifecycle.py`, `memory.py`, `database.py` | SQLite `memory_metadata`: confidence, importance, validity window, access count/time, active/superseded state | `IMPLEMENTED_AND_VERIFIED` | `test_memory_lifecycle.py`; 259-test Ubuntu/macOS CI | Manual metadata, temporal filtering, retrieval weighting and legacy backfill verified; automatic confidence estimation and retention policy remain out of scope |
+| Memory revision history | `memory_lifecycle.py`, `database.py` | Append-only snapshots with content hash, metadata snapshot, reason, actor, timestamp | `IMPLEMENTED_AND_VERIFIED` | `test_memory_lifecycle.py`; 259-test Ubuntu/macOS CI | Content revisions create a replacement record and supersede the old record; explicit deletion clears linked history and vector cache |
+| Episodic memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_events`, explicit source/time metadata, lexical retrieval | `IMPLEMENTED_AND_VERIFIED` | `test_memory_layers.py`; full 259-test CI | Explicit event capture and bounded scope-local retrieval verified; no automatic extraction or graph linking |
+| Procedural memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_procedures`, explicit validation status, outcome counters | `IMPLEMENTED_AND_VERIFIED` | `test_memory_layers.py`; full 259-test CI | Candidate procedures require explicit validation before retrieval; no automatic promotion or generalized history |
 | Hybrid/vector retrieval | `memory_embeddings.py`, `hybrid_memory.py`, `ai_core.py` | Optional OpenAI-compatible embeddings endpoint, SQLite vector cache, lexical fallback | `IMPLEMENTED_BUT_UNVERIFIED` | `test_hybrid_memory.py` | Opt-in vector indexing and cosine retrieval; RRF fusion connected to AI Core; no live provider run; metadata/temporal/graph reranking remains unfinished |
 | Explicit knowledge graph | `knowledge_graph.py` | SQLite entity/relation tables | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py` | Temporal/versioned graph edges and evidence lifecycle |
 | Automatic graph extraction | Not evidenced as integrated | Claim/entity extraction and provenance | `PLANNED` | Explicit graph write tests only | Evidence-backed entity resolution and relation extraction |
-| Memory consolidation | No integrated lifecycle engine found | Memory versions, conflict and retention policy | `PLANNED` | No dedicated lifecycle tests found | Deduplication, supersession, conflict review and retention rules |
+| Memory consolidation | `memory_lifecycle.py` provides explicit revision/supersession only | Append-only version chain, no silent overwrite | `PARTIALLY_IMPLEMENTED` | `test_memory_lifecycle.py` | Automatic entity resolution, duplicate grouping, contradiction review, and memory retention policy remain planned |
 | Workflow metadata ledger | `workflow_ledger.py` | SQLite workflow tables | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_ledger.py` | Link the trace to durable task plans and state transitions |
 | Encrypted workflow checkpoint | `workflow_checkpoints.py` | Fernet key and SQLite | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_checkpoints.py` | Generalize to task resume; review automatic expired-record deletion |
 | Durable task queue | No complete queue identified | Persistent task table, scheduler/worker | `PLANNED` | No queue-specific test suite found | Atomic claims, leases, retries, priorities, cancellation |
@@ -183,3 +185,19 @@ The `oracle/phase-02-hybrid-retrieval` branch adds:
 | Offline regression tests | `test_hybrid_memory.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Fake vectors, provider response validation, scope isolation, stale-vector rejection, lexical fallback | CI must pass on current branch head |
 
 The feature is opt-in via `ORACLE_MEMORY_EMBEDDINGS_ENABLED=1` and a configured model. Auto-indexing defaults off. See `docs/architecture/HYBRID_MEMORY_RETRIEVAL.md`.
+
+
+## Phase 02c — Memory lifecycle metadata and revision history
+
+The `oracle/phase-02-memory-lifecycle` branch adds additive SQLite metadata and revision tables while retaining the legacy `MemoryRecord` fields and API shape.
+
+- New memories receive explicit default confidence and importance values of 0.5, an initial validity start, and a `created` history event.
+- Historical memory rows are backfilled with neutral metadata and a `legacy_baseline` history event on database initialization.
+- Retrieval excludes superseded and out-of-validity records, and weights lexical relevance by confidence and importance.
+- Selected retrieval results increment access counters and update last-accessed timestamps; routine access does not create noisy revision entries.
+- Metadata edits append a snapshot and require a reason and actor.
+- Content revisions insert a new record and mark the old record as superseded; the old content is not overwritten.
+- Listing hides superseded records by default; callers may explicitly request them for history/review.
+- Explicit memory deletion removes corresponding metadata, revision snapshots and vector-cache rows. The explicit deletion approval must be enforced by the invoking UI/tool policy.
+
+Implementation is being validated by `test_memory_lifecycle.py`; no completion claim is made until CI passes on Ubuntu and macOS. See `docs/architecture/MEMORY_LIFECYCLE.md`.

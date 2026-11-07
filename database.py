@@ -241,6 +241,44 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_memories_scope_created
             ON memories(scope, created_at DESC, id DESC);
 
+        -- Durable metadata is kept separately to preserve the legacy memories API.
+        CREATE TABLE IF NOT EXISTS memory_metadata (
+            memory_id            INTEGER NOT NULL,
+            scope                TEXT NOT NULL,
+            confidence           REAL NOT NULL DEFAULT 0.5,
+            importance           REAL NOT NULL DEFAULT 0.5,
+            valid_from           TEXT,
+            valid_until          TEXT,
+            access_count         INTEGER NOT NULL DEFAULT 0,
+            last_accessed_at     TEXT,
+            status               TEXT NOT NULL DEFAULT 'active',
+            superseded_by_id     INTEGER,
+            updated_at           TEXT NOT NULL,
+            PRIMARY KEY(memory_id, scope),
+            CHECK(confidence >= 0.0 AND confidence <= 1.0),
+            CHECK(importance >= 0.0 AND importance <= 1.0),
+            CHECK(access_count >= 0),
+            CHECK(status IN ('active', 'superseded'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_metadata_scope_status
+            ON memory_metadata(scope, status, importance DESC, confidence DESC);
+
+        -- Append-only snapshots. The source memory content is not duplicated here.
+        CREATE TABLE IF NOT EXISTS memory_revision_history (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_id          INTEGER NOT NULL,
+            scope              TEXT NOT NULL,
+            revision_kind      TEXT NOT NULL,
+            content_hash       TEXT NOT NULL,
+            metadata_json      TEXT NOT NULL,
+            reason             TEXT NOT NULL,
+            actor              TEXT NOT NULL,
+            created_at         TEXT NOT NULL,
+            CHECK(revision_kind IN ('created', 'metadata_updated', 'superseded', 'legacy_baseline'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_revision_scope_memory
+            ON memory_revision_history(scope, memory_id, id DESC);
+
         -- Episodic memory: explicitly recorded events with source and time provenance.
         CREATE TABLE IF NOT EXISTS memory_events (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -390,6 +428,57 @@ def init_database():
             ON oracle_model_events(scope, id DESC);
         """
     )
+
+    # Additive backfill: existing memory rows receive default metadata exactly once.
+    # Legacy content remains untouched and existing callers keep their old contract.
+    import hashlib
+    import json
+    from datetime import timezone
+
+    now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    legacy_rows = conn.execute(
+        """SELECT m.id, m.scope, m.content, m.created_at
+           FROM memories AS m
+           LEFT JOIN memory_metadata AS md
+             ON md.memory_id = m.id AND md.scope = m.scope
+           WHERE md.memory_id IS NULL"""
+    ).fetchall()
+    for row in legacy_rows:
+        conn.execute(
+            """INSERT OR IGNORE INTO memory_metadata
+               (memory_id, scope, confidence, importance, valid_from, valid_until,
+                access_count, last_accessed_at, status, superseded_by_id, updated_at)
+               VALUES(?,?,0.5,0.5,?,NULL,0,NULL,'active',NULL,?)""",
+            (row["id"], row["scope"], row["created_at"] or now, now),
+        )
+        snapshot = {
+            "confidence": 0.5,
+            "importance": 0.5,
+            "valid_from": row["created_at"] or now,
+            "valid_until": None,
+            "access_count": 0,
+            "last_accessed_at": None,
+            "status": "active",
+            "superseded_by_id": None,
+        }
+        conn.execute(
+            """INSERT INTO memory_revision_history
+               (memory_id, scope, revision_kind, content_hash, metadata_json,
+                reason, actor, created_at)
+               SELECT ?,?, 'legacy_baseline', ?, ?, ?, 'migration', ?
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM memory_revision_history
+                   WHERE memory_id = ? AND scope = ? AND revision_kind = 'legacy_baseline'
+               )""",
+            (
+                row["id"], row["scope"],
+                hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest(),
+                json.dumps(snapshot, sort_keys=True, separators=(",", ":")),
+                "Imported legacy memory metadata without changing source content",
+                now,
+                row["id"], row["scope"],
+            ),
+        )
     conn.commit()
     conn.close()
 
@@ -1161,7 +1250,8 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log", "memories", "knowledge_relations", "knowledge_entities",
+    "feature_log", "memories", "memory_metadata", "memory_revision_history",
+    "memory_embeddings", "knowledge_relations", "knowledge_entities",
     "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
     "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
 ]

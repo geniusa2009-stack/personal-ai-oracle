@@ -169,3 +169,31 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Validation:** GitHub Actions run `42399859389` passed on code head `24f0717ab6cf4dd7d52a0c0c7c334cc7c570c2e6`. Ubuntu: **251 passed, 1 warning**. macOS: **251 passed, 1 warning**. Both `compileall` and `pytest -q` passed. The warning is the existing Starlette/httpx TestClient deprecation warning. No local test execution is claimed.
 - **Pull Request:** Pending creation; this milestone will be published as a draft stacked PR on PR #8.
 - **PR status / CI:** CI successful on the verified code head.
+
+
+### Phase 02c — Memory lifecycle metadata and append-only revisions
+
+- **Branch:** `oracle/phase-02-memory-lifecycle`
+- **Base:** `oracle/phase-02-hybrid-retrieval` (PR #9).
+- **Dependency:** Stacked on PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `memory_lifecycle.py` — scope-bound metadata, validity, confidence/importance, access tracking, append-only revision snapshots, content revision/supersession APIs.
+  - `test_memory_lifecycle.py` — default metadata, history, scope isolation, validation, expiry, future-validity filtering, score weighting, non-destructive revision, supersession, and access statistics.
+  - `docs/architecture/MEMORY_LIFECYCLE.md`.
+- **Files integrated/updated:**
+  - `database.py` — additive `memory_metadata` and `memory_revision_history` tables; one-time backfill of legacy rows with neutral defaults and `legacy_baseline` history; panic-wipe allowlist includes all memory lifecycle/vector tables.
+  - `memory.py` — registers created memories, excludes superseded records from normal listing/retrieval, applies validity/importance/confidence weights, updates access counters, and cleans linked metadata/history/vector rows on explicit deletion.
+  - `memory_lifecycle.py` — creates a new memory record for a content revision; it never overwrites the old memory's content.
+  - `test_memory.py` and `test_memory_layers.py` — explicit-delete cleanup and backward-compatible migration coverage.
+  - `docs/architecture/MEMORY_ARCHITECTURE.md` and `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Implemented scope:** Confidence and importance metadata (0–1, default 0.5); valid-from/valid-until bounds; scope-safe access counts and last-accessed time; active/superseded states; append-only metadata snapshots with hash/reason/actor/timestamp; non-destructive content revision; history retrieval; legacy DB backfill; validity-aware retrieval and metadata-weighted lexical ranking.
+- **Compatibility:** The legacy `MemoryRecord` dataclass and its original fields remain unchanged. Existing memory rows and IDs are preserved during additive schema initialization.
+- **Deletion/data lifecycle:** Explicit memory deletion removes its associated metadata, revision history and vector-cache rows within one transaction. The database panic-wipe allowlist includes these linked tables. The caller must enforce explicit deletion approval.
+- **Limitations:** Metadata is currently manual, not automatically inferred. Confidence/importance are explicit signals, not truth probabilities. Access frequency is recorded but not yet used in ranking. The current score multiplier is a heuristic, not benchmark-calibrated. Existing naive timestamps cannot recover their original timezone with certainty. Episodic/procedural layers do not yet share this metadata schema. UI for memory metadata/history, entity resolution, contradiction review, automatic consolidation, and graph-aware reranking remain unfinished.
+- **Validation:** GitHub Actions run `42404347810` passed on code/documentation head `240fe73cd9acaea23610ba163b325efeef256ae9`.
+  - Ubuntu: **259 passed, 1 warning**.
+  - macOS: **259 passed, 1 warning**.
+  - Both `python -m compileall -q .` and `python -m pytest -q` passed.
+  - The warning is the existing Starlette/httpx TestClient deprecation warning.
+- **Pull Request:** [PR #10 — Add memory lifecycle metadata and non-destructive revision history](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/10)
+- **PR status:** Open, draft; base `oracle/phase-02-hybrid-retrieval` (PR #9). Head at initial publication: `240fe73cd9acaea23610ba163b325efeef256ae9`. No PR is merged automatically.

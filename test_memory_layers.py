@@ -260,6 +260,18 @@ def test_memory_layer_schema_initialization_is_additive_for_existing_memory_reco
         assert legacy["scope"] == "owner:one"
         assert conn.execute("SELECT COUNT(*) AS c FROM memory_events").fetchone()["c"] == 1
         assert conn.execute("SELECT COUNT(*) AS c FROM memory_procedures").fetchone()["c"] == 1
+        metadata = conn.execute(
+            "SELECT confidence,importance,status FROM memory_metadata WHERE memory_id=1 AND scope='owner:one'"
+        ).fetchone()
+        assert metadata["confidence"] == 0.5
+        assert metadata["importance"] == 0.5
+        assert metadata["status"] == "active"
+        history = conn.execute(
+            "SELECT revision_kind,reason FROM memory_revision_history "
+            "WHERE memory_id=1 AND scope='owner:one'"
+        ).fetchone()
+        assert history["revision_kind"] == "legacy_baseline"
+        assert "legacy memory" in history["reason"].casefold()
     finally:
         conn.close()
 

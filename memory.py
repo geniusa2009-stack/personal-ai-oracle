@@ -43,19 +43,31 @@ def write_memory(content: str, memory_type: str, scope: str, source: str) -> Mem
     conn = get_conn()
     try:
         created_at = datetime.now().isoformat(timespec="microseconds")
-        conn.execute(
+        cursor = conn.execute(
             """INSERT OR IGNORE INTO memories
                (content, normalized_content, memory_type, scope, source, created_at)
                VALUES(?,?,?,?,?,?)""",
             (content, normalized_content, memory_type, scope, source, created_at),
         )
-        conn.commit()
         row = conn.execute(
             """SELECT id, content, memory_type, scope, source, created_at
                FROM memories
                WHERE normalized_content = ? AND memory_type = ? AND scope = ?""",
             (normalized_content, memory_type, scope),
         ).fetchone()
+        if row is None:
+            raise MemoryValidationError("memory could not be persisted")
+        if cursor.rowcount == 1:
+            import memory_lifecycle
+            memory_lifecycle.record_memory_created(
+                conn,
+                memory_id=int(row["id"]),
+                scope=scope,
+                content=row["content"],
+                created_at=row["created_at"],
+                actor=source,
+            )
+        conn.commit()
         return _record_from_row(row)
     finally:
         conn.close()
@@ -83,6 +95,7 @@ def list_memories(
     memory_type: str | None = None,
     source: str | None = None,
     limit: int = 50,
+    include_superseded: bool = False,
 ) -> list[MemoryRecord]:
     """List one scope's memories newest first with deterministic filters."""
     scope = _validate_identifier(scope, "scope", MAX_SCOPE_LENGTH)
@@ -92,25 +105,30 @@ def list_memories(
         source = _validate_identifier(source, "source", MAX_SOURCE_LENGTH)
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 1000:
         raise MemoryValidationError("limit must be an integer from 1 to 1000")
+    if not isinstance(include_superseded, bool):
+        raise MemoryValidationError("include_superseded must be a boolean")
 
-    clauses = ["scope = ?"]
+    clauses = ["m.scope = ?"]
     params: list[object] = [scope]
     if memory_type is not None:
-        clauses.append("memory_type = ?")
+        clauses.append("m.memory_type = ?")
         params.append(memory_type)
     if source is not None:
-        clauses.append("source = ?")
+        clauses.append("m.source = ?")
         params.append(source)
     params.append(limit)
 
     init_database()
     conn = get_conn()
     try:
+        if not include_superseded:
+            clauses.append("(md.status IS NULL OR md.status = 'active')")
         query = (
-            "SELECT id, content, memory_type, scope, source, created_at "
-            "FROM memories WHERE "
+            "SELECT m.id, m.content, m.memory_type, m.scope, m.source, m.created_at "
+            "FROM memories AS m LEFT JOIN memory_metadata AS md "
+            "ON md.memory_id = m.id AND md.scope = m.scope WHERE "
             + " AND ".join(clauses)
-            + " ORDER BY created_at DESC, id DESC LIMIT ?"
+            + " ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
         )
         rows = conn.execute(
             query,
@@ -161,12 +179,20 @@ def retrieve_memories(
     if not candidates:
         return []
 
+    import memory_lifecycle
+
     query_tokens = _memory_tokens(query[-12000:])
     if not query_tokens:
-        return [
-            item for item in candidates
+        fallback = [
+            (1.0, -position, item)
+            for position, item in enumerate(candidates)
             if item.memory_type in {"preference", "goal"}
-        ][:min(limit, 2)]
+        ]
+        fallback = memory_lifecycle.filter_and_weight(scope, fallback)
+        fallback.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        selected = [entry[2] for entry in fallback[:min(limit, 2)]]
+        memory_lifecycle.record_access(scope, selected)
+        return selected
 
     scored = []
     for position, item in enumerate(candidates):
@@ -180,13 +206,22 @@ def retrieve_memories(
         scored.append((score, -position, item))
 
     if not scored:
-        return [
-            item for item in candidates
+        fallback = [
+            (1.0, -position, item)
+            for position, item in enumerate(candidates)
             if item.memory_type in {"preference", "goal"}
-        ][:min(limit, 2)]
+        ]
+        fallback = memory_lifecycle.filter_and_weight(scope, fallback)
+        fallback.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        selected = [entry[2] for entry in fallback[:min(limit, 2)]]
+        memory_lifecycle.record_access(scope, selected)
+        return selected
 
+    scored = memory_lifecycle.filter_and_weight(scope, scored)
     scored.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
-    return [entry[2] for entry in scored[:limit]]
+    selected = [entry[2] for entry in scored[:limit]]
+    memory_lifecycle.record_access(scope, selected)
+    return selected
 
 
 def delete_memory(memory_id: int, scope: str) -> bool:
@@ -195,6 +230,26 @@ def delete_memory(memory_id: int, scope: str) -> bool:
     init_database()
     conn = get_conn()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT memory_type FROM memories WHERE id = ? AND scope = ?",
+            (memory_id, scope),
+        ).fetchone()
+        if row is None:
+            conn.rollback()
+            return False
+        conn.execute(
+            "DELETE FROM memory_embeddings WHERE scope = ? AND memory_type = ? AND record_id = ?",
+            (scope, row["memory_type"], memory_id),
+        )
+        conn.execute(
+            "DELETE FROM memory_revision_history WHERE memory_id = ? AND scope = ?",
+            (memory_id, scope),
+        )
+        conn.execute(
+            "DELETE FROM memory_metadata WHERE memory_id = ? AND scope = ?",
+            (memory_id, scope),
+        )
         cur = conn.execute("DELETE FROM memories WHERE id = ? AND scope = ?", (memory_id, scope))
         conn.commit()
         return cur.rowcount == 1

@@ -118,3 +118,20 @@ The `oracle/phase-02-hybrid-retrieval` branch adds an opt-in semantic retrieval 
 New environment variables, privacy considerations, limitations, and test scope are documented in `docs/architecture/HYBRID_MEMORY_RETRIEVAL.md`.
 
 This does not yet integrate metadata/temporal ranking, Knowledge Graph traversal into RRF, or automatic memory consolidation. Real provider compatibility and production retrieval quality remain unverified.
+
+
+## 7. Lifecycle metadata and revisions
+
+The follow-on `oracle/phase-02-memory-lifecycle` branch extends semantic memory without changing the legacy `MemoryRecord` contract.
+
+- `memory_metadata` stores explicit confidence, importance, validity bounds, access statistics, active/superseded state and replacement ID.
+- `memory_revision_history` stores append-only metadata snapshots, source/actor, a content hash, reason and timestamp.
+- Existing rows are backfilled with neutral metadata and a `legacy_baseline` history entry during additive database initialization.
+- Retrieval excludes superseded and out-of-validity facts/preferences/goals and applies a transparent score multiplier derived from the stored confidence and importance.
+- Selected results update access statistics without writing a history event on every lookup.
+- Content revisions create a new memory row and supersede the prior row; original content is not overwritten.
+- Explicit deletion removes the source row and its metadata, revision snapshots and embedding cache record.
+
+Detailed API, validity semantics, migration behavior and limitations: `docs/architecture/MEMORY_LIFECYCLE.md`.
+
+The confidence/importance fields are explicit user/source metadata, not model-generated truth probabilities. Automatic consolidation, entity resolution and contradiction review remain unfinished.
