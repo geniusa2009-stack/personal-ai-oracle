@@ -126,6 +126,7 @@ def _prepare(
         ))[:MAX_SOURCES_PER_CLAIM]
 
         evidence_items = []
+        evidence_source_ids = []
         for source_id in allowed_ids:
             source = source_map[source_id]
             excerpt = source.get("evidence_excerpt") or ""
@@ -135,6 +136,7 @@ def _prepare(
                 excerpt = source["snippet"]
             if not excerpt:
                 continue
+            evidence_source_ids.append(source_id)
             evidence_items.append({
                 "source_id": source_id,
                 "evidence_level": source["evidence_level"],
@@ -150,7 +152,7 @@ def _prepare(
         prepared.append({
             "claim_id": claim_id[:80],
             "claim": text.strip()[:700],
-            "allowed_source_ids": allowed_ids,
+            "allowed_source_ids": evidence_source_ids,
             "evidence": evidence_items,
         })
     return prepared, source_map
