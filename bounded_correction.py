@@ -140,12 +140,19 @@ def run_bounded_correction(
             )
         except Exception as exc:
             stop_reason = "generation_error" if attempt_number == 0 else "repair_error"
+            issue_code = type(exc).__name__.lower()
+            attempts.append(CorrectionAttempt(
+                attempt_number=attempt_number + 1,
+                output_fingerprint=_fingerprint(current_output),
+                issue_codes=(issue_code,),
+                passed=False,
+            ))
             return CorrectionResult(
                 output=current_output,
                 attempts=tuple(attempts),
                 corrected=False,
                 stop_reason=stop_reason,
-                final_issue_codes=(type(exc).__name__.lower(),),
+                final_issue_codes=(issue_code,),
             )
 
         if not isinstance(raw_output, str):
