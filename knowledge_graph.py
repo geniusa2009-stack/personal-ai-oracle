@@ -82,10 +82,9 @@ def _context_atom(value: Any) -> str:
         .replace("&", r"\u0026")
         .replace("<", r"\u003c")
         .replace(">", r"\u003e")
-        .replace("\${field}", " ")
-        .replace("\${field}", " ")
+        .replace("\r", " ")
+        .replace("\n", " ")
     )
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
@@ -563,7 +562,7 @@ def retrieve_graph(
                 )
             lines.append(relation_line)
             if neighbor.evidence:
-                evidence = neighbor.evidence.replace("\n", " ").strip()[:500]
+                evidence = _context_atom(neighbor.evidence).strip()[:500]
                 lines.append(f"    Stored evidence: {evidence}")
             if len("\n".join(lines)) >= MAX_CONTEXT_LENGTH:
                 break
