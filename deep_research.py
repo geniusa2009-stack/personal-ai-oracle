@@ -490,13 +490,23 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "valid_source_ids": list(report.get("citation_validation", {}).get("valid_source_ids", []))[:8],
             "invalid_source_ids": list(report.get("citation_validation", {}).get("invalid_source_ids", []))[:8],
         },
-        "quality_assessment": report.get("quality_assessment", {}),
+        "quality_assessment": {
+            key: report.get("quality_assessment", {}).get(key)
+            for key in (
+                "status", "assessment_scope", "semantic_entailment_checked",
+                "truth_verified", "claim_count", "claims_with_citations",
+                "uncited_claim_count", "invalid_reference_claim_count",
+                "citation_coverage", "extracted_page_references",
+                "snippet_only_references",
+            )
+        },
         "claim_evidence": [
             {
                 "claim": str(item.get("claim") or "")[:240],
                 "source_ids": list(item.get("source_ids", []))[:4],
                 "invalid_source_ids": list(item.get("invalid_source_ids", []))[:4],
-                "citation_status": str(item.get("citation_status") or "uncited")[:30],
+                "citation_status": str(item.get("citation_status") or "uncited")[:40],
+                "semantic_support": str(item.get("semantic_support") or "not_evaluated")[:30],
             }
             for item in report.get("claim_evidence", [])[:8] if isinstance(item, dict)
         ],
