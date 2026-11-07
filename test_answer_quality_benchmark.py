@@ -1,4 +1,5 @@
 import copy
+import json
 
 import pytest
 
@@ -33,10 +34,12 @@ def test_benchmark_detects_classification_regression(monkeypatch):
     assert report["claim_classification_accuracy"] < 1.0
 
 
-def test_benchmark_rejects_duplicate_case_ids():
+def test_benchmark_rejects_duplicate_case_ids(tmp_path):
     dataset = benchmark.load_dataset()
     duplicate = copy.deepcopy(dataset)
     duplicate["cases"][1]["id"] = duplicate["cases"][0]["id"]
+    path = tmp_path / "duplicate.json"
+    path.write_text(json.dumps(duplicate), encoding="utf-8")
 
     with pytest.raises(benchmark.BenchmarkError):
-        benchmark.load_dataset_from_data(duplicate)
+        benchmark.load_dataset(path)
