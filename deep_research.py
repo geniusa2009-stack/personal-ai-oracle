@@ -559,8 +559,6 @@ def run_research(
     }
     if semantic_report.get("status") in {"partial", "error"}:
         limitations.append("Some claims could not receive a usable semantic evidence assessment.")
-    if verify_claims:
-        limitations.append("Semantic assessments are model-assisted evidence judgments, not proof of factual truth.")
     if limitations and result_status == "success":
         result_status = "partial"
     return {
