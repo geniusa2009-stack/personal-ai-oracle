@@ -101,12 +101,14 @@ def _model_judge(payload: dict[str, Any]) -> str:
 def _prepare(
     claims: Sequence[Mapping[str, Any]],
     sources: Sequence[Mapping[str, Any]],
+    *,
+    max_claims: int,
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     normalized_sources = evidence_verification.normalize_sources(list(sources))
     source_map = {item["citation_id"]: item for item in normalized_sources}
     prepared: list[dict[str, Any]] = []
 
-    for claim in claims[:MAX_CLAIMS]:
+    for claim in claims[:max_claims]:
         if not isinstance(claim, Mapping):
             continue
         claim_id = claim.get("claim_id")
@@ -190,7 +192,7 @@ def verify_claims(
             "limitations": ["No valid claim candidates were supplied."],
         }
 
-    selected, source_map = _prepare(candidates, list(sources))
+    selected, source_map = _prepare(candidates, list(sources), max_claims=max_claims)
     by_id = {item["claim_id"]: item for item in selected}
     result_by_id: dict[str, dict[str, Any]] = {}
     eligible = [
