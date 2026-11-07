@@ -76,5 +76,7 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Important limitations:** No semantic entailment verifier, no free-text subject/predicate/object extraction, no domain-specific freshness defaults, no persistent evidence database, and no claim of factual truth. Potential conflicts require review.
 - **Commits:** Initial feature `d1205839a986f5a30755b643c8f4ad6da0f88679`; follow-up integration/tests and documentation commits are on this branch. Confirm the final branch head before recording final delivery.
 - **Tests:** New unit and integration assertions have been added. They have not yet been executed in this environment. Await the branch's GitHub Actions run before claiming a passing result.
-- **Pull Request:** Pending creation.
-- **PR status / CI:** Not yet available.
+- **Pull Request:** [PR #5 — Add structured evidence provenance and claim candidate foundation](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/5)
+- **PR status:** Open, draft; base is `oracle/phase-00-architecture-audit` (PR #4).
+- **Head before this delivery-log update:** `8f279aa29be2a04dceec7875fbbd603c1f2dbebe`.
+- **CI:** Ubuntu test job passed on the current head. macOS job was still running at the time of this update; final PR CI remains pending.
