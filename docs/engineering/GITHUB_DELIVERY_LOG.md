@@ -303,3 +303,32 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** The bundled suite is a small synthetic smoke set. No live provider benchmark was executed in CI. Cost, token throughput, energy and hardware-normalized performance remain unmeasured. The RRF/benchmark ranking weights are policy defaults, not statistically calibrated.
 - **Pull Request:** [PR #13 — Add explicit measured model benchmarking and evidence-gated scorecards](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/13)
 - **PR status:** Open, draft; base `oracle/phase-02-memory-consolidation` (PR #12). Initial published head: `3b396abecc0b07261414e0b5f36afb45fe5f9446`. No earlier PR was merged or retargeted.
+
+
+### Phase 03b — Bounded self-correction and loop prevention
+
+- **Branch:** `oracle/phase-03-bounded-self-correction`
+- **Base:** `oracle/phase-03-model-benchmarking` (planned PR #14 stacked on PR #13).
+- **Dependency:** PR #14 → PR #13 → PR #12 → PR #11 → PR #10 → PR #9 → preceding stack.
+- **Files added:**
+  - `bounded_correction.py` — shared text-only correction runner, output fingerprints, repeated-issue detection, non-retryable issue policy and hard retry cap.
+  - `test_bounded_correction.py` — first-pass success, correction success, repeated output, repeated validation signature, provider-error stop, policy caps and metadata-only reports.
+  - `docs/architecture/BOUNDED_SELF_CORRECTION.md`.
+- **Files updated:**
+  - `agent_orchestrator.py` — validates planner JSON/tool IDs/input before returning a step; one bounded repair is permitted before tool execution.
+  - `deep_research.py` — validates synthesis JSON/answer/inline citation IDs; one bounded repair is permitted by default, configurable from zero to the hard cap of two; exposes correction summary in full and compact reports.
+  - `test_agent_orchestrator.py` — malformed JSON/unknown tool repair, repeated planner output, provider-error non-retry, duplicate-step prevention and no executor call during repair.
+  - `test_deep_research.py` — repair of invalid citation IDs without repeating search, repeated invalid output stop, provider-error stop and zero-retry setting.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Retry policy:** One retry by default; absolute limit two. Identical output fingerprint, repeated issue signature, provider errors or exhausted budget stop further attempts.
+- **Side-effect boundary:** All correction callbacks invoke text generation only. Local commands, file writes/moves/deletes, application launches, browser navigation, web search, page extraction, approval checks and other tool execution are not automatically retried.
+- **Research semantics:** Correction validates response JSON, a non-empty answer and inline citations restricted to the sources collected in the current run. It does not prove semantic entailment or factual truth; semantic verification remains a separate evidence-assessment step.
+- **Privacy:** Correction metadata contains attempt numbers, hashes and deterministic issue codes; raw previous answer text is not copied into the metadata report.
+- **Validation:** GitHub Actions run `42419873506` passed on implementation head `5f454b38ccce41d9347ed8401384ea55aeef18fb`.
+  - Ubuntu: **308 passed, 1 warning**.
+  - macOS: **308 passed, 1 warning**.
+  - Compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** This corrects structure/citation integrity and planner catalogue compliance, not general reasoning quality. No model is allowed to retry a tool call through this correction loop. A repaired answer may still be factually wrong and is subject to existing verification limitations.
+- **Pull Request:** Pending final documentation CI; planned as draft PR #14 based on PR #13.
+- **PR status:** Not yet created; no earlier PR was merged or retargeted.
