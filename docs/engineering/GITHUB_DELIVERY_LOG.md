@@ -190,10 +190,10 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Compatibility:** The legacy `MemoryRecord` dataclass and its original fields remain unchanged. Existing memory rows and IDs are preserved during additive schema initialization.
 - **Deletion/data lifecycle:** Explicit memory deletion removes its associated metadata, revision history and vector-cache rows within one transaction. The database panic-wipe allowlist includes these linked tables. The caller must enforce explicit deletion approval.
 - **Limitations:** Metadata is currently manual, not automatically inferred. Confidence/importance are explicit signals, not truth probabilities. Access frequency is recorded but not yet used in ranking. The current score multiplier is a heuristic, not benchmark-calibrated. Existing naive timestamps cannot recover their original timezone with certainty. Episodic/procedural layers do not yet share this metadata schema. UI for memory metadata/history, entity resolution, contradiction review, automatic consolidation, and graph-aware reranking remain unfinished.
-- **Validation:** GitHub Actions run `42404182363` passed on code head `341c0c51a46d7fc32bf51b5e4c45394949d7d3b7`.
+- **Validation:** GitHub Actions run `42404347810` passed on code/documentation head `240fe73cd9acaea23610ba163b325efeef256ae9`.
   - Ubuntu: **259 passed, 1 warning**.
   - macOS: **259 passed, 1 warning**.
   - Both `python -m compileall -q .` and `python -m pytest -q` passed.
   - The warning is the existing Starlette/httpx TestClient deprecation warning.
-- **Pull Request:** Pending creation after final documentation CI validation.
-- **PR status:** To be published as a draft stacked PR based on PR #9; no PR is merged automatically.
+- **Pull Request:** [PR #10 — Add memory lifecycle metadata and non-destructive revision history](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/10)
+- **PR status:** Open, draft; base `oracle/phase-02-hybrid-retrieval` (PR #9). Head at initial publication: `240fe73cd9acaea23610ba163b325efeef256ae9`. No PR is merged automatically.
