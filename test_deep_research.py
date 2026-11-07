@@ -496,6 +496,7 @@ def test_research_correction_repairs_invalid_citation_without_repeating_search(m
         max_queries=1,
         max_sources=1,
         fetch_pages=False,
+        verify_claims=False,
     )
 
     assert len(search_calls) == 1
