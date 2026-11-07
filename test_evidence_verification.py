@@ -213,3 +213,12 @@ def test_structured_contradiction_detector_does_not_infer_structure_from_prose()
         {"claim_id": "C2", "text": "Policy A is inactive."},
     ])
     assert found == []
+
+
+def test_freshness_rejects_invalid_source_and_as_of_values():
+    with pytest.raises(evidence.EvidenceError):
+        evidence.assess_source_freshness(None, max_age_days=30)
+    with pytest.raises(evidence.EvidenceError):
+        evidence.assess_source_freshness(
+            _source(), max_age_days=30, as_of="not-a-date"
+        )
