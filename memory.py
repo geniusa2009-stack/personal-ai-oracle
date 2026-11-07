@@ -258,26 +258,6 @@ def delete_memory(memory_id: int, scope: str) -> bool:
                 f"DELETE FROM memory_consolidation_proposals WHERE id IN ({marks})",
                 proposal_ids,
             )
-        proposal_rows = conn.execute(
-            """SELECT proposal_id FROM memory_consolidation_proposal_members
-               WHERE scope=? AND memory_id=?""",
-            (scope, memory_id),
-        ).fetchall()
-        proposal_ids = [int(item["proposal_id"]) for item in proposal_rows]
-        if proposal_ids:
-            marks = ",".join("?" for _ in proposal_ids)
-            conn.execute(
-                f"DELETE FROM memory_consolidation_observations WHERE proposal_id IN ({marks})",
-                proposal_ids,
-            )
-            conn.execute(
-                f"DELETE FROM memory_consolidation_proposal_members WHERE proposal_id IN ({marks})",
-                proposal_ids,
-            )
-            conn.execute(
-                f"DELETE FROM memory_consolidation_proposals WHERE id IN ({marks})",
-                proposal_ids,
-            )
         conn.execute(
             "DELETE FROM memory_embeddings WHERE scope = ? AND memory_type = ? AND record_id = ?",
             (scope, row["memory_type"], memory_id),
