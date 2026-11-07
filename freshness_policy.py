@@ -8,6 +8,7 @@ conservative query classifier recognizes a time-sensitive category.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Mapping, Sequence
 
 import evidence_verification
@@ -97,6 +98,17 @@ def available_profiles() -> list[dict[str, Any]]:
     ]
 
 
+def _matches_hint(query: str, hint: str) -> bool:
+    normalized_hint = " ".join(hint.casefold().split())
+    if " " in normalized_hint:
+        return normalized_hint in query
+    return re.search(
+        rf"(?<![\\w]){re.escape(normalized_hint)}(?![\\w])",
+        query,
+        flags=re.UNICODE,
+    ) is not None
+
+
 def resolve_policy(
     query: str,
     *,
@@ -122,7 +134,7 @@ def resolve_policy(
         selected = POLICIES["general"]
         matched_hint = None
         for profile, hints in QUERY_HINTS:
-            matched = next((hint for hint in hints if hint.casefold() in normalized), None)
+            matched = next((hint for hint in hints if _matches_hint(normalized, hint)), None)
             if matched:
                 selected = POLICIES[profile]
                 matched_hint = matched
