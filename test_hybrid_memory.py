@@ -167,12 +167,18 @@ def test_hybrid_retrieval_uses_vector_rank_and_keeps_lexical_results(monkeypatch
         "Studies galaxy clusters and stellar systems", "fact", "owner:one", "manual"
     )
     client = FakeEmbeddingClient()
-    memory_embeddings.index_memory_scope("owner:one", client=client)
+    indexed = memory_embeddings.index_memory_scope("owner:one", client=client)
+    assert indexed["indexed_count"] == 2
+    direct_matches = memory_embeddings.retrieve_vector_matches(
+        "owner:one", "astronomy", client=client
+    )
+    assert len(direct_matches) == 2
 
     context = hybrid_memory.retrieve_memory_context(
         "owner:one", "astronomy", client=client
     )
 
+    assert context.warning_code is None, context
     assert context.retrieval_mode == "hybrid"
     assert context.semantic_match_count == 2
     assert {item.id for item in context.memories} == {lexical.id, semantic.id}
@@ -185,12 +191,18 @@ def test_hybrid_retrieval_falls_back_to_lexical_on_provider_error(monkeypatch, t
         "Builds an Oracle project", "fact", "owner:one", "manual"
     )
 
+    class SeedClient(FakeEmbeddingClient):
+        model_name = "broken-model"
+
     class BrokenClient:
         model_name = "broken-model"
 
         def embed(self, _texts):
             raise RuntimeError("provider unavailable")
 
+    memory_embeddings.index_memory_scope(
+        "owner:one", client=SeedClient()
+    )
     context = hybrid_memory.retrieve_memory_context(
         "owner:one", "Oracle project", client=BrokenClient()
     )
