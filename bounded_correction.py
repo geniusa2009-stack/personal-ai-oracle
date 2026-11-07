@@ -164,6 +164,12 @@ def run_bounded_correction(
 
         fingerprint = _fingerprint(output)
         if fingerprint in fingerprints:
+            attempts.append(CorrectionAttempt(
+                attempt_number=attempt_number + 1,
+                output_fingerprint=fingerprint,
+                issue_codes=issue_codes or previous_issues,
+                passed=False,
+            ))
             return CorrectionResult(
                 output=current_output,
                 attempts=tuple(attempts),
