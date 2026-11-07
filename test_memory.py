@@ -85,6 +85,19 @@ def test_memory_delete_requires_owning_scope_and_preserves_feature_data(monkeypa
     db.init_db()
     db.save_entry("existing diary", ["diary"])
     written = _write()
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            """INSERT INTO memory_embeddings
+               (scope,memory_type,record_id,embedding_model,content_hash,vector_json,
+                dimensions,created_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            ("user:one", "fact", written.id, "test-model", "a" * 64,
+             "[1.0,0.0]", 2, "2026-11-07T00:00:00+00:00", "2026-11-07T00:00:00+00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     assert memory.delete_memory(written.id, "user:two") is False
     assert memory.get_memory(written.id, "user:one") == written
@@ -94,6 +107,18 @@ def test_memory_delete_requires_owning_scope_and_preserves_feature_data(monkeypa
     conn = db.get_conn()
     try:
         assert conn.execute("SELECT COUNT(*) AS c FROM entries").fetchone()["c"] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_metadata WHERE memory_id=? AND scope=?",
+            (written.id, "user:one"),
+        ).fetchone()["c"] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_revision_history WHERE memory_id=? AND scope=?",
+            (written.id, "user:one"),
+        ).fetchone()["c"] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_embeddings WHERE record_id=? AND scope=?",
+            (written.id, "user:one"),
+        ).fetchone()["c"] == 0
     finally:
         conn.close()
 
