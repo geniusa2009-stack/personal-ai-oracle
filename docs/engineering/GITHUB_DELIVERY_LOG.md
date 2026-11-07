@@ -324,7 +324,7 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Side-effect boundary:** All correction callbacks invoke text generation only. Local commands, file writes/moves/deletes, application launches, browser navigation, web search, page extraction, approval checks and other tool execution are not automatically retried.
 - **Research semantics:** Correction validates response JSON, a non-empty answer and inline citations restricted to the sources collected in the current run. It does not prove semantic entailment or factual truth; semantic verification remains a separate evidence-assessment step.
 - **Privacy:** Correction metadata contains attempt numbers, hashes and deterministic issue codes; raw previous answer text is not copied into the metadata report.
-- **Validation:** GitHub Actions run `42419873506` passed on implementation head `5f454b38ccce41d9347ed8401384ea55aeef18fb`.
+- **Validation:** GitHub Actions run `42420080572` passed on implementation/documentation head `931051727569531565e24b25b853618c94cf6d79`.
   - Ubuntu: **308 passed, 1 warning**.
   - macOS: **308 passed, 1 warning**.
   - Compile and full pytest passed on both platforms.
