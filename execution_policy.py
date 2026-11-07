@@ -144,6 +144,14 @@ def authorize_action(tool_id: str, tool_input: str | dict[str, Any], *, scope: s
         return {"allowed": True, "reason": "not_a_local_mutation"}
 
     payload = _payload(tool_input)
+    try:
+        import mac_intelligence
+        workspace_decision = mac_intelligence.authorize_workspace_action(tool_id, payload)
+        if workspace_decision.get("allowed"):
+            return {"allowed": True, "reason": workspace_decision.get("reason", "trusted_workspace")}
+    except Exception:
+        # An unavailable policy must never widen permissions; fall through to explicit approval.
+        pass
     digest = action_digest(payload)
     preview = _preview(tool_id, payload)
     init_database()

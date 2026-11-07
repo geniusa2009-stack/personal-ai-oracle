@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-MAX_JOB_BYTES = 32_768
+MAX_JOB_BYTES = 512 * 1024
 MAX_RESULT_BYTES = 65_536
 MAX_WAIT_SECONDS = 20
 LEASE_SECONDS = 600
@@ -29,6 +29,13 @@ ALLOWED_REMOTE_TOOLS = {
     "local.list_directory",
     "local.read_file",
     "local.find_files",
+    "local.write_file",
+    "local.run_command",
+    "local.open_app",
+    "local.get_system_info",
+    "local.list_processes",
+    "local.list_applications",
+    "local.get_mac_intelligence_status",
     "web.search",
     "web.navigate",
     "web.extract",
@@ -218,7 +225,7 @@ async def request_size_guard(request: Request, call_next):
     length = request.headers.get("content-length")
     if length:
         try:
-            if int(length) > MAX_RESULT_BYTES + 4096:
+            if int(length) > max(MAX_RESULT_BYTES, MAX_JOB_BYTES) + 8192:
                 return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
         except ValueError:
             return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})

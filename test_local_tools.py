@@ -116,6 +116,10 @@ def test_local_tools_are_explicit_and_discoverable():
     assert "local.read_file" in ids
     assert "local.write_file" in ids
     assert "local.open_app" in ids
+    assert "local.get_system_info" in ids
+    assert "local.list_processes" in ids
+    assert "local.list_applications" in ids
+    assert "local.get_mac_intelligence_status" in ids
 
 
 def test_local_agent_refuses_unrestricted_python_and_system_control_commands():

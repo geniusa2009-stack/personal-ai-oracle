@@ -98,12 +98,44 @@ Roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, `rev
 
 Hosted model requests are sent to the selected provider. Ollama model requests remain on the device where Ollama runs. The Mac agent needs an available local provider/model for its second review of consequential local write, move, delete and command operations.
 
+## Mac Intelligence: trusted workspaces and local execution
+
+Create `~/.personal_ai_oracle/mac_intelligence.json` on the Mac (permissions: `chmod 600 ~/.personal_ai_oracle/mac_intelligence.json`). Start with only the project folders Oracle is meant to manage:
+
+```json
+{
+  "version": 1,
+  "trusted_workspaces": ["~/Projects"],
+  "auto_allow_tools": ["local.write_file", "local.run_command", "local.open_app"],
+  "auto_run_commands": [
+    ["git", "status"],
+    ["git", "diff"],
+    ["git", "log"],
+    ["npm", "run", "test"],
+    ["npm", "run", "build"],
+    ["python3", "-m", "pytest"],
+    ["python3", "-m", "compileall"]
+  ],
+  "allowed_applications": ["Visual Studio Code", "Terminal"],
+  "allow_screen_capture": false,
+  "allow_admin_operations": false
+}
+```
+
+The `trusted_workspaces` entries must point to existing absolute directories after `~` expansion. You can also set `ORACLE_TRUSTED_WORKSPACES` to an OS path-separator-delimited list. The Mac agent resolves paths locally (including symlinks) and checks every source/destination or command working directory against those roots.
+
+Automatic file writing is available only when `local.write_file` is explicitly listed and the destination is inside a trusted workspace. Automatic command execution additionally requires an argv prefix in `auto_run_commands`, a trusted working directory, and the existing built-in executable/subcommand allowlist; commands always use an argv array with `shell=false`. Application launch is limited to exact names in `allowed_applications`. These settings are read locally by the Mac agent; a cloud job cannot expand them.
+
+Move/delete, recursive deletion, unlisted commands and unlisted apps are not granted by the trusted-workspace profile. Remote move/delete are not exposed by the cloud API. The system inspection tools return OS/resource metadata, a bounded process inventory without full command-line arguments, and application names. Screen capture and elevated/admin execution are reported as not integrated; setting their flags does not activate them. macOS privacy prompts and OS protections remain in force.
+
+The policy file is configuration, not a secure sandbox against a compromised Mac account or malicious code already running as that account. Keep trusted workspace roots narrow, and only trust project code that you are willing to execute.
+
 ## Security boundaries
 
 - Cloud dashboard login and control API credentials are separate.
 - Device credentials are random, stored hashed in the control-plane database, and returned only once at pairing.
 - Jobs have bounded payloads, an allow-listed tool identifier, a lease token and a result size limit.
-- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac. The remote API allowlist currently exposes read-only Mac tools only; cloud-originated write/move/delete/command/app-launch jobs are rejected until a one-time approval capability can be verified independently by the Mac agent.
+- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac. Remote write, command and app-launch requests are re-authorized against the Mac's own trusted-workspace policy; remote move/delete and other unlisted tools are rejected.
 - Browser automation uses an isolated profile and blocks non-global destinations by default to reduce SSRF and local-network exposure.
 - Local tools run as the currently logged-in macOS user and use normal OS permissions. The agent does not escalate to root or bypass macOS privacy and safety protections.
 - The system does not extract credentials from the user's ordinary browser profile. Sign in manually in the dedicated Oracle browser.

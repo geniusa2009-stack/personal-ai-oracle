@@ -10,17 +10,18 @@ import cloud_control
 import web_browser
 
 
-def test_cloud_control_only_accepts_read_only_remote_tools():
+def test_cloud_control_exposes_only_policy_scoped_mutations():
     assert "local.read_file" in cloud_control.ALLOWED_REMOTE_TOOLS
     assert "local.list_directory" in cloud_control.ALLOWED_REMOTE_TOOLS
     assert "web.navigate" in cloud_control.ALLOWED_REMOTE_TOOLS
     for tool_id in (
-        "local.write_file", "local.move_path", "local.delete_path",
-        "local.run_command", "local.open_app",
+        "local.write_file", "local.run_command", "local.open_app",
+        "local.get_system_info", "local.list_processes",
+        "local.list_applications", "local.get_mac_intelligence_status",
     ):
+        assert tool_id in cloud_control.ALLOWED_REMOTE_TOOLS
+    for tool_id in ("local.move_path", "local.delete_path", "os.exec", "shell"):
         assert tool_id not in cloud_control.ALLOWED_REMOTE_TOOLS
-    assert "os.exec" not in cloud_control.ALLOWED_REMOTE_TOOLS
-    assert "shell" not in cloud_control.ALLOWED_REMOTE_TOOLS
 
 
 def test_cloud_tokens_are_hashed():

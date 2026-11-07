@@ -19,11 +19,13 @@ REMOTE_TOOLS = {
     "local.list_directory",
     "local.read_file",
     "local.write_file",
-    "local.move_path",
-    "local.delete_path",
     "local.find_files",
     "local.run_command",
     "local.open_app",
+    "local.get_system_info",
+    "local.list_processes",
+    "local.list_applications",
+    "local.get_mac_intelligence_status",
     "web.search",
     "web.navigate",
     "web.extract",
@@ -106,28 +108,14 @@ def _execute(job: dict[str, Any]) -> dict[str, Any]:
         return {"name": tool_id, "status": "error", "result": "Invalid remote tool payload."}
 
     if tool_id.startswith("local."):
-        if tool_id in {
-            "local.write_file", "local.move_path", "local.delete_path", "local.run_command"
-        }:
-            try:
-                import agent_orchestrator
-                review = agent_orchestrator._preflight_local_action(
-                    str(job.get("task") or "Remote cloud task"),
-                    {
-                        "tool_id": tool_id,
-                        "input": json.dumps(payload, ensure_ascii=False),
-                        "tool": {"name": tool_id},
-                    },
-                    os.environ.get("ORACLE_MEMORY_SCOPE"),
-                )
-            except Exception as exc:
-                return {"name": tool_id, "status": "blocked", "result": f"Executor review unavailable: {type(exc).__name__}"}
-            if review is not None and not review.get("approved"):
-                return {
-                    "name": tool_id,
-                    "status": "blocked",
-                    "result": str(review.get("reason") or "Executor did not approve this action.")[:1000],
-                }
+        import mac_intelligence
+        decision = mac_intelligence.authorize_remote_action(tool_id, payload)
+        if not decision.get("allowed"):
+            return {
+                "name": tool_id,
+                "status": "blocked",
+                "result": "Mac-local policy blocked this remote action: " + str(decision.get("reason", "not_allowed")),
+            }
         import local_tools
         return local_tools.execute(tool_id, payload)
 

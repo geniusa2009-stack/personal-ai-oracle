@@ -11,6 +11,7 @@ import fnmatch
 import json
 from datetime import datetime, timezone
 import os
+import platform
 import shutil
 import subprocess
 import time
@@ -92,6 +93,30 @@ TOOL_DEFINITIONS = [
         "name": "Open macOS application",
         "description": "فتح تطبيق macOS بالاسم باستخدام open -a. input JSON: {application}.",
         "input_schema": {"application": "string"},
+    },
+    {
+        "tool_id": "local.get_system_info",
+        "name": "Inspect Mac system",
+        "description": "قراءة معلومات النظام والموارد الأساسية دون تغيير إعدادات الجهاز.",
+        "input_schema": {},
+    },
+    {
+        "tool_id": "local.list_processes",
+        "name": "List running processes",
+        "description": "عرض قائمة محدودة بالعمليات دون سطر الأوامر أو معاملات قد تحتوي أسرارًا.",
+        "input_schema": {"max_results": "integer?"},
+    },
+    {
+        "tool_id": "local.list_applications",
+        "name": "List installed applications",
+        "description": "عرض أسماء تطبيقات macOS الموجودة في مجلدات التطبيقات القياسية.",
+        "input_schema": {},
+    },
+    {
+        "tool_id": "local.get_mac_intelligence_status",
+        "name": "Mac Intelligence policy status",
+        "description": "عرض مساحات العمل الموثوقة والأدوات المسموح بتشغيلها تلقائيًا.",
+        "input_schema": {},
     },
 ]
 
@@ -293,6 +318,52 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
             result = _success(tool_id, _clip(output), started)
             result["exit_code"] = completed.returncode
             return result
+
+        if tool_id == "local.get_system_info":
+            usage = shutil.disk_usage(Path.home())
+            info = {
+                "os": platform.system(),
+                "os_release": platform.release(),
+                "architecture": platform.machine(),
+                "python_version": platform.python_version(),
+                "cpu_count": os.cpu_count(),
+                "home_disk_total_bytes": usage.total,
+                "home_disk_free_bytes": usage.free,
+            }
+            return _success(tool_id, json.dumps(info, ensure_ascii=False, indent=2), started)
+
+        if tool_id == "local.list_processes":
+            maximum = data.get("max_results", 200)
+            if isinstance(maximum, bool) or not isinstance(maximum, int) or not 1 <= maximum <= 300:
+                raise ValueError("max_results must be from 1 to 300")
+            completed = subprocess.run(
+                ["/bin/ps", "-axo", "pid=,ppid=,user=,stat=,comm="],
+                capture_output=True, text=True, timeout=10, check=False, shell=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError("Process inventory command failed.")
+            rows = []
+            for line in completed.stdout.splitlines()[:maximum]:
+                parts = line.strip().split(None, 4)
+                if len(parts) == 5:
+                    rows.append({"pid": parts[0], "parent_pid": parts[1], "user": parts[2],
+                                 "state": parts[3], "executable": parts[4]})
+            return _success(tool_id, json.dumps(rows, ensure_ascii=False, indent=2), started)
+
+        if tool_id == "local.list_applications":
+            roots = [Path("/Applications"), Path("/System/Applications"), Path.home() / "Applications"]
+            applications = set()
+            for root in roots:
+                if root.is_dir():
+                    try:
+                        applications.update(item.name[:-4] for item in root.iterdir() if item.is_dir() and item.name.endswith(".app"))
+                    except OSError:
+                        continue
+            return _success(tool_id, json.dumps(sorted(applications, key=str.casefold), ensure_ascii=False, indent=2), started)
+
+        if tool_id == "local.get_mac_intelligence_status":
+            import mac_intelligence
+            return _success(tool_id, json.dumps(mac_intelligence.get_status(), ensure_ascii=False, indent=2), started)
 
         if tool_id == "local.open_app":
             application = data.get("application")
