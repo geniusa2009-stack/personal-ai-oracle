@@ -301,5 +301,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Compile and full pytest passed on both platforms.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** The bundled suite is a small synthetic smoke set. No live provider benchmark was executed in CI. Cost, token throughput, energy and hardware-normalized performance remain unmeasured. The RRF/benchmark ranking weights are policy defaults, not statistically calibrated.
-- **Pull Request:** Pending final documentation CI; planned as draft PR #13 based on PR #12.
-- **PR status:** Not yet created; no previous PR was merged or retargeted.
+- **Pull Request:** [PR #13 — Add explicit measured model benchmarking and evidence-gated scorecards](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/13)
+- **PR status:** Open, draft; base `oracle/phase-02-memory-consolidation` (PR #12). Initial published head: `3b396abecc0b07261414e0b5f36afb45fe5f9446`. No earlier PR was merged or retargeted.
