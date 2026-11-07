@@ -458,6 +458,7 @@ def run_research(
             "domain": source_map[source_id]["domain"],
             "page_status": source_map[source_id]["page_status"],
             "source_class": source_map[source_id]["source_class"],
+            "publisher": source_map[source_id].get("publisher") or source_map[source_id]["domain"],
             "published_at": source_map[source_id].get("published_at"),
             "updated_at": source_map[source_id].get("updated_at"),
             "retrieved_at": source_map[source_id].get("retrieved_at"),
@@ -499,7 +500,19 @@ def run_research(
     result_status = "error" if not sources else ("partial" if limitations else "success")
     quality_assessment = answer_quality.assess_claim_citations(answer, output_sources)
     evidence_manifest = evidence_verification.normalize_sources(output_sources)
+    evidence_by_id = {item["citation_id"]: item for item in evidence_manifest}
+    for source in output_sources:
+        metadata = evidence_by_id.get(source["citation_id"], {})
+        source["evidence_level"] = metadata.get("evidence_level", "unknown")
     claim_records = evidence_verification.build_claim_candidates(answer, evidence_manifest)
+    evidence_summary = {
+        "source_count": len(evidence_manifest),
+        "extracted_page_count": sum(item["evidence_level"] == "extracted_page" for item in evidence_manifest),
+        "snippet_only_count": sum(item["evidence_level"] == "search_snippet_only" for item in evidence_manifest),
+        "unavailable_or_partial_count": sum(item["evidence_level"] == "unavailable_or_partial" for item in evidence_manifest),
+        "claim_candidate_count": len(claim_records),
+        "semantic_verification": "not_performed",
+    }
     return {
         "status": result_status,
         "query": normalized_query,
@@ -516,6 +529,7 @@ def run_research(
         "claim_evidence": quality_assessment["claims"],
         "claim_records": claim_records,
         "evidence_manifest": evidence_manifest,
+        "evidence_summary": evidence_summary,
         "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
@@ -555,6 +569,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
                 "snippet_only_references",
             )
         },
+        "evidence_summary": report.get("evidence_summary", {}),
         "claim_records": [
             {
                 "claim_id": str(item.get("claim_id") or "")[:16],
