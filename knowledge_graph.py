@@ -549,14 +549,14 @@ def retrieve_graph(
                 )
             lines.append(relation_line)
             if neighbor.evidence:
-                evidence = neighbor.evidence.replace("\\n", " ").strip()[:500]
+                evidence = neighbor.evidence.replace("\n", " ").strip()[:500]
                 lines.append(f"    Stored evidence: {evidence}")
             if len("\\n".join(lines)) >= MAX_CONTEXT_LENGTH:
                 break
         if len("\\n".join(lines)) >= MAX_CONTEXT_LENGTH:
             break
 
-    context_text = "\\n".join(lines)[:MAX_CONTEXT_LENGTH]
+    context_text = "\n".join(lines)[:MAX_CONTEXT_LENGTH]
     return GraphRetrieval(
         seed_entities=tuple(seeds),
         related_entities=tuple(related),
