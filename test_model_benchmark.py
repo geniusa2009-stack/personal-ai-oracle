@@ -4,6 +4,7 @@ import time
 import pytest
 
 import db
+import database
 import model_benchmark
 import model_observability
 
@@ -349,3 +350,24 @@ def test_phrase_rubric_scores_each_required_and_forbidden_condition():
         expected_contains=("Mediterranean Sea",),
     )
     assert model_benchmark._rubric_score(case_insensitive, "mediterranean sea")[0] == 1.0
+
+
+
+def test_benchmark_data_is_included_in_explicit_panic_wipe(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    run = model_benchmark.run_benchmark(
+        "owner:one",
+        _suite(),
+        [model_benchmark.ModelCandidate("ollama", "wipe-test-model")],
+        runner=lambda _candidate, _request: "4 positive done",
+    )
+
+    wiped = database.panic_wipe(tables=[
+        "oracle_model_benchmark_results",
+        "oracle_model_benchmark_runs",
+    ])
+
+    assert wiped["oracle_model_benchmark_results"] == len(_suite().cases)
+    assert wiped["oracle_model_benchmark_runs"] == 1
+    assert model_benchmark.get_run("owner:one", run.run_id) is None
+    assert model_benchmark.list_results("owner:one") == []
