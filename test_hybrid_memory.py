@@ -512,4 +512,4 @@ def test_ai_core_uses_graph_context_from_hybrid_retrieval_once(monkeypatch, tmp_
     assert "<personal_knowledge_graph>" in system_content
     assert "ESP32 soil sensor" in system_content
     assert "Explicit owner evidence" in system_content
-    assert "graph" in system_content.casefold()
+    assert "الرسم المعرفي" in system_content
