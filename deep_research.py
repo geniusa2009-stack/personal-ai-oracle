@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import ai_core
 import answer_quality
+import evidence_verification
 import search
 
 
@@ -154,6 +156,15 @@ def _query_plan(query: str, max_queries: int, memory_scope: str | None) -> list[
     return planned[:max_queries]
 
 
+def _date_hint(value: Any) -> str | None:
+    """Preserve provider date hints as metadata; evidence_verification validates them."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:100]
+    return None
+
+
 def _collect_search_results(queries: list[str], max_sources: int) -> list[dict[str, Any]]:
     sources: dict[str, dict[str, Any]] = {}
     for query in queries:
@@ -184,6 +195,21 @@ def _collect_search_results(queries: list[str], max_sources: int) -> list[dict[s
                     "page_text": "",
                     "page_status": "not_fetched",
                     "http_status": None,
+                    "publisher": str(item.get("publisher") or domain)[:180],
+                    "published_at": _date_hint(
+                        item.get("published_at") or item.get("published_date") or item.get("date")
+                    ),
+                    "updated_at": _date_hint(
+                        item.get("updated_at") or item.get("last_updated")
+                    ),
+                    "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "extracted_at": None,
+                    "date_metadata_origin": (
+                        "search_provider"
+                        if _date_hint(item.get("published_at") or item.get("published_date") or item.get("date"))
+                        or _date_hint(item.get("updated_at") or item.get("last_updated"))
+                        else "unknown"
+                    ),
                 }
             source = sources[url]
             provider = str(item.get("source") or "unknown")[:40]
@@ -195,6 +221,17 @@ def _collect_search_results(queries: list[str], max_sources: int) -> list[dict[s
                 source["snippet"] = snippet
             if not source["title"] and title:
                 source["title"] = title
+            if not source.get("published_at"):
+                source["published_at"] = _date_hint(
+                    item.get("published_at") or item.get("published_date") or item.get("date")
+                )
+            if not source.get("updated_at"):
+                source["updated_at"] = _date_hint(
+                    item.get("updated_at") or item.get("last_updated")
+                )
+            if source.get("published_at") or source.get("updated_at"):
+                if source.get("date_metadata_origin") == "unknown":
+                    source["date_metadata_origin"] = "search_provider"
     return list(sources.values())[:max_sources]
 
 
@@ -244,6 +281,17 @@ def _fetch_pages(
         source["http_status"] = value.get("http_status")
         source["title"] = str(value.get("title") or source["title"])[:300]
         source["page_status"] = "extracted" if source["page_text"] else "empty_page"
+        source["extracted_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if not source.get("published_at"):
+            source["published_at"] = _date_hint(value.get("published_at") or value.get("published_date"))
+        if not source.get("updated_at"):
+            source["updated_at"] = _date_hint(
+                value.get("updated_at") or value.get("last_updated") or value.get("last_modified")
+            )
+        if value.get("publisher"):
+            source["publisher"] = str(value["publisher"])[:180]
+        if source.get("published_at") or source.get("updated_at"):
+            source["date_metadata_origin"] = "page_extractor"
 
 
 def _format_source_context(sources: list[dict[str, Any]]) -> str:
@@ -418,6 +466,11 @@ def run_research(
             "domain": source_map[source_id]["domain"],
             "page_status": source_map[source_id]["page_status"],
             "source_class": source_map[source_id]["source_class"],
+            "publisher": source_map[source_id].get("publisher") or source_map[source_id]["domain"],
+            "published_at": source_map[source_id].get("published_at"),
+            "updated_at": source_map[source_id].get("updated_at"),
+            "retrieved_at": source_map[source_id].get("retrieved_at"),
+            "extracted_at": source_map[source_id].get("extracted_at"),
         }
         for source_id in cited_ids
     ]
@@ -431,6 +484,12 @@ def run_research(
             "page_status": source["page_status"],
             "http_status": source["http_status"],
             "source_class": source["source_class"],
+            "publisher": source.get("publisher") or source["domain"],
+            "published_at": source.get("published_at"),
+            "updated_at": source.get("updated_at"),
+            "retrieved_at": source.get("retrieved_at"),
+            "extracted_at": source.get("extracted_at"),
+            "date_metadata_origin": source.get("date_metadata_origin", "unknown"),
             "matched_queries": source["matched_queries"],
         }
         for source in sources
@@ -448,6 +507,20 @@ def run_research(
         limitations.append("Page extraction depends on the paired Mac agent being online.")
     result_status = "error" if not sources else ("partial" if limitations else "success")
     quality_assessment = answer_quality.assess_claim_citations(answer, output_sources)
+    evidence_manifest = evidence_verification.normalize_sources(output_sources)
+    evidence_by_id = {item["citation_id"]: item for item in evidence_manifest}
+    for source in output_sources:
+        metadata = evidence_by_id.get(source["citation_id"], {})
+        source["evidence_level"] = metadata.get("evidence_level", "unknown")
+    claim_records = evidence_verification.build_claim_candidates(answer, evidence_manifest)
+    evidence_summary = {
+        "source_count": len(evidence_manifest),
+        "extracted_page_count": sum(item["evidence_level"] == "extracted_page" for item in evidence_manifest),
+        "snippet_only_count": sum(item["evidence_level"] == "search_snippet_only" for item in evidence_manifest),
+        "unavailable_or_partial_count": sum(item["evidence_level"] == "unavailable_or_partial" for item in evidence_manifest),
+        "claim_candidate_count": len(claim_records),
+        "semantic_verification": "not_performed",
+    }
     return {
         "status": result_status,
         "query": normalized_query,
@@ -462,6 +535,9 @@ def run_research(
             "invalid_source_ids": invalid_ids,
         },
         "claim_evidence": quality_assessment["claims"],
+        "claim_records": claim_records,
+        "evidence_manifest": evidence_manifest,
+        "evidence_summary": evidence_summary,
         "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
@@ -501,6 +577,21 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
                 "snippet_only_references",
             )
         },
+        "evidence_summary": report.get("evidence_summary", {}),
+        "claim_records": [
+            {
+                "claim_id": str(item.get("claim_id") or "")[:16],
+                "text": str(item.get("text") or "")[:220],
+                "claim_type": str(item.get("claim_type") or "unclassified")[:40],
+                "granularity": str(item.get("granularity") or "sentence_level_candidate")[:40],
+                "source_ids": list(item.get("source_ids", []))[:4],
+                "invalid_source_ids": list(item.get("invalid_source_ids", []))[:4],
+                "citation_status": str(item.get("citation_status") or "uncited")[:40],
+                "verification_status": "UNVERIFIED",
+                "semantic_support": "not_evaluated",
+            }
+            for item in report.get("claim_records", [])[:8] if isinstance(item, dict)
+        ],
         "claim_evidence": [
             {
                 "claim": str(item.get("claim") or "")[:240],
@@ -528,6 +619,13 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "snippet": str(source.get("snippet") or "")[:160],
             "page_status": str(source.get("page_status") or "")[:50],
             "source_class": str(source.get("source_class") or "")[:40],
+            "publisher": str(source.get("publisher") or "")[:120],
+            "published_at": source.get("published_at"),
+            "updated_at": source.get("updated_at"),
+            "retrieved_at": source.get("retrieved_at"),
+            "extracted_at": source.get("extracted_at"),
+            "date_metadata_origin": str(source.get("date_metadata_origin") or "unknown")[:40],
+            "evidence_level": str(source.get("evidence_level") or "")[:40],
         }
         source_by_id[source_id] = item
     cited = compact["citation_validation"]["valid_source_ids"]
