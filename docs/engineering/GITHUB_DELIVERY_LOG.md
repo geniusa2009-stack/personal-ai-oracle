@@ -271,4 +271,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - macOS: **276 passed, 1 warning**.
   - Python compile and full pytest steps passed on both platforms.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
-- **Pull Request:** Pending final capability-matrix CI validation; planned as draft PR #12 based on PR #11.
+- **Pull Request:** [PR #12 — Add review-only memory consolidation and conflict candidate discovery](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/12)
+- **PR status:** Open, draft; base `oracle/phase-02-graph-aware-retrieval` (PR #11). Published head: `9833720dccd553ceca25c8d232f2e7d8c3ab7fee`. No earlier PR was merged or retargeted.
