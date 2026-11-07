@@ -132,13 +132,14 @@ def _get(conn: Any, memory_id: int, scope: str) -> MemoryMetadata | None:
 def record_memory_created(conn: Any, *, memory_id: int, scope: str, content: str, created_at: str, actor: str) -> None:
     """Insert metadata and its initial revision using the caller's transaction."""
     now = _now()
-    metadata = MemoryMetadata(memory_id, scope, 0.5, 0.5, created_at, None, 0, None, "active", None, now)
+    # Lifecycle validity uses an explicit UTC instant; legacy created_at stays unchanged.
+    metadata = MemoryMetadata(memory_id, scope, 0.5, 0.5, now, None, 0, None, "active", None, now)
     conn.execute(
         """INSERT OR IGNORE INTO memory_metadata
            (memory_id,scope,confidence,importance,valid_from,valid_until,access_count,
             last_accessed_at,status,superseded_by_id,updated_at)
            VALUES(?,?,0.5,0.5,?,NULL,0,NULL,'active',NULL,?)""",
-        (memory_id, scope, created_at, now),
+        (memory_id, scope, now, now),
     )
     conn.execute(
         """INSERT INTO memory_revision_history
