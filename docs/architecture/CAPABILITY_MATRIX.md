@@ -45,8 +45,8 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Memory revision history | `memory_lifecycle.py`, `database.py` | Append-only snapshots with content hash, metadata snapshot, reason, actor, timestamp | `IMPLEMENTED_AND_VERIFIED` | `test_memory_lifecycle.py`; 259-test Ubuntu/macOS CI | Content revisions create a replacement record and supersede the old record; explicit deletion clears linked history and vector cache |
 | Episodic memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_events`, explicit source/time metadata, lexical retrieval | `IMPLEMENTED_AND_VERIFIED` | `test_memory_layers.py`; full 259-test CI | Explicit event capture and bounded scope-local retrieval verified; no automatic extraction or graph linking |
 | Procedural memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_procedures`, explicit validation status, outcome counters | `IMPLEMENTED_AND_VERIFIED` | `test_memory_layers.py`; full 259-test CI | Candidate procedures require explicit validation before retrieval; no automatic promotion or generalized history |
-| Hybrid/vector retrieval | `memory_embeddings.py`, `hybrid_memory.py`, `ai_core.py` | Optional OpenAI-compatible embeddings endpoint, SQLite vector cache, lexical fallback | `IMPLEMENTED_BUT_UNVERIFIED` | `test_hybrid_memory.py` | Opt-in vector indexing and cosine retrieval; RRF fusion connected to AI Core; no live provider run; metadata/temporal/graph reranking remains unfinished |
-| Explicit knowledge graph | `knowledge_graph.py` | SQLite entity/relation tables | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py` | Temporal/versioned graph edges and evidence lifecycle |
+| Hybrid/vector/graph retrieval | `memory_embeddings.py`, `hybrid_memory.py`, `knowledge_graph.py`, `ai_core.py` | Lexical + optional vectors + scoped graph expansion; weighted RRF; graph relation evidence | `IMPLEMENTED_AND_VERIFIED` | `test_hybrid_memory.py`, `test_knowledge_graph.py`; 267-test Ubuntu/macOS CI | Graph-linked names expand fact/event/validated-procedure retrieval with lower RRF weight; real embedding provider compatibility and ranking calibration remain unverified |
+| Explicit knowledge graph | `knowledge_graph.py`, `hybrid_memory.py` | SQLite scope-bound entity/relation tables, stored relation evidence, bounded graph expansion | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py`, `test_hybrid_memory.py`; 267-test Ubuntu/macOS CI | Explicit graph edges now contribute bounded retrieval candidates and provenance; temporal/versioned graph edges remain planned |
 | Automatic graph extraction | Not evidenced as integrated | Claim/entity extraction and provenance | `PLANNED` | Explicit graph write tests only | Evidence-backed entity resolution and relation extraction |
 | Memory consolidation | `memory_lifecycle.py` provides explicit revision/supersession only | Append-only version chain, no silent overwrite | `PARTIALLY_IMPLEMENTED` | `test_memory_lifecycle.py` | Automatic entity resolution, duplicate grouping, contradiction review, and memory retention policy remain planned |
 | Workflow metadata ledger | `workflow_ledger.py` | SQLite workflow tables | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_ledger.py` | Link the trace to durable task plans and state transitions |
@@ -201,3 +201,19 @@ The `oracle/phase-02-memory-lifecycle` branch adds additive SQLite metadata and 
 - Explicit memory deletion removes corresponding metadata, revision snapshots and vector-cache rows. The explicit deletion approval must be enforced by the invoking UI/tool policy.
 
 Implementation is being validated by `test_memory_lifecycle.py`; no completion claim is made until CI passes on Ubuntu and macOS. See `docs/architecture/MEMORY_LIFECYCLE.md`.
+
+
+## Phase 02d — Graph-aware memory retrieval
+
+The `oracle/phase-02-graph-aware-retrieval` branch adds a third retrieval channel:
+
+- The current query finds seed entities in the same memory scope.
+- Explicitly linked neighbors contribute entity-name expansion terms.
+- The expanded query runs the existing lexical search for semantic facts, episodic events, and validated procedures.
+- A weighted RRF channel combines graph-expanded results with original lexical and optional vector results.
+- Graph channel weight is `0.45`; lexical is `0.7`; vector is `1.0`.
+- Relation evidence is preserved and included in the prompt context as stored provenance, not treated as an instruction or proof of an answer.
+- Graph retrieval is bounded by entity and relation counts; provider outages do not disable graph or lexical retrieval.
+- Graph expansion can be disabled explicitly for deterministic baseline comparisons.
+
+This closes the graph-aware *retrieval/ranking* part of Phase 2, not all knowledge-graph work. Temporal edge validity, graph conflict handling, graph-aware consolidation and large-scale ranking calibration remain unfinished.

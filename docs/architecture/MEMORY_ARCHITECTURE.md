@@ -135,3 +135,20 @@ The follow-on `oracle/phase-02-memory-lifecycle` branch extends semantic memory 
 Detailed API, validity semantics, migration behavior and limitations: `docs/architecture/MEMORY_LIFECYCLE.md`.
 
 The confidence/importance fields are explicit user/source metadata, not model-generated truth probabilities. Automatic consolidation, entity resolution and contradiction review remain unfinished.
+
+
+## 8. Graph-aware lexical retrieval
+
+The follow-on `oracle/phase-02-graph-aware-retrieval` branch integrates explicitly stored Knowledge Graph neighbors into the same ranked memory retrieval path.
+
+- A query identifies seed entities in the caller's scope.
+- Explicit one-hop neighbors contribute bounded entity-name expansion terms.
+- The expanded lexical search runs against semantic facts, episodic events, and validated procedures.
+- Weighted RRF combines graph-expanded candidates with the original lexical list and optional vector matches.
+- Graph ranking weight is lower than both original lexical and vector channels.
+- Stored relation evidence is included in the graph context as provenance, not used as automatic proof or as query expansion text.
+- AI Core now consumes the graph context returned by hybrid retrieval instead of performing a duplicate graph query.
+
+Detailed interfaces, weighting, result modes, privacy and limitations: `docs/architecture/GRAPH_AWARE_MEMORY_RETRIEVAL.md`.
+
+This enables graph-linked memory recall but does not implement automatic graph extraction, contradiction resolution, temporal graph-edge validity or memory consolidation.

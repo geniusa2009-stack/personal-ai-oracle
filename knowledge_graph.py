@@ -56,7 +56,35 @@ class RelatedEntity:
     relation_type: str
     direction: str
     connected_entity_id: int
+    evidence: str = ""
 
+
+@dataclass(frozen=True)
+class GraphRetrieval:
+    seed_entities: tuple[Entity, ...]
+    related_entities: tuple[RelatedEntity, ...]
+    expansion_terms: tuple[str, ...]
+    context_text: str
+
+    @property
+    def seed_count(self) -> int:
+        return len(self.seed_entities)
+
+    @property
+    def relation_count(self) -> int:
+        return len(self.related_entities)
+
+
+def _context_atom(value: Any) -> str:
+    """Keep graph-owned text inert inside the system-prompt context boundary."""
+    return (
+        str(value)
+        .replace("&", r"\u0026")
+        .replace("<", r"\u003c")
+        .replace(">", r"\u003e")
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
@@ -384,7 +412,7 @@ def related_entities(
             if distance >= depth:
                 continue
             outgoing = conn.execute(
-                """SELECT r.target_entity_id AS related_id, r.relation_type,
+                """SELECT r.target_entity_id AS related_id, r.relation_type, r.evidence,
                           r.source_entity_id AS connected_id, e.id, e.name, e.entity_type,
                           e.scope, e.attributes_json, e.created_at, e.updated_at
                    FROM knowledge_relations r
@@ -395,7 +423,7 @@ def related_entities(
                 (scope, current_id, limit),
             ).fetchall()
             incoming = conn.execute(
-                """SELECT r.source_entity_id AS related_id, r.relation_type,
+                """SELECT r.source_entity_id AS related_id, r.relation_type, r.evidence,
                           r.target_entity_id AS connected_id, e.id, e.name, e.entity_type,
                           e.scope, e.attributes_json, e.created_at, e.updated_at
                    FROM knowledge_relations r
@@ -419,6 +447,7 @@ def related_entities(
                         relation_type=row["relation_type"],
                         direction=direction,
                         connected_entity_id=int(row["connected_id"]),
+                        evidence=row["evidence"] or "",
                     )
                 )
                 queue.append((related_id, distance + 1))
@@ -462,14 +491,19 @@ def delete_entity(scope: str, entity_id: int) -> bool:
         conn.close()
 
 
-def retrieve_context(
+def retrieve_graph(
     scope: str,
     query: str,
     *,
     max_entities: int = 5,
     max_relations: int = 12,
-) -> str:
-    """Render a compact, injection-aware graph context for the AI prompt."""
+) -> GraphRetrieval:
+    """Return bounded graph seeds, neighbors, explicit evidence and query terms.
+
+    Only edges explicitly stored in the caller's scope are traversed. The
+    expansion terms contain entity names, not inferred associations or
+    relationship evidence, so stored evidence cannot silently broaden search.
+    """
     scope = _scope(scope)
     if not isinstance(query, str):
         raise KnowledgeGraphError("query must be text")
@@ -486,28 +520,75 @@ def retrieve_context(
 
     seeds = search_entities(scope, query, limit=max_entities)
     if not seeds:
-        return ""
+        return GraphRetrieval((), (), (), "")
+
+    related: list[RelatedEntity] = []
+    terms: list[str] = []
+    seen_terms: set[str] = set()
     lines: list[str] = []
-    relation_count = 0
+
+    def add_term(value: str) -> None:
+        normalized = " ".join(value.casefold().split())
+        if value.strip() and normalized not in seen_terms and len(terms) < 20:
+            seen_terms.add(normalized)
+            terms.append(value.strip()[:MAX_NAME_LENGTH])
+
     for seed in seeds:
-        lines.append(f"- {seed.name} ({seed.entity_type})")
-        if relation_count >= max_relations:
+        add_term(seed.name)
+        lines.append(
+            f"- {_context_atom(seed.name)} ({_context_atom(seed.entity_type)})"
+        )
+        remaining = max_relations - len(related)
+        if remaining <= 0:
             continue
         neighbors = related_entities(
             scope,
             seed.id,
             depth=1,
-            limit=min(10, max_relations - relation_count),
+            limit=min(10, remaining),
         )
         for neighbor in neighbors:
-            arrow = "→" if neighbor.direction == "outgoing" else "←"
-            lines.append(
-                f"  {arrow} {neighbor.relation_type}: {neighbor.entity.name} "
-                f"({neighbor.entity.entity_type})"
-            )
-            relation_count += 1
-            if relation_count >= max_relations:
+            related.append(neighbor)
+            add_term(neighbor.entity.name)
+            if neighbor.direction == "outgoing":
+                relation_line = (
+                    f"  {_context_atom(seed.name)} → {neighbor.relation_type}: "
+                    f"{_context_atom(neighbor.entity.name)} ({_context_atom(neighbor.entity.entity_type)})"
+                )
+            else:
+                relation_line = (
+                    f"  {_context_atom(neighbor.entity.name)} → {neighbor.relation_type}: "
+                    f"{_context_atom(seed.name)} ({_context_atom(seed.entity_type)})"
+                )
+            lines.append(relation_line)
+            if neighbor.evidence:
+                evidence = _context_atom(neighbor.evidence).strip()[:500]
+                lines.append(f"    Stored evidence: {evidence}")
+            if len("\n".join(lines)) >= MAX_CONTEXT_LENGTH:
                 break
         if len("\n".join(lines)) >= MAX_CONTEXT_LENGTH:
             break
-    return "\n".join(lines)[:MAX_CONTEXT_LENGTH]
+
+    context_text = "\n".join(lines)[:MAX_CONTEXT_LENGTH]
+    return GraphRetrieval(
+        seed_entities=tuple(seeds),
+        related_entities=tuple(related),
+        expansion_terms=tuple(terms),
+        context_text=context_text,
+    )
+
+
+def retrieve_context(
+    scope: str,
+    query: str,
+    *,
+    max_entities: int = 5,
+    max_relations: int = 12,
+) -> str:
+    """Backward-compatible graph context renderer."""
+    return retrieve_graph(
+        scope,
+        query,
+        max_entities=max_entities,
+        max_relations=max_relations,
+    ).context_text
