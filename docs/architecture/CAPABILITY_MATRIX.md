@@ -3,7 +3,8 @@
 **Baseline snapshot ref:** `feature/oracle-answer-quality-benchmark`  
 **Baseline snapshot SHA:** `0763f14e006554cb20af4a22526394a4d4ce0ade`  
 **Baseline reviewed:** 2026-11-07 UTC  
-**Incremental update:** `oracle/phase-01-evidence-foundation` (implementation and CI pending)
+**Baseline incremental update:** `oracle/phase-01-evidence-foundation`  
+**Current update:** `oracle/phase-01-semantic-verifier` (CI pending)
 
 This matrix records evidence-backed status, not product aspirations. A module's existence or a feature registry label is not sufficient to mark a capability complete.
 
@@ -33,7 +34,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
 | Deep research | `deep_research.py`, `search.py` | Search providers, AI Core, page extraction | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py` | Live-source evaluation and research workflow e2e tests |
 | Citation integrity assessment | `answer_quality.py`, `deep_research.py` | Source IDs, final answer claims | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality.py`, `test_deep_research.py` | Maintain explicit non-entailment limitation |
-| Semantic claim verification | Not present as integrated verifier | Claim extraction, evidence store, entailment evaluator | `PLANNED` | Current assessment explicitly sets semantic support to not evaluated | Claim-level structured evidence and verification statuses |
+| Semantic claim verification | `semantic_verifier.py`, `deep_research.py` | Reviewer model, cited evidence excerpts, validated response contract | `IMPLEMENTED_BUT_UNVERIFIED` | `test_semantic_verifier.py`, `test_deep_research.py` | Bounded reviewer-model assessment for cited evidence; requires extracted-page evidence for decisive labels; never proves factual truth; CI for this branch pending |
 | Evidence provenance store | Research source objects only; no complete normalized evidence subsystem verified | Source extraction, DB persistence | `PARTIALLY_IMPLEMENTED` | Deep-research tests | Normalize source metadata and claim/source edges; define persistence policy |
 | Source contradiction detection | Not found as integrated engine | Claim normalization, temporal evidence | `PLANNED` | No dedicated contradiction test suite found | Distinguish true contradictions from temporal/definition differences |
 | Temporal freshness engine | Not found as integrated engine | Published/updated/retrieved timestamps | `PLANNED` | No dedicated freshness tests found | Domain-specific freshness policies and stale labels |
@@ -114,3 +115,16 @@ The `oracle/phase-01-evidence-foundation` branch adds the following additive cap
 | Structured contradiction candidate detector | `evidence_verification.py` | `PLANNED` | `IMPLEMENTED_BUT_UNVERIFIED` | Flags same-subject/same-predicate/different-value structured pairs for review; no free-text inference or semantic verdict |
 
 The broader semantic verifier, domain policy registry, persistent evidence store, human-reviewed dataset, and live operational validation remain planned. See `docs/architecture/EVIDENCE_VERIFICATION.md`.
+
+
+## Phase 01 — Semantic verifier increment
+
+The `oracle/phase-01-semantic-verifier` branch builds on PR #5 with a bounded model-assisted semantic evidence assessor.
+
+| New increment | Owning modules | Status on this branch | Scope and limitations |
+|---|---|---|---|
+| Model-assisted claim/evidence assessment | `semantic_verifier.py`, `deep_research.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Reviews at most 12 sentence-level candidates, only against their cited evidence; schema/ID validation; model failures leave claims unverified |
+| Evidence-strength enforcement | `semantic_verifier.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Snippet-only, unavailable, and empty page evidence cannot yield decisive supported/contradicted/partial/conflicting labels |
+| Research report integration | `deep_research.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Separate `semantic_verification` object; citation-integrity assessment remains unchanged; factual truth is always reported as not verified |
+
+The following remain incomplete: atomic claim extraction, domain-specific freshness policy integration, free-text contradiction resolution, a persistent evidence store, and a human-reviewed bilingual benchmark. See `docs/architecture/SEMANTIC_VERIFICATION.md`.
