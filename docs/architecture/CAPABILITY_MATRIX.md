@@ -43,7 +43,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Explicit fact/preference/goal memory | `memory.py` | SQLite `memories` table | `IMPLEMENTED_AND_VERIFIED` | `test_memory.py`, `test_memory_retrieval.py` | More lifecycle metadata and memory categories |
 | Episodic memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_events`, explicit source/time metadata, lexical retrieval | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Explicit event capture and bounded scope-local retrieval; no automatic extraction or graph linking |
 | Procedural memory | `memory_layers.py`, `ai_core.py` | SQLite `memory_procedures`, explicit validation status, outcome counters | `IMPLEMENTED_BUT_UNVERIFIED` | `test_memory_layers.py` | Candidate procedures require explicit validation before retrieval; no revision history or automatic promotion |
-| Hybrid/vector retrieval | `memory.py` currently lexical | Embedding provider, vector index, fallback | `PLANNED` | Lexical retrieval tests only | Optional vectors, hybrid ranking, deterministic offline fallback |
+| Hybrid/vector retrieval | `memory_embeddings.py`, `hybrid_memory.py`, `ai_core.py` | Optional OpenAI-compatible embeddings endpoint, SQLite vector cache, lexical fallback | `IMPLEMENTED_BUT_UNVERIFIED` | `test_hybrid_memory.py` | Opt-in vector indexing and cosine retrieval; RRF fusion connected to AI Core; no live provider run; metadata/temporal/graph reranking remains unfinished |
 | Explicit knowledge graph | `knowledge_graph.py` | SQLite entity/relation tables | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py` | Temporal/versioned graph edges and evidence lifecycle |
 | Automatic graph extraction | Not evidenced as integrated | Claim/entity extraction and provenance | `PLANNED` | Explicit graph write tests only | Evidence-backed entity resolution and relation extraction |
 | Memory consolidation | No integrated lifecycle engine found | Memory versions, conflict and retention policy | `PLANNED` | No dedicated lifecycle tests found | Deduplication, supersession, conflict review and retention rules |
@@ -93,7 +93,7 @@ These are code-level paths; live deployed behavior must be verified independentl
 1. Complete claim extraction and evidence-backed semantic verification.
 2. Introduce normalized evidence and claim/source relationships.
 3. Add contradiction and temporal freshness logic.
-4. Add episodic/procedural memory and hybrid retrieval.
+4. Add episodic/procedural memory and hybrid retrieval. (Episodic/procedural storage and an opt-in lexical/vector retrieval path are now implemented in stacked PRs; broader memory metadata, graph fusion, and consolidation remain.)
 5. Build durable task state and restart-safe execution.
 6. Add typed specialist-agent delegation on top of the task engine.
 7. Extend telemetry and benchmarks to quality, latency and cost.
@@ -168,3 +168,18 @@ The `oracle/phase-02-memory-evolution` branch adds:
 | Memory prompt integration | `ai_core.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Bounded JSON context; markup delimiters are escaped; new memory-layer failures are fail-soft |
 
 Vector retrieval, cross-layer semantic ranking, automatic memory extraction, consolidation/version history, and graph links remain planned. See `docs/architecture/MEMORY_ARCHITECTURE.md`.
+
+
+## Phase 02b — Optional hybrid vector retrieval
+
+The `oracle/phase-02-hybrid-retrieval` branch adds:
+
+| Increment | Owning modules | Status | Scope | Remaining work |
+|---|---|---|---|---|
+| Provider-independent embedding interface | `memory_embeddings.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Protocol plus OpenAI-compatible `/embeddings` client; default local Ollama profile; hosted provider is explicit | Live endpoint compatibility and model evaluation |
+| Scope-isolated vector cache | `memory_embeddings.py`, `database.py` | `IMPLEMENTED_BUT_UNVERIFIED` | SQLite vector records keyed by scope/type/record/model, hash checked, bounded indexing | Index lifecycle/refresh observability and large-scale performance tests |
+| Hybrid lexical/vector ranking | `hybrid_memory.py` | `IMPLEMENTED_BUT_UNVERIFIED` | RRF fusion with weak cosine matches filtered; lexical fallback if disabled, unindexed or unavailable | Calibrate score threshold on reviewed bilingual retrieval benchmark |
+| AI Core integration | `ai_core.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Uses hybrid retrieval where configured, preserving base lexical path and existing graph/event/procedure context | Verify UI controls and report retrieval mode/metrics |
+| Offline regression tests | `test_hybrid_memory.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Fake vectors, provider response validation, scope isolation, stale-vector rejection, lexical fallback | CI must pass on current branch head |
+
+The feature is opt-in via `ORACLE_MEMORY_EMBEDDINGS_ENABLED=1` and a configured model. Auto-indexing defaults off. See `docs/architecture/HYBRID_MEMORY_RETRIEVAL.md`.
