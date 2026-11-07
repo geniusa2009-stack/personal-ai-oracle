@@ -8,6 +8,7 @@ import hybrid_memory
 import memory
 import memory_embeddings
 import memory_layers
+import knowledge_graph
 
 
 def _use_test_database(monkeypatch, tmp_path):
@@ -346,3 +347,169 @@ def test_embedding_provider_failure_is_normalized_without_leaking_response_text(
 
     assert "private provider response body" not in str(exc.value)
     assert "secret-token" not in str(exc.value)
+
+
+
+def test_graph_expansion_recalls_related_fact_event_and_validated_procedure(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    project = knowledge_graph.add_entity("owner:one", "AgriSmart", "project")
+    sensor = knowledge_graph.add_entity("owner:one", "ESP32 soil sensor", "tool")
+    knowledge_graph.link_entities(
+        "owner:one",
+        project.id,
+        sensor.id,
+        "uses",
+        evidence="Owner-confirmed hardware architecture",
+    )
+
+    fact = memory.write_memory(
+        "ESP32 soil sensor measures field moisture and temperature",
+        "fact",
+        "owner:one",
+        "manual",
+    )
+    event = memory_layers.record_event(
+        "owner:one",
+        "hardware_decision",
+        "Selected ESP32 soil sensor for the AgriSmart field device",
+        "owner-confirmed",
+    )
+    procedure = memory_layers.record_procedure(
+        "owner:one",
+        "ESP32 soil sensor calibration",
+        "Calibrate the soil sensor before field installation.",
+        ["Read the baseline value", "Compare with a reference", "Record the calibration"],
+        "owner-confirmed",
+    )
+    procedure = memory_layers.set_procedure_status(
+        "owner:one", procedure.id, "validated"
+    )
+    # Same content in another scope must never become a graph-expansion result.
+    private = memory.write_memory(
+        "ESP32 soil sensor measures private field moisture",
+        "fact",
+        "owner:two",
+        "manual",
+    )
+
+    context = hybrid_memory.retrieve_memory_context(
+        "owner:one",
+        "How does AgriSmart work?",
+        graph_enabled=True,
+    )
+
+    assert context.retrieval_mode == "graph_lexical"
+    assert context.graph_seed_count == 1
+    assert context.graph_relation_count == 1
+    assert fact in context.memories
+    assert event in context.events
+    assert procedure in context.procedures
+    assert all(item.id != private.id for item in context.memories)
+    assert "ESP32 soil sensor" in context.graph_context
+    assert "Owner-confirmed hardware architecture" in context.graph_context
+
+
+def test_graph_retrieval_can_be_disabled_without_changing_lexical_baseline(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    knowledge_graph.add_entity("owner:one", "AgriSmart", "project")
+    knowledge_graph.add_entity("owner:one", "ESP32 soil sensor", "tool")
+    knowledge_graph.link_entities("owner:one", 1, 2, "uses")
+    fact = memory.write_memory(
+        "ESP32 soil sensor measures field moisture", "fact", "owner:one", "manual"
+    )
+
+    disabled = hybrid_memory.retrieve_memory_context(
+        "owner:one", "How does AgriSmart work?", graph_enabled=False
+    )
+    enabled = hybrid_memory.retrieve_memory_context(
+        "owner:one", "How does AgriSmart work?", graph_enabled=True
+    )
+
+    assert disabled.retrieval_mode == "lexical_fallback"
+    assert disabled.graph_context == ""
+    assert fact not in disabled.memories
+    assert enabled.retrieval_mode == "graph_lexical"
+    assert fact in enabled.memories
+
+
+def test_graph_failure_keeps_original_lexical_memory_available(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    fact = memory.write_memory(
+        "Oracle project uses SQLite memory storage", "fact", "owner:one", "manual"
+    )
+
+    def fail_graph(*args, **kwargs):
+        raise knowledge_graph.KnowledgeGraphError("graph unavailable")
+
+    monkeypatch.setattr(knowledge_graph, "retrieve_graph", fail_graph)
+    context = hybrid_memory.retrieve_memory_context(
+        "owner:one", "Oracle project SQLite storage"
+    )
+
+    assert context.retrieval_mode == "lexical_fallback"
+    assert context.memories == (fact,)
+    assert context.graph_warning_code == "KnowledgeGraphError"
+
+
+def test_graph_ranking_weight_is_lower_than_lexical_and_vector_channels():
+    from memory import MemoryRecord
+
+    lexical_record = MemoryRecord(
+        id=1, content="Lexical match", memory_type="fact",
+        scope="owner:one", source="manual", created_at="2026-01-01T00:00:00",
+    )
+    graph_record = MemoryRecord(
+        id=2, content="Graph expansion match", memory_type="fact",
+        scope="owner:one", source="manual", created_at="2026-01-01T00:00:00",
+    )
+
+    ranked = hybrid_memory._fuse_type(
+        "semantic",
+        [lexical_record],
+        [],
+        graph_records=[graph_record],
+        limit=2,
+    )
+
+    assert ranked[0] == lexical_record
+    assert hybrid_memory._GRAPH_WEIGHT < hybrid_memory._LEXICAL_WEIGHT
+    assert hybrid_memory._LEXICAL_WEIGHT < hybrid_memory._SEMANTIC_WEIGHT
+
+
+def test_ai_core_uses_graph_context_from_hybrid_retrieval_once(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    project = knowledge_graph.add_entity("owner:one", "AgriSmart", "project")
+    sensor = knowledge_graph.add_entity("owner:one", "ESP32 soil sensor", "tool")
+    knowledge_graph.link_entities(
+        "owner:one", project.id, sensor.id, "uses", evidence="Explicit owner evidence"
+    )
+    fact = memory.write_memory(
+        "ESP32 soil sensor measures field moisture",
+        "fact",
+        "owner:one",
+        "manual",
+    )
+    monkeypatch.setattr(
+        memory_embeddings,
+        "embedding_client_from_environment",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        knowledge_graph,
+        "retrieve_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy graph renderer must not be called twice")
+        ),
+    )
+
+    enriched = ai_core._messages_with_memory(
+        [{"role": "user", "content": "How does AgriSmart work?"}],
+        "owner:one",
+    )
+    system_content = enriched[0]["content"]
+
+    assert fact.content in system_content
+    assert "<personal_knowledge_graph>" in system_content
+    assert "ESP32 soil sensor" in system_content
+    assert "Explicit owner evidence" in system_content
+    assert "graph" in system_content.casefold()
