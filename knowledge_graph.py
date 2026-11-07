@@ -82,8 +82,8 @@ def _context_atom(value: Any) -> str:
         .replace("&", r"\u0026")
         .replace("<", r"\u003c")
         .replace(">", r"\u003e")
-        .replace("\\r", " ")
-        .replace("\\n", " ")
+        .replace("\${field}", " ")
+        .replace("\${field}", " ")
     )
 
 
