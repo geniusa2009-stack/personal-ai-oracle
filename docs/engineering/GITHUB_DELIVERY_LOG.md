@@ -295,11 +295,11 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Scorecard policy:** Default ranking weights are quality 0.65, success 0.20 and latency 0.15. Minimum evidence defaults to three benchmark requests and three quality-scored cases. Runtime telemetry contributes a conservative floor using the lower success rate and higher p95 latency when sufficient runtime observations exist.
 - **Provider/cost safety:** No benchmark runs on startup or import. The default only permits a loopback Ollama endpoint. Hosted/non-loopback candidates require explicit `allow_remote=True`. No provider cost or token usage is guessed; existing provider adapters do not yet expose verified usage metadata.
 - **Routing boundary:** Scorecards are advisory only. `ModelRouter` continues using explicit/category/tier configuration; no automatic model switching is introduced by this phase.
-- **Validation:** GitHub Actions run `42418783503` passed on implementation head `d040d82fc4bfdd5cfe8a0e29d218638688cb884d`.
-  - Ubuntu: **288 passed, 1 warning**.
-  - macOS: **288 passed, 1 warning**.
+- **Validation:** GitHub Actions run `42418984170` passed on implementation head `245cf74f4327b51bcf930d67fc746d7e50f4a76c`.
+  - Ubuntu: **290 passed, 1 warning**.
+  - macOS: **290 passed, 1 warning**.
   - Compile and full pytest passed on both platforms.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** The bundled suite is a small synthetic smoke set. No live provider benchmark was executed in CI. Cost, token throughput, energy and hardware-normalized performance remain unmeasured. The RRF/benchmark ranking weights are policy defaults, not statistically calibrated.
-- **Pull Request:** Pending publication as draft PR #13 based on PR #12.
+- **Pull Request:** Pending final documentation CI; planned as draft PR #13 based on PR #12.
 - **PR status:** Not yet created; no previous PR was merged or retargeted.
