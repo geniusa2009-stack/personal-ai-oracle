@@ -447,10 +447,7 @@ def run_research(
     if not isinstance(verify_claims, bool):
         raise ResearchError("verify_claims must be a boolean")
     try:
-        freshness_resolution = freshness_policy.resolve_policy(
-            query,
-            requested_profile=freshness_profile,
-        )
+        freshness_policy.resolve_policy(query, requested_profile=freshness_profile)
     except freshness_policy.FreshnessPolicyError as exc:
         raise ResearchError(str(exc)) from exc
 
