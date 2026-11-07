@@ -319,7 +319,7 @@ def init_database():
             review_reason      TEXT,
             UNIQUE(scope, proposal_key),
             CHECK(proposal_type IN ('potential_duplicate', 'potential_contradiction', 'related')),
-            CHECK(status IN ('pending_review', 'accepted', 'dismissed')),
+            CHECK(status IN ('pending_review', 'accepted', 'dismissed', 'stale')),
             CHECK(similarity >= 0.0 AND similarity <= 1.0),
             CHECK(observation_count >= 1)
         );
