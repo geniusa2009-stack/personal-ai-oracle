@@ -152,7 +152,7 @@ def retrieve_memory_context(
             scope.strip(),
             query,
             client=selected_client,
-            limit=64,
+            limit=50,
         )
     except Exception as exc:
         return HybridMemoryContext(
