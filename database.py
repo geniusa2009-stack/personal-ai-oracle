@@ -1250,7 +1250,8 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log", "memories", "knowledge_relations", "knowledge_entities",
+    "feature_log", "memories", "memory_metadata", "memory_revision_history",
+    "memory_embeddings", "knowledge_relations", "knowledge_entities",
     "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
     "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
 ]
