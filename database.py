@@ -281,6 +281,26 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_memory_procedures_scope_status
             ON memory_procedures(scope, status, updated_at DESC);
 
+        -- Optional semantic index. Vectors are cached locally and never required
+        -- for deterministic lexical memory retrieval.
+        CREATE TABLE IF NOT EXISTS memory_embeddings (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope           TEXT NOT NULL,
+            memory_type     TEXT NOT NULL,
+            record_id       INTEGER NOT NULL,
+            embedding_model TEXT NOT NULL,
+            content_hash    TEXT NOT NULL,
+            vector_json     TEXT NOT NULL,
+            dimensions      INTEGER NOT NULL,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            UNIQUE(scope, memory_type, record_id, embedding_model),
+            CHECK(memory_type IN ('fact', 'preference', 'goal', 'event', 'procedure')),
+            CHECK(dimensions >= 2 AND dimensions <= 4096)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_embeddings_scope_model
+            ON memory_embeddings(scope, embedding_model, memory_type);
+
         CREATE TABLE IF NOT EXISTS knowledge_entities (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             scope           TEXT NOT NULL,
