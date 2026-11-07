@@ -204,7 +204,12 @@ def _collect_search_results(queries: list[str], max_sources: int) -> list[dict[s
                     ),
                     "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "extracted_at": None,
-                    "date_metadata_origin": "search_provider",
+                    "date_metadata_origin": (
+                        "search_provider"
+                        if _date_hint(item.get("published_at") or item.get("published_date") or item.get("date"))
+                        or _date_hint(item.get("updated_at") or item.get("last_updated"))
+                        else "unknown"
+                    ),
                 }
             source = sources[url]
             provider = str(item.get("source") or "unknown")[:40]
@@ -224,6 +229,9 @@ def _collect_search_results(queries: list[str], max_sources: int) -> list[dict[s
                 source["updated_at"] = _date_hint(
                     item.get("updated_at") or item.get("last_updated")
                 )
+            if source.get("published_at") or source.get("updated_at"):
+                if source.get("date_metadata_origin") == "unknown":
+                    source["date_metadata_origin"] = "search_provider"
     return list(sources.values())[:max_sources]
 
 
