@@ -106,6 +106,8 @@ class BenchmarkSuite:
         cases = tuple(self.cases)
         if not cases or len(cases) > MAX_CASES:
             raise ModelBenchmarkError(f"a suite must contain between 1 and {MAX_CASES} cases")
+        if any(not isinstance(case, BenchmarkCase) for case in cases):
+            raise ModelBenchmarkError("every suite entry must be a BenchmarkCase")
         ids = [case.case_id for case in cases]
         if len(set(ids)) != len(ids):
             raise ModelBenchmarkError("benchmark case IDs must be unique")
