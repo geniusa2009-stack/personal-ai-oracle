@@ -41,11 +41,18 @@ class AIExecutor:
         self.providers.setdefault(provider_name, provider)
 
     @staticmethod
-    def _record_observation(decision: RouteDecision, started: float, outcome: str, output_chars: int) -> None:
+    def _record_observation(
+        decision: RouteDecision,
+        started: float,
+        outcome: str,
+        output_chars: int,
+        scope_override: str | None = None,
+    ) -> None:
         try:
             import model_observability
             scope = (
-                os.environ.get("ORACLE_MEMORY_SCOPE")
+                scope_override
+                or os.environ.get("ORACLE_MEMORY_SCOPE")
                 or os.environ.get("ORACLE_WORKFLOW_SCOPE")
                 or "user:oracle-owner"
             )
@@ -87,7 +94,10 @@ class AIExecutor:
                 route_reason=decision.reason,
             )
         finally:
-            self._record_observation(decision, started, outcome, output_chars)
+            self._record_observation(
+                decision, started, outcome, output_chars,
+                scope_override=request.context.metadata.get("owner_scope"),
+            )
 
     def execute_stream(self, request: AIRequest) -> Iterator[str]:
         decision = self._decision_for(request)
