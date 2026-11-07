@@ -278,3 +278,35 @@ def test_review_marks_expired_source_memory_stale(monkeypatch, tmp_path):
     )
     assert reviewed.status == "stale"
     assert first.id in reviewed.stale_member_ids
+
+
+
+def test_listing_surfaces_expired_proposals_as_stale_not_pending(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    first = memory.write_memory(
+        "Oracle project stores durable records in SQLite",
+        "fact", "owner:one", "manual",
+    )
+    memory.write_memory(
+        "Oracle project stores durable records in a SQLite database",
+        "fact", "owner:one", "manual",
+    )
+    memory_consolidation.scan_scope("owner:one")
+    proposal = next(
+        item for item in memory_consolidation.list_proposals("owner:one")
+        if first.id in item.member_ids
+    )
+    now = datetime.now(timezone.utc)
+    memory_lifecycle.set_memory_metadata(
+        first.id,
+        "owner:one",
+        valid_from=now - timedelta(days=2),
+        valid_until=now - timedelta(seconds=1),
+        reason="The source is no longer current",
+    )
+
+    pending = memory_consolidation.list_proposals("owner:one", status="pending_review")
+    stale = memory_consolidation.list_proposals("owner:one", status="stale")
+
+    assert all(item.id != proposal.id for item in pending)
+    assert any(item.id == proposal.id and item.status == "stale" for item in stale)
