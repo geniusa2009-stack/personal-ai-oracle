@@ -784,6 +784,17 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
         "query": str(report.get("query") or "")[:300],
         "queries": [str(item)[:180] for item in report.get("queries", [])[:4]],
         "answer": str(report.get("answer") or "")[:4200],
+        "self_correction": {
+            "status": str(report.get("self_correction", {}).get("status") or "not_reported")[:40],
+            "attempt_count": report.get("self_correction", {}).get("attempt_count", 0),
+            "retry_count": report.get("self_correction", {}).get("retry_count", 0),
+            "corrected": report.get("self_correction", {}).get("corrected") is True,
+            "stop_reason": str(report.get("self_correction", {}).get("stop_reason") or "unknown")[:50],
+            "final_issue_codes": [
+                str(item)[:80]
+                for item in report.get("self_correction", {}).get("final_issue_codes", [])[:5]
+            ],
+        },
         "key_findings": [str(item)[:350] for item in report.get("key_findings", [])[:6]],
         "limitations": [str(item)[:350] for item in report.get("limitations", [])[:6]],
         "citations": [],
@@ -966,6 +977,7 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
         minimal = {
             "status": compact["status"],
             "answer": compact["answer"][:answer_limit],
+            "self_correction": compact["self_correction"],
             "citations": minimal_citations,
             "sources": minimal_sources,
             "freshness_assessment": {
