@@ -34,7 +34,7 @@ def test_assessment_flags_uncited_and_invalid_claims():
     assert result["uncited_claim_count"] == 1
     assert result["invalid_reference_claim_count"] == 1
     assert result["claims"][1]["citation_status"] == "invalid_reference"
-    assert result["citation_coverage"] == round(2 / 3, 4)
+    assert result["citation_coverage"] == round(1 / 3, 4)
 
 
 def test_assessment_handles_empty_answers_and_rejects_bad_inputs():
