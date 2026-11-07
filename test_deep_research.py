@@ -271,6 +271,7 @@ def test_compact_report_fallback_keeps_json_valid_at_minimum_size():
 
     assert len(serialized.encode("utf-8")) <= 1024
     assert restored["context_truncated"] is True
+    assert restored["freshness_assessment"]["profile"] == "general"
     assert "answer" in restored
 
 
