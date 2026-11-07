@@ -141,6 +141,7 @@ class BenchmarkRun:
 class ModelScorecard:
     provider: str
     model: str
+    suite_id: str
     evaluator_id: str | None
     sample_count: int
     success_rate: float
@@ -204,9 +205,9 @@ def _rubric_score(case: BenchmarkCase, answer: str) -> tuple[float | None, str |
         return None, None
     normalized = _normalise_text(answer)
     checks = [
-        phrase in normalized for phrase in case.expected_contains
+        _normalise_text(phrase) in normalized for phrase in case.expected_contains
     ] + [
-        phrase not in normalized for phrase in case.forbidden_contains
+        _normalise_text(phrase) not in normalized for phrase in case.forbidden_contains
     ]
     if not checks:
         return None, None
@@ -568,7 +569,8 @@ def scorecards(
     conn = get_conn()
     try:
         rows = conn.execute(
-            """SELECT r.provider,r.model,r.evaluator_id,r.latency_ms,r.outcome,r.quality_score
+            """SELECT r.provider,r.model,r.evaluator_id,b.suite_id,
+                      r.latency_ms,r.outcome,r.quality_score
                FROM oracle_model_benchmark_results AS r
                JOIN oracle_model_benchmark_runs AS b
                  ON b.run_id=r.run_id AND b.scope=r.scope
@@ -579,9 +581,11 @@ def scorecards(
     finally:
         conn.close()
 
-    groups: dict[tuple[str, str, str | None], list[Any]] = defaultdict(list)
+    groups: dict[tuple[str, str, str, str | None], list[Any]] = defaultdict(list)
     for row in rows:
-        groups[(row["provider"], row["model"], row["evaluator_id"])].append(row)
+        groups[(
+            row["provider"], row["model"], row["suite_id"], row["evaluator_id"]
+        )].append(row)
 
     runtime = {}
     try:
@@ -594,7 +598,7 @@ def scorecards(
         runtime = {}
 
     results = []
-    for (provider, model, evaluator_id), items in groups.items():
+    for (provider, model, suite_id, evaluator_id), items in groups.items():
         latencies = [int(item["latency_ms"]) for item in items]
         successes = sum(item["outcome"] == "success" for item in items)
         quality_values = [
@@ -633,7 +637,8 @@ def scorecards(
                 f"observed {sample_count} samples and {quality_count} scored cases"
             )
         results.append(ModelScorecard(
-            provider=provider, model=model, evaluator_id=evaluator_id,
+            provider=provider, model=model, suite_id=suite_id,
+            evaluator_id=evaluator_id,
             sample_count=sample_count,
             success_rate=round(benchmark_success, 4),
             quality_sample_count=quality_count,
