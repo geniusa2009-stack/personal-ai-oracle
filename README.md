@@ -2,7 +2,7 @@
 
 Personal AI Oracle is a private hybrid personal-agent system:
 - A private cloud dashboard and control plane remain available when the MacBook is offline.
-- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes the current read-only remote Mac tasks; consequential mutations are gated locally until a signed approval exchange is implemented.
+- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes read-only diagnostics plus explicitly configured workspace writes, development commands and app launches. The Mac enforces its own local policy; remote move/delete are not exposed.
 - Multi-provider models can be assigned independently to the assistant, planner, researcher, coder, writer, executor and reviewer.
 - An isolated Playwright browser on the Mac can search, navigate, read webpages and list links.
 - The local Mac remains the execution endpoint for local files, local apps, developer tools and browser sessions.
@@ -96,7 +96,7 @@ Configure defaults and per-role overrides using `ORACLE_DEFAULT_PROVIDER`, `ORAC
 
 Roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, `reviewer`.
 
-Hosted model requests are sent to the selected provider. Ollama model requests remain on the device where Ollama runs. The Mac agent needs an available local provider/model for its second review of consequential local write, move, delete and command operations.
+Hosted model requests are sent to the selected provider. Ollama model requests remain on the device where Ollama runs. Actions outside the trusted-workspace auto-allow policy continue through the explicit approval/reviewer path; trusted workspace automation is governed deterministically by the local Mac policy.
 
 ## Mac Intelligence: trusted workspaces and local execution
 
