@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import ai_core
+import answer_quality
 import search
 
 
@@ -446,6 +447,7 @@ def run_research(
     if fetch_pages and os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
         limitations.append("Page extraction depends on the paired Mac agent being online.")
     result_status = "error" if not sources else ("partial" if limitations else "success")
+    quality_assessment = answer_quality.assess_claim_citations(answer, output_sources)
     return {
         "status": result_status,
         "query": normalized_query,
@@ -459,7 +461,8 @@ def run_research(
             "valid_source_ids": cited_ids,
             "invalid_source_ids": invalid_ids,
         },
-        "claim_evidence": map_claim_evidence(answer, list(source_map)),
+        "claim_evidence": quality_assessment["claims"],
+        "quality_assessment": quality_assessment,
         "stats": {
             "query_count": len(queries),
             "source_count": len(sources),
@@ -488,12 +491,23 @@ def compact_report_json(report: dict[str, Any], *, max_bytes: int = 9000) -> str
             "valid_source_ids": list(report.get("citation_validation", {}).get("valid_source_ids", []))[:8],
             "invalid_source_ids": list(report.get("citation_validation", {}).get("invalid_source_ids", []))[:8],
         },
+        "quality_assessment": {
+            key: report.get("quality_assessment", {}).get(key)
+            for key in (
+                "status", "assessment_scope", "semantic_entailment_checked",
+                "truth_verified", "claim_count", "claims_with_citations", "claims_with_any_reference",
+                "uncited_claim_count", "invalid_reference_claim_count",
+                "citation_coverage", "extracted_page_references",
+                "snippet_only_references",
+            )
+        },
         "claim_evidence": [
             {
                 "claim": str(item.get("claim") or "")[:240],
                 "source_ids": list(item.get("source_ids", []))[:4],
                 "invalid_source_ids": list(item.get("invalid_source_ids", []))[:4],
-                "citation_status": str(item.get("citation_status") or "uncited")[:30],
+                "citation_status": str(item.get("citation_status") or "uncited")[:40],
+                "semantic_support": str(item.get("semantic_support") or "not_evaluated")[:30],
             }
             for item in report.get("claim_evidence", [])[:8] if isinstance(item, dict)
         ],
