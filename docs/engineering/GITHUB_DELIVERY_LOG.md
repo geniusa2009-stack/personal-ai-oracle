@@ -246,5 +246,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Compile and full pytest steps both passed.
   - Warning: existing Starlette/httpx TestClient deprecation.
 - **Limitations:** Graph edge extraction/entity resolution remains explicit-only; expansion is one-hop lexical; no temporal edge validity, graph contradiction handling, automatic memory consolidation, graph embeddings or benchmark-calibrated RRF weights.
-- **Pull Request:** Pending final documentation CI validation; planned as draft PR #11 stacked on PR #10.
-- **PR status:** Not yet created. No earlier PR was merged or retargeted.
+- **Pull Request:** [PR #11 — Integrate Knowledge Graph into hybrid memory retrieval](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/11)
+- **PR status:** Open, draft; base `oracle/phase-02-memory-lifecycle` (PR #10). Initial published head: `ee03ba9292f19f9b2327ff9a862d0c33f8f3dd2f`. No earlier PR was merged or retargeted.
