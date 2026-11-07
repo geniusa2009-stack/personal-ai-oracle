@@ -60,14 +60,24 @@ def _fuse_type(
     lexical_positions: dict[tuple[str, int], int] = {}
 
     for rank, record in enumerate(lexical_records, start=1):
-        key = _record_key(memory_type, record)
+        record_type = (
+            record.memory_type
+            if memory_type == "semantic"
+            else memory_type
+        )
+        if memory_type == "semantic" and record_type not in {"fact", "preference", "goal"}:
+            continue
+        key = _record_key(record_type, record)
         records[key] = record
         lexical_positions[key] = rank
         scores[key] = scores.get(key, 0.0) + _LEXICAL_WEIGHT / (_RRF_K + rank)
 
     semantic_rank = 0
     for match in semantic_matches:
-        if match.memory_type != memory_type:
+        if memory_type == "semantic":
+            if match.memory_type not in {"fact", "preference", "goal"}:
+                continue
+        elif match.memory_type != memory_type:
             continue
         semantic_rank += 1
         key = (match.memory_type, int(match.record_id))
@@ -167,11 +177,7 @@ def retrieve_memory_context(
 
     return HybridMemoryContext(
         memories=tuple(_fuse_type(
-            "fact", lexical_memories, semantic_matches, limit=_FACT_LIMIT
-        ) + _fuse_type(
-            "preference", lexical_memories, semantic_matches, limit=_FACT_LIMIT
-        ) + _fuse_type(
-            "goal", lexical_memories, semantic_matches, limit=_FACT_LIMIT
+            "semantic", lexical_memories, semantic_matches, limit=_FACT_LIMIT
         )),
         events=tuple(_fuse_type(
             "event", lexical_events, semantic_matches, limit=_EVENT_LIMIT
