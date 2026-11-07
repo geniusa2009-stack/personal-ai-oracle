@@ -246,6 +246,10 @@ def revise_memory(
     conf = _score(confidence, "confidence") if confidence is not None else None
     imp = _score(importance, "importance") if importance is not None else None
     vu = _timestamp(valid_until, "valid_until")
+    proposed_start = datetime.now(timezone.utc)
+    proposed_end = _parse(vu)
+    if proposed_end is not None and proposed_end < proposed_start:
+        raise MemoryLifecycleError("valid_until cannot be earlier than the new version's valid_from")
     init_database()
     conn = get_conn()
     try:
