@@ -279,6 +279,77 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_memory_revision_scope_memory
             ON memory_revision_history(scope, memory_id, id DESC);
 
+        -- Consolidation is review-only: proposals never rewrite or delete memories.
+        CREATE TABLE IF NOT EXISTS memory_consolidation_runs (
+            run_id            TEXT PRIMARY KEY,
+            scope             TEXT NOT NULL,
+            algorithm_version TEXT NOT NULL,
+            status            TEXT NOT NULL,
+            scanned_count     INTEGER NOT NULL DEFAULT 0,
+            comparison_count  INTEGER NOT NULL DEFAULT 0,
+            proposal_count    INTEGER NOT NULL DEFAULT 0,
+            truncated         INTEGER NOT NULL DEFAULT 0,
+            parameters_json   TEXT NOT NULL,
+            created_at        TEXT NOT NULL,
+            finished_at       TEXT,
+            CHECK(status IN ('completed', 'partial', 'failed')),
+            CHECK(scanned_count >= 0),
+            CHECK(comparison_count >= 0),
+            CHECK(proposal_count >= 0),
+            CHECK(truncated IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_consolidation_runs_scope
+            ON memory_consolidation_runs(scope, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS memory_consolidation_proposals (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope              TEXT NOT NULL,
+            proposal_key       TEXT NOT NULL,
+            proposal_type      TEXT NOT NULL,
+            status             TEXT NOT NULL DEFAULT 'pending_review',
+            similarity         REAL NOT NULL,
+            explanation        TEXT NOT NULL,
+            signals_json       TEXT NOT NULL,
+            first_seen_at      TEXT NOT NULL,
+            last_seen_at       TEXT NOT NULL,
+            observation_count  INTEGER NOT NULL DEFAULT 1,
+            last_run_id        TEXT NOT NULL,
+            reviewed_at        TEXT,
+            reviewer           TEXT,
+            review_reason      TEXT,
+            UNIQUE(scope, proposal_key),
+            CHECK(proposal_type IN ('potential_duplicate', 'potential_contradiction', 'related')),
+            CHECK(status IN ('pending_review', 'accepted', 'dismissed')),
+            CHECK(similarity >= 0.0 AND similarity <= 1.0),
+            CHECK(observation_count >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_consolidation_proposals_scope_status
+            ON memory_consolidation_proposals(scope, status, last_seen_at DESC);
+
+        CREATE TABLE IF NOT EXISTS memory_consolidation_proposal_members (
+            proposal_id  INTEGER NOT NULL,
+            memory_id    INTEGER NOT NULL,
+            scope        TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            PRIMARY KEY(proposal_id, memory_id, scope)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_consolidation_members_scope_memory
+            ON memory_consolidation_proposal_members(scope, memory_id);
+
+        CREATE TABLE IF NOT EXISTS memory_consolidation_observations (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id        TEXT NOT NULL,
+            proposal_id   INTEGER NOT NULL,
+            scope         TEXT NOT NULL,
+            similarity    REAL NOT NULL,
+            signals_json  TEXT NOT NULL,
+            observed_at   TEXT NOT NULL,
+            UNIQUE(run_id, proposal_id),
+            CHECK(similarity >= 0.0 AND similarity <= 1.0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_consolidation_observations_run
+            ON memory_consolidation_observations(run_id, proposal_id);
+
         -- Episodic memory: explicitly recorded events with source and time provenance.
         CREATE TABLE IF NOT EXISTS memory_events (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1251,7 +1322,9 @@ SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
     "feature_log", "memories", "memory_metadata", "memory_revision_history",
-    "memory_embeddings", "knowledge_relations", "knowledge_entities",
+    "memory_embeddings", "memory_consolidation_runs",
+    "memory_consolidation_proposals", "memory_consolidation_proposal_members",
+    "memory_consolidation_observations", "knowledge_relations", "knowledge_entities",
     "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
     "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
 ]
