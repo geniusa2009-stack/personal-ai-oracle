@@ -9,7 +9,7 @@ def _claim(claim_id="C1", source_ids=None):
     return {
         "claim_id": claim_id,
         "text": "The application deadline is 15 November 2026.",
-        "source_ids": list(source_ids or ["S1"]),
+        "source_ids": list(["S1"] if source_ids is None else source_ids),
         "verification_status": "UNVERIFIED",
     }
 
@@ -157,22 +157,48 @@ def test_verifier_uses_insufficient_evidence_without_calling_model_when_no_sourc
 
 def test_verifier_keeps_omitted_and_over_limit_claims_unverified():
     claims = [_claim("C1"), _claim("C2")]
-    report = semantic_verifier.verify_claims(
-        claims,
-        [_source()],
-        max_claims=1,
-        judge=_judge_for([{
+
+    def judge(payload):
+        assert [item["claim_id"] for item in payload["claims"]] == ["C1"]
+        return json.dumps({"results": [{
             "claim_id": "C1",
             "status": "PARTIALLY_SUPPORTED",
             "supported_source_ids": ["S1"],
             "contradicting_source_ids": [],
             "reason": "Only partly addresses the full claim.",
-        }]),
+        }]})
+
+    report = semantic_verifier.verify_claims(
+        claims,
+        [_source()],
+        max_claims=1,
+        judge=judge,
     )
 
     assert report["results"][0]["status"] == "PARTIALLY_SUPPORTED"
     assert report["results"][1]["status"] == "UNVERIFIED"
     assert report["status"] == "partial"
+
+
+def test_unavailable_source_ids_are_not_exposed_as_verifier_references():
+    claims = [_claim(source_ids=["S1", "S2"])]
+    sources = [
+        _source("S1"),
+        _source("S2", page_status="unavailable:Timeout", excerpt=""),
+    ]
+
+    def judge(payload):
+        assert payload["claims"][0]["allowed_source_ids"] == ["S1"]
+        return json.dumps({"results": [{
+            "claim_id": "C1",
+            "status": "SUPPORTED",
+            "supported_source_ids": ["S2"],
+            "contradicting_source_ids": [],
+            "reason": "Attempt to refer to unavailable source.",
+        }]})
+
+    report = semantic_verifier.verify_claims(claims, sources, judge=judge)
+    assert report["results"][0]["status"] == "UNVERIFIED"
 
 
 def test_verifier_handles_invalid_json_or_provider_failure_without_claiming_success():
