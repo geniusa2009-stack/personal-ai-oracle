@@ -1,8 +1,9 @@
 # Personal AI Oracle — Capability Matrix
 
-**Snapshot ref:** `feature/oracle-answer-quality-benchmark`  
-**Snapshot SHA:** `0763f14e006554cb20af4a22526394a4d4ce0ade`  
-**Last reviewed:** 2026-11-07 UTC
+**Baseline snapshot ref:** `feature/oracle-answer-quality-benchmark`  
+**Baseline snapshot SHA:** `0763f14e006554cb20af4a22526394a4d4ce0ade`  
+**Baseline reviewed:** 2026-11-07 UTC  
+**Incremental update:** `oracle/phase-01-evidence-foundation` (implementation and CI pending)
 
 This matrix records evidence-backed status, not product aspirations. A module's existence or a feature registry label is not sufficient to mark a capability complete.
 
@@ -99,3 +100,17 @@ These are code-level paths; live deployed behavior must be verified independentl
 9. Expand integration/e2e/operational validation and Control Center visibility.
 
 See `docs/architecture/REPOSITORY_AUDIT.md` for methodology, limitations, GitHub state, and rationale.
+
+
+## Phase 01 evidence-foundation increment
+
+The `oracle/phase-01-evidence-foundation` branch adds the following additive capabilities. Their status remains `IMPLEMENTED_BUT_UNVERIFIED` until the branch's own Ubuntu/macOS CI completes.
+
+| New increment | Owning module | Status before | Status on this branch | Scope and limitation |
+|---|---|---|---|---|
+| Structured evidence provenance | `evidence_verification.py`, `deep_research.py` | `PARTIALLY_IMPLEMENTED` | `IMPLEMENTED_BUT_UNVERIFIED` | Normalizes source IDs, URLs, publisher/domain hints, evidence level, and separate source-date timestamps |
+| Sentence-level claim candidates | `evidence_verification.py`, `deep_research.py` | `PLANNED` | `IMPLEMENTED_BUT_UNVERIFIED` | Creates bounded sentence candidates with citations; not atomic semantic claim extraction |
+| Source freshness assessment primitive | `evidence_verification.py` | `PLANNED` | `IMPLEMENTED_BUT_UNVERIFIED` | Requires explicit max-age policy; uses updated/published date, never retrieval time |
+| Structured contradiction candidate detector | `evidence_verification.py` | `PLANNED` | `IMPLEMENTED_BUT_UNVERIFIED` | Flags same-subject/same-predicate/different-value structured pairs for review; no free-text inference or semantic verdict |
+
+The broader semantic verifier, domain policy registry, persistent evidence store, human-reviewed dataset, and live operational validation remain planned. See `docs/architecture/EVIDENCE_VERIFICATION.md`.
