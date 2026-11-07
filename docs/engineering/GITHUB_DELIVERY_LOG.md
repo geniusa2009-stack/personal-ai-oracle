@@ -146,3 +146,26 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **PR status:** Open, draft; base is `oracle/phase-01-temporal-evidence` (PR #7).
 - **Verified code head:** `733ca24e6daf9ef5d1587c9e80cfbd63f30f2886`.
 - **CI after the subsequent delivery-log-only update:** Pending for the new branch head.
+
+
+### Phase 02b — Hybrid lexical/vector memory retrieval (implementation in progress)
+
+- **Branch:** `oracle/phase-02-hybrid-retrieval`
+- **Base:** `oracle/phase-02-memory-evolution`
+- **Dependency:** Stacked on PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `memory_embeddings.py` — provider-independent embeddings protocol, OpenAI-compatible client, hash-aware SQLite vector cache, cosine retrieval.
+  - `hybrid_memory.py` — lexical/vector Reciprocal Rank Fusion and deterministic fallback.
+  - `test_hybrid_memory.py` — deterministic fake embeddings, provider contract, idempotent indexing, stale-vector rejection, scope isolation, hybrid/fallback and AI Core integration tests.
+  - `docs/architecture/HYBRID_MEMORY_RETRIEVAL.md`
+- **Files integrated/updated:**
+  - `database.py` — adds `memory_embeddings` cache table.
+  - `ai_core.py` — connects hybrid retrieval while preserving lexical fallback and existing graph/event/procedure context.
+  - `docs/architecture/MEMORY_ARCHITECTURE.md`
+  - `docs/architecture/CAPABILITY_MATRIX.md`
+- **Implemented scope:** Explicit opt-in embeddings, local Ollama default profile, hosted OpenAI-compatible option only when configured, scope/model-specific vector records, SHA-256 content checks, bounded indexing, weak-similarity filtering, RRF, and fail-soft lexical fallback.
+- **Safety/privacy constraints:** No hosted provider is selected by default. Embedding calls are disabled unless explicitly enabled with a model. Auto-indexing is off by default. Raw memory text is not duplicated in the vector table.
+- **Important limitations:** No real embedding endpoint was exercised by offline CI; tests use deterministic fake vectors. No benchmark-derived similarity threshold. Metadata/temporal/Knowledge Graph fusion and memory consolidation remain unfinished.
+- **Tests:** Added `test_hybrid_memory.py`. Early CI revealed syntax errors in AI Core context string composition before tests ran; these were corrected. Current branch CI is pending on the newest code/documentation commits; no local test execution is claimed.
+- **Pull Request:** Pending creation after CI validation.
+- **PR status / CI:** Pending.
