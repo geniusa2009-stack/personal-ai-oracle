@@ -19,11 +19,14 @@ WhatsApp Automation Module — built on the OFFICIAL WhatsApp Cloud API (Meta).
 الإنتاج (gunicorn): gunicorn "whatsapp_agent:create_app()" --bind 0.0.0.0:$PORT
 """
 
-import os
+import hashlib
+import hmac
 import json
+import os
 
 import requests
 
+import ai_core
 import db
 import database
 from scholarship_expert import is_scholarship_query, answer_scholarship_query
@@ -67,42 +70,55 @@ def _headers(api_key):
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+def verify_meta_signature(raw_body: bytes, signature_header: str, app_secret: str) -> bool:
+    """Verify Meta's X-Hub-Signature-256 header against the exact raw request body."""
+    if not isinstance(raw_body, bytes) or not signature_header or not app_secret:
+        return False
+    if not signature_header.startswith("sha256="):
+        return False
+    supplied_digest = signature_header.removeprefix("sha256=")
+    expected_digest = hmac.new(
+        app_secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(supplied_digest, expected_digest)
+
+
 def generate_reply(text: str, contact: dict, history: list = None) -> str:
-    """يولّد رداً ذكياً بالعامية. يراعي ذاكرة المحادثة، ولو السؤال عن المنح يدمج خبير المنح."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    if not key:
+    """Generate a contextual WhatsApp reply through the shared model router."""
+    if not ai_core.has_key():
         return ""
 
-    # توجيه ذكي: لو الرسالة عن منح → استعن بخبير المنح
     scholarship_ctx = ""
     if is_scholarship_query(text):
-        info = answer_scholarship_query(text, use_web=bool(os.environ.get("OPENROUTER_API_KEY")))
+        info = answer_scholarship_query(text, use_web=True)
         scholarship_ctx = f"\n\n[معلومات من خبير المنح لتلخيصها بالعامية للمرسل]:\n{info}"
 
-    # ذاكرة المحادثة السابقة (من جدول whatsapp_chats)
     memory_ctx = ""
     if history:
-        lines = [f"المرسِل: {h.get('incoming_message','')}\nانت: {h.get('smart_reply','')}"
-                 for h in history if h.get("incoming_message")]
+        lines = [
+            f"المرسِل: {item.get('incoming_message', '')}\nانت: {item.get('smart_reply', '')}"
+            for item in history if item.get("incoming_message")
+        ]
         if lines:
-            memory_ctx = "سياق المحادثة السابقة (للاستمرارية):\n" + "\n".join(lines) + "\n\n"
+            memory_ctx = (
+                "سياق المحادثة السابقة (للاستمرارية):\n"
+                + "\n".join(lines)
+                + "\n\n"
+            )
 
     system = build_system_prompt(contact)
-    user = (f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\n«{text}»{scholarship_ctx}"
-            f"\n\nاكتب الرد المناسب بالعامية.")
-    try:
-        r = requests.post(
-            OPENROUTER_URL, headers=_headers(key),
-            data=json.dumps({"model": model, "temperature": 0.8,
-                             "messages": [{"role": "system", "content": system},
-                                          {"role": "user", "content": user}]}),
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"(تعذّر توليد الرد: {e})"
+    user = (
+        f"{memory_ctx}رسالة جديدة وصلتلك من المرسِل:\n«{text}»{scholarship_ctx}"
+        "\n\nاكتب الرد المناسب بالعامية."
+    )
+    reply = ai_core.chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.8,
+        task_type="fast",
+    )
+    if reply.startswith(("⚠️", "(تعذّر")):
+        return ""
+    return reply
 
 
 # --------------------------------------------------------------------------
@@ -150,6 +166,7 @@ def extract_messages(payload: dict) -> list:
                         continue
                     wa_id = msg.get("from", "")
                     out.append({
+                        "message_id": msg.get("id", ""),
                         "wa_id": wa_id,
                         "name": contacts.get(wa_id),
                         "text": msg.get("text", {}).get("body", ""),
@@ -168,6 +185,10 @@ def handle_incoming(payload: dict) -> list:
     for m in extract_messages(payload):
         wa_id, text = m["wa_id"], m["text"]
         if not wa_id or not text:
+            continue
+        message_id = m.get("message_id")
+        if message_id and not db.claim_wa_message(message_id, wa_id):
+            actions.append({"wa_id": wa_id, "mode": mode, "status": "duplicate"})
             continue
         contact = db.upsert_contact(wa_id, m.get("name"))
         db.log_wa_message(wa_id, "in", text, "received")
@@ -213,13 +234,29 @@ def create_app():
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-        if mode == "subscribe" and token == os.environ.get("WA_VERIFY_TOKEN"):
+        expected_token = os.environ.get("WA_VERIFY_TOKEN", "")
+        if (
+            mode == "subscribe"
+            and expected_token
+            and token
+            and hmac.compare_digest(token, expected_token)
+        ):
             return challenge or "", 200
         return "forbidden", 403
 
     @flask_app.post("/webhook")
     def receive():
-        payload = request.get_json(silent=True) or {}
+        # Reject unsigned requests before parsing, storing, or acting on their contents.
+        app_secret = os.environ.get("WA_APP_SECRET", "")
+        raw_body = request.get_data(cache=True)
+        signature = request.headers.get("X-Hub-Signature-256", "")
+        if not verify_meta_signature(raw_body, signature, app_secret):
+            return jsonify({"received": False, "error": "invalid webhook signature"}), 403
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"received": False, "error": "invalid JSON payload"}), 400
+
         actions = handle_incoming(payload)
         return jsonify({"received": True, "actions": actions}), 200
 

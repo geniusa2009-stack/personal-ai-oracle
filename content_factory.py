@@ -7,15 +7,9 @@ content_factory.py — مصنع المحتوى الذكي (Content Factory)
 كابشن ميمز، نيوزلتر قصير.
 """
 
-import os
-import json
-
-import requests
-
 import db
 import database
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+import ai_core
 
 CONTENT_TYPES = {
     "منشور فيسبوك": "منشور فيسبوك جذّاب يوقف السكرول، بمقدمة قوية ونهاية فيها سؤال أو دعوة للتفاعل.",
@@ -25,10 +19,6 @@ CONTENT_TYPES = {
     "كابشن ميمز": "كابشن ميمز مصري خفيف ومضحك مرتبط بالفكرة.",
     "نيوزلتر قصير": "نشرة قصيرة (150-200 كلمة) ودّية وعملية.",
 }
-
-
-def _headers(key):
-    return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
 def learn_style(max_samples: int = 6) -> str:
@@ -61,55 +51,20 @@ def _build_messages(content_type: str, topic: str, style_samples: str):
 
 
 def stream_content(content_type: str, topic: str):
-    """مولّد بثّ كلمة بكلمة لعرضه فورياً في الواجهة."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
-        yield "⚠️ أضف مفتاح OpenRouter الأول."
-        return
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
+    """Stream content through the shared AI router/provider pipeline."""
     messages = _build_messages(content_type, topic, learn_style())
-    payload = {"model": model, "messages": messages, "stream": True, "temperature": 0.9}
-    try:
-        with requests.post(OPENROUTER_URL, headers=_headers(key),
-                           data=json.dumps(payload), stream=True, timeout=180) as resp:
-            resp.raise_for_status()
-            for raw in resp.iter_lines():
-                if not raw:
-                    continue
-                line = raw.decode("utf-8", errors="ignore")
-                if not line.startswith("data: "):
-                    continue
-                chunk = line[6:].strip()
-                if chunk == "[DONE]":
-                    break
-                try:
-                    delta = json.loads(chunk)["choices"][0]["delta"].get("content")
-                    if delta:
-                        yield delta
-                except Exception:
-                    continue
-    except Exception as e:
-        yield f"\n\n(تعذّر التوليد: {e})"
+    yield from ai_core.stream(messages, temperature=0.9, task_type="creative", agent_role="writer")
 
 
 def generate_content(content_type: str, topic: str, save: bool = True) -> str:
-    """توليد غير متدفّق (للاستخدام الخلفي/البرمجي)، مع حفظ اختياري."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
+    """Generate content through AI Core, with optional persistence."""
+    if not ai_core.has_key():
         return ""
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
     messages = _build_messages(content_type, topic, learn_style())
-    try:
-        r = requests.post(OPENROUTER_URL, headers=_headers(key),
-                          data=json.dumps({"model": model, "messages": messages,
-                                           "temperature": 0.9}), timeout=180)
-        r.raise_for_status()
-        body = r.json()["choices"][0]["message"]["content"].strip()
-        if save and body:
-            database.save_content(content_type, topic, body)
-        return body
-    except Exception as e:
-        return f"(تعذّر التوليد: {e})"
+    body = ai_core.chat(messages, temperature=0.9, task_type="creative", agent_role="writer")
+    if body and not body.startswith(("⚠️", "(تعذّر")) and save:
+        database.save_content(content_type, topic, body)
+    return body
 
 
 if __name__ == "__main__":

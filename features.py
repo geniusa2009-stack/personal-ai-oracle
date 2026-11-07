@@ -15,12 +15,7 @@ Infrastructure for the 50 Ultimate Agent features.
   radar_grants | whatsapp | scheduler | scaffold
 """
 
-import os
-import json
-
-import requests
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+import ai_core
 
 CATEGORIES = {
     "life":   "🧭 إدارة الحياة والأهداف",
@@ -146,27 +141,25 @@ FEATURE_BY_ID = {f["id"]: f for f in FEATURES}
 # --------------------------------------------------------------------------
 # منفّذ عام للذكاء الاصطناعي (بالعامية المصرية)
 # --------------------------------------------------------------------------
-def llm_feature(name: str, instruction: str, user_input: str) -> str:
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
-        return "⚠️ أضف مفتاح OpenRouter في القائمة الجانبية لتشغيل هذه الميزة."
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    system = ("إنت مساعد مصري ذكي بترد بالعامية المصرية الطبيعية، عملي ومباشر "
-              "وبتدّي خطوات واضحة. " + instruction)
+def llm_feature(
+    name: str,
+    instruction: str,
+    user_input: str,
+    *,
+    agent_role: str = "assistant",
+) -> str:
+    """Run a feature using its specialist agent model profile."""
+    system = (
+        "إنت مساعد مصري ذكي بترد بالعامية المصرية الطبيعية، عملي ومباشر "
+        "وبتدّي خطوات واضحة. " + instruction
+    )
     user = user_input.strip() or "(المستخدم لم يكتب تفاصيل — اطلب منه التفاصيل الناقصة باختصار.)"
-    try:
-        r = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            data=json.dumps({"model": model, "temperature": 0.7,
-                             "messages": [{"role": "system", "content": system},
-                                          {"role": "user", "content": user}]}),
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"(تعذّر التشغيل: {e})"
+    return ai_core.chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.7,
+        task_type="reasoning",
+        agent_role=agent_role,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -181,12 +174,24 @@ def run_feature(feature_id: int, user_input: str = "") -> dict:
     result = ""
     try:
         if kind == "llm":
-            result = llm_feature(f["name"], f["instruction"], user_input)
+            specialist_role = {
+                "search": "researcher",
+                "money": "researcher",
+                "social": "writer",
+                "life": "assistant",
+                "health": "assistant",
+            }.get(f["cat"], "assistant")
+            result = llm_feature(
+                f["name"], f["instruction"], user_input,
+                agent_role=specialist_role,
+            )
 
         elif kind == "content":
             import content_factory
             ctype = "كابشن ميمز" if "ميمز" in f["name"] else "كومنت جروب"
-            result = content_factory.generate_content(ctype, user_input or f["name"], save=True)
+            result = content_factory.generate_content(
+                ctype, user_input or f["name"], save=True
+            )
 
         elif kind == "search":
             from search import web_search

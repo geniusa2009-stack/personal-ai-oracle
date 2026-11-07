@@ -10,9 +10,10 @@ Local SQLite module managing two core tables:
 """
 
 from datetime import datetime
+import os
 
 # نعيد استخدام نفس الاتصال/المسار/الإعدادات من db.py لضمان قاعدة بيانات واحدة
-from db import get_conn, DB_PATH, get_setting, set_setting  # noqa: F401
+from db import get_conn, init_db, DB_PATH, get_setting, set_setting  # noqa: F401
 
 
 # --------------------------------------------------------------------------
@@ -239,6 +240,94 @@ def init_database():
         );
         CREATE INDEX IF NOT EXISTS idx_memories_scope_created
             ON memories(scope, created_at DESC, id DESC);
+
+        CREATE TABLE IF NOT EXISTS knowledge_entities (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope           TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            entity_type     TEXT NOT NULL,
+            attributes_json TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            UNIQUE(scope, normalized_name),
+            UNIQUE(id, scope)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_entities_scope_name
+            ON knowledge_entities(scope, normalized_name);
+
+        CREATE TABLE IF NOT EXISTS knowledge_relations (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope            TEXT NOT NULL,
+            source_entity_id INTEGER NOT NULL,
+            target_entity_id INTEGER NOT NULL,
+            relation_type    TEXT NOT NULL,
+            evidence         TEXT NOT NULL DEFAULT '',
+            created_at       TEXT NOT NULL,
+            UNIQUE(scope, source_entity_id, target_entity_id, relation_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_relations_source
+            ON knowledge_relations(scope, source_entity_id, relation_type);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_relations_target
+            ON knowledge_relations(scope, target_entity_id, relation_type);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_runs (
+            workflow_id  TEXT PRIMARY KEY,
+            scope        TEXT NOT NULL,
+            task_digest  TEXT NOT NULL,
+            status       TEXT NOT NULL,
+            max_steps    INTEGER NOT NULL,
+            created_at   TEXT NOT NULL,
+            updated_at   TEXT NOT NULL,
+            finished_at  TEXT,
+            error_code   TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_workflow_runs_scope_created
+            ON oracle_workflow_runs(scope, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_steps (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_id    TEXT NOT NULL,
+            scope          TEXT NOT NULL,
+            step_index     INTEGER NOT NULL,
+            tool_id        TEXT NOT NULL,
+            status         TEXT NOT NULL,
+            input_digest   TEXT NOT NULL,
+            output_digest  TEXT NOT NULL DEFAULT '',
+            input_length   INTEGER NOT NULL DEFAULT 0,
+            output_length  INTEGER NOT NULL DEFAULT 0,
+            duration_ms    INTEGER,
+            created_at     TEXT NOT NULL,
+            updated_at     TEXT NOT NULL,
+            UNIQUE(workflow_id, step_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_workflow_steps_scope_run
+            ON oracle_workflow_steps(scope, workflow_id, step_index);
+
+        CREATE TABLE IF NOT EXISTS oracle_execution_approvals (
+            approval_id TEXT PRIMARY KEY, scope TEXT NOT NULL, tool_id TEXT NOT NULL,
+            action_digest TEXT NOT NULL, preview_json TEXT NOT NULL, status TEXT NOT NULL,
+            created_at REAL NOT NULL, expires_at REAL NOT NULL, decided_at REAL,
+            checkpoint_id TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_approvals_scope_status
+            ON oracle_execution_approvals(scope, status, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_workflow_checkpoints (
+            checkpoint_id TEXT PRIMARY KEY, scope TEXT NOT NULL, ciphertext TEXT NOT NULL,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL, expires_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_checkpoints_scope_expiry
+            ON oracle_workflow_checkpoints(scope, expires_at);
+
+        CREATE TABLE IF NOT EXISTS oracle_model_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, provider TEXT NOT NULL,
+            model TEXT NOT NULL, route_reason TEXT NOT NULL, latency_ms INTEGER NOT NULL,
+            outcome TEXT NOT NULL, output_chars INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_model_events_scope_id
+            ON oracle_model_events(scope, id DESC);
         """
     )
     conn.commit()
@@ -536,68 +625,162 @@ def list_wellbeing(limit: int = 60) -> list:
 
 
 # --------------------------------------------------------------------------
-# password_vault — خزنة كلمات السر (تشفير محلي)
+# password_vault — خزنة كلمات السر
 # --------------------------------------------------------------------------
+class VaultConfigurationError(RuntimeError):
+    """Raised when the external encryption key is missing or invalid."""
+
+
+class VaultMigrationError(RuntimeError):
+    """Raised when an existing vault cannot be safely re-encrypted."""
+
+
 def _fernet():
-    """يُرجع كائن Fernet إن أمكن (تشفير حقيقي)، وإلا None."""
+    """Build Fernet only from an environment secret, never from the database."""
     try:
         from cryptography.fernet import Fernet
-    except Exception:
-        return None
-    key = get_setting("vault_key", None)
+    except ImportError as exc:
+        raise VaultConfigurationError(
+            "cryptography is required to use the password vault"
+        ) from exc
+
+    key = os.environ.get("ORACLE_VAULT_KEY", "").strip()
     if not key:
-        key = Fernet.generate_key().decode()
-        set_setting("vault_key", key)
-    try:
-        return Fernet(key.encode())
-    except Exception:
         return None
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, UnicodeEncodeError) as exc:
+        raise VaultConfigurationError(
+            "ORACLE_VAULT_KEY must be a valid Fernet key"
+        ) from exc
 
 
 def _enc(secret: str) -> str:
-    f = _fernet()
-    if f:
-        return "f:" + f.encrypt(secret.encode()).decode()
-    # fallback أساسي (إن لم تكن cryptography مثبّتة) — base64 فقط
-    import base64
-    return "b:" + base64.b64encode(secret.encode()).decode()
+    fernet = _fernet()
+    if fernet is None:
+        raise VaultConfigurationError(
+            "Set ORACLE_VAULT_KEY before saving passwords; plaintext/Base64 fallback is disabled"
+        )
+    if not isinstance(secret, str):
+        raise TypeError("vault secret must be text")
+    return "f:" + fernet.encrypt(secret.encode("utf-8")).decode("ascii")
 
 
 def _dec(blob: str) -> str:
+    if not isinstance(blob, str) or not blob.startswith("f:"):
+        return "🔒(تحتاج ترحيلاً إلى مفتاح الخزنة الخارجي)"
+    fernet = _fernet()
+    if fernet is None:
+        return "🔒(اضبط ORACLE_VAULT_KEY لعرض الأسرار)"
     try:
-        if blob.startswith("f:"):
-            f = _fernet()
-            return f.decrypt(blob[2:].encode()).decode() if f else "🔒(مشفّر)"
-        if blob.startswith("b:"):
-            import base64
-            return base64.b64decode(blob[2:].encode()).decode()
+        return fernet.decrypt(blob[2:].encode("ascii")).decode("utf-8")
     except Exception:
-        return "🔒(تعذّر فك التشفير)"
-    return blob
+        return "🔒(مفتاح الخزنة غير مطابق أو البيانات تالفة)"
+
+
+def migrate_legacy_vault_key() -> int:
+    """Re-encrypt legacy DB-key/Base64 rows with ORACLE_VAULT_KEY, then remove the DB key."""
+    fernet = _fernet()
+    if fernet is None:
+        return 0
+
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+    except ImportError as exc:  # pragma: no cover - guarded by _fernet
+        raise VaultConfigurationError("cryptography is required") from exc
+
+    init_db()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        key_row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'vault_key'"
+        ).fetchone()
+        legacy_fernet = None
+        if key_row is not None:
+            try:
+                legacy_fernet = Fernet(key_row["value"].encode("ascii"))
+            except Exception as exc:
+                raise VaultMigrationError(
+                    "The legacy vault key is invalid; no records were changed"
+                ) from exc
+
+        rows = conn.execute(
+            "SELECT id, secret_enc FROM password_vault ORDER BY id"
+        ).fetchall()
+        migrated = 0
+        for row in rows:
+            blob = row["secret_enc"] or ""
+            try:
+                if blob.startswith("f:"):
+                    token = blob[2:].encode("ascii")
+                    try:
+                        plaintext = fernet.decrypt(token)
+                    except InvalidToken:
+                        if legacy_fernet is None:
+                            raise VaultMigrationError(
+                                f"Vault record {row['id']} needs its legacy key"
+                            )
+                        plaintext = legacy_fernet.decrypt(token)
+                elif blob.startswith("b:"):
+                    import base64
+                    plaintext = base64.b64decode(blob[2:].encode("ascii"), validate=True)
+                else:
+                    raise VaultMigrationError(
+                        f"Vault record {row['id']} has an unsupported legacy format"
+                    )
+                encrypted = "f:" + fernet.encrypt(plaintext).decode("ascii")
+            except (InvalidToken, ValueError, UnicodeEncodeError) as exc:
+                raise VaultMigrationError(
+                    f"Vault record {row['id']} could not be migrated; no records were changed"
+                ) from exc
+
+            conn.execute(
+                "UPDATE password_vault SET secret_enc = ? WHERE id = ?",
+                (encrypted, row["id"]),
+            )
+            migrated += 1
+
+        conn.execute("DELETE FROM settings WHERE key = 'vault_key'")
+        conn.commit()
+        return migrated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def add_vault_entry(label: str, username: str, secret: str) -> int:
     init_database()
+    encrypted = _enc(secret)
     conn = get_conn()
-    cur = conn.execute(
-        "INSERT INTO password_vault(label, username, secret_enc, created_at) VALUES(?,?,?,?)",
-        (label, username, _enc(secret), datetime.now().isoformat(timespec="seconds")),
-    )
-    conn.commit(); rid = cur.lastrowid; conn.close()
-    return rid
+    try:
+        cur = conn.execute(
+            "INSERT INTO password_vault(label, username, secret_enc, created_at) VALUES(?,?,?,?)",
+            (label, username, encrypted, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
 
 
 def list_vault(reveal: bool = False) -> list:
+    if reveal:
+        migrate_legacy_vault_key()
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM password_vault ORDER BY id DESC").fetchall()
-    conn.close()
-    out = []
-    for r in rows:
-        d = dict(r)
-        d["secret"] = _dec(d["secret_enc"]) if reveal else "••••••••"
-        d.pop("secret_enc", None)
-        out.append(d)
-    return out
+    try:
+        rows = conn.execute("SELECT * FROM password_vault ORDER BY id DESC").fetchall()
+        out = []
+        for row in rows:
+            item = dict(row)
+            item["secret"] = _dec(item["secret_enc"]) if reveal else "••••••••"
+            item.pop("secret_enc", None)
+            out.append(item)
+        return out
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------
@@ -918,26 +1101,50 @@ def set_discipline_status(did: int, status: str):
 SENSITIVE_TABLES = [
     "whatsapp_chats", "wa_messages", "contacts", "entries", "generated_content",
     "financial_tracker", "bills", "user_wellbeing", "promises", "password_vault",
-    "feature_log", "memories",
+    "feature_log", "memories", "knowledge_relations", "knowledge_entities",
+    "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
+    "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
 ]
 
 
 def panic_wipe(tables: list = None) -> dict:
-    """يمسح فوراً السجلات الحساسة من قاعدة البيانات. يُعيد عدد المحذوف لكل جدول."""
+    """Delete only explicitly allowlisted sensitive tables in one transaction."""
     init_database()
-    targets = tables or SENSITIVE_TABLES
+    allowed = set(SENSITIVE_TABLES)
+    if tables is None:
+        targets = list(SENSITIVE_TABLES)
+    else:
+        if not isinstance(tables, (list, tuple, set)):
+            raise TypeError("tables must be a list, tuple, set, or None")
+        requested = list(tables)
+        invalid = [
+            item for item in requested
+            if not isinstance(item, str) or item not in allowed
+        ]
+        if invalid:
+            raise ValueError("panic wipe accepts allowlisted table names only")
+        targets = list(dict.fromkeys(requested))
+
+    if not targets:
+        return {}
+
     conn = get_conn()
     wiped = {}
-    for t in targets:
-        try:
-            n = conn.execute(f"SELECT COUNT(*) AS c FROM {t}").fetchone()["c"]
-            conn.execute(f"DELETE FROM {t}")
-            wiped[t] = n
-        except Exception:
-            wiped[t] = "—"
-    conn.commit()
-    conn.close()
-    return wiped
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for table_name in targets:
+            count = conn.execute(
+                f"SELECT COUNT(*) AS c FROM {table_name}"
+            ).fetchone()["c"]
+            conn.execute(f"DELETE FROM {table_name}")
+            wiped[table_name] = count
+        conn.commit()
+        return wiped
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

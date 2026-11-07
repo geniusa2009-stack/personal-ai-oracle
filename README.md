@@ -1,318 +1,230 @@
-# 🔮 الوكيل الذكي الشخصي والمحلل الاستراتيجي — نسخة سحابية
-# Personal AI Oracle — Cloud Edition
+# Personal AI Oracle — Hybrid Cloud + Mac Agent
 
-تطبيق Streamlit يحلّل يومياتك وأفكارك بعمق عبر OpenRouter (DeepSeek-V3 / GPT-4o)،
-ويشغّل **رادار فرص تلقائي في الخلفية** يبحث في الإنترنت عن كورسات ووظائف ومنح
-تناسب اهتماماتك — جاهز للرفع على **Render** أو **Railway** ليعمل ٢٤/٧ حتى لو كان جهازك مغلقاً.
+Personal AI Oracle is a private hybrid personal-agent system:
+- A private cloud dashboard and control plane remain available when the MacBook is offline.
+- A persistent Mac agent initiates an outbound HTTPS connection to the cloud and executes read-only diagnostics plus explicitly configured workspace writes, development commands and app launches. The Mac enforces its own local policy; remote move/delete are not exposed.
+- Multi-provider models can be assigned independently to the assistant, planner, researcher, coder, writer, executor and reviewer.
+- An isolated Playwright browser on the Mac can search, navigate, read webpages and list links.
+- The local Mac remains the execution endpoint for local files, local apps, developer tools and browser sessions.
 
----
+The cloud does not open an inbound port on the Mac. Device communication is Mac-initiated HTTPS polling with short-lived task leases and one-time result submission.
 
-## 🧩 مكوّنات المشروع / Project layout
+## Architecture
 
-| الملف | الوظيفة |
-|---|---|
-| `app.py` | واجهة Streamlit: تحليل متدفّق + تبويب رادار الفرص + الإعدادات + جدولة داخلية |
-| `db.py` | طبقة SQLite مشتركة (يوميات، فرص، إعدادات) — مسارها عبر `ORACLE_DB_PATH` |
-| `search.py` | محرك البحث: Tavily (لو فيه مفتاح) وإلا DuckDuckGo بدون مفتاح |
-| `radar.py` | محرك رادار الفرص: يبني الاستعلامات، يبحث، يرتّب بالـ AI، يخزّن |
-| `scholarship_expert.py` | خبير المنح: قاعدة معرفة + فلترة + إجابة بالعامية المصرية |
-| `whatsapp_agent.py` | الرد الآلي على واتساب عبر Cloud API الرسمي (وضع مسودّة افتراضي) |
-| `hyper_scheduler.py` | المخطط الصارم: تحليل طاقة + جدول بالدقيقة + توجيه «الآن» |
-| `content_factory.py` | مصنع المحتوى: محتوى بالعامية بأسلوبك (منشور/ثريد/ريلز/ميمز) |
-| `features.py` | سجل الـ50 ميزة + موزّع تشغيل بحالات (فعّالة/تجريبية/تحتاج ربط) |
-| `database.py` | جداول الذاكرة والمنح والجداول والمحتوى وسجل الميزات |
-| `worker.py` | عملية خلفية مستقلة (24/7) لتشغيل الرادار على فاصل زمني ثابت |
-| `Dockerfile` | صورة الحاوية (تربط `$PORT` تلقائياً) |
-| `render.yaml` | مخطط نشر Render بنقرة (Blueprint) |
-| `railway.json` / `Procfile` | إعداد Railway / منصّات Procfile |
-
----
-
-## ⚙️ متغيّرات البيئة / Environment variables
-
-| المتغيّر | مطلوب؟ | الوصف |
+| Component | Runs where | Responsibility |
 |---|---|---|
-| `OPENROUTER_API_KEY` | ✅ | مفتاح OpenRouter للتحليل وترتيب الفرص |
-| `TAVILY_API_KEY` | اختياري | بحث أكثر موثوقية على السحابة (بدّل DuckDuckGo) |
-| `SCAN_INTERVAL_HOURS` | اختياري | كل كم ساعة يعمل الرادار (الافتراضي 12) |
-| `OPENROUTER_MODEL` | اختياري | نموذج ترتيب الفرص (الافتراضي `deepseek/deepseek-chat`) |
-| `ENABLE_RADAR` | اختياري | `1` لتفعيل الجدولة الداخلية بدون مفتاح في البيئة |
-| `ORACLE_DB_PATH` | اختياري | مسار قاعدة البيانات (على السحابة: `/data/oracle.db`) |
+| Cloud dashboard | Private cloud web service | Authenticated workspace, Oracle features, chat, job status |
+| Cloud control API | Private cloud web service | Device pairing, authenticated job queue, leases, results |
+| Mac agent | Logged-in Mac user session | Outbound connection, local actions, browser execution |
+| Playwright browser | Mac | Dedicated browser profile, public website navigation and extraction |
+| Model router | Cloud and Mac | Provider/model selection by task and agent role |
+| Local state | Mac | Device token, browser profile, local DB and audit records |
+| Cloud state | Cloud persistent disk/DB | Device registry, job queue and job results |
 
-> 🔑 احصل على مفتاح OpenRouter من https://openrouter.ai/keys
-> ومفتاح Tavily (اختياري) من https://tavily.com
+## Cloud deployment
 
----
+A two-service Render Blueprint is provided in `render.yaml`:
+- `personal-ai-oracle-control`: FastAPI control plane with persistent storage.
+- `personal-ai-oracle-web`: Streamlit private dashboard.
 
-## 💻 التشغيل محلياً / Run locally
+The services use Dockerfiles dedicated to their roles. The Blueprint creates a shared environment group for the control token so the API and dashboard receive exactly the same value. You can use another Docker-capable host by deploying `Dockerfile.cloud-api` and `Dockerfile.cloud-web` separately.
 
-```bash
-cd oracle_app
-pip install -r requirements.txt
-streamlit run app.py
-```
-ثم افتح `http://localhost:8501`. ضع المفتاح في القائمة الجانبية، وفعّل الرادار يدوياً
-من تبويب «رادار الفرص» بزر «شغّل مسحاً الآن».
+### Required secrets
 
-تشغيل العامل الخلفي محلياً (اختياري):
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-python worker.py
-```
+Set these in the cloud provider's secret/environment settings. Use randomly generated values, at least 32 characters for the API tokens and at least 16 characters for the dashboard password.
 
----
+| Variable | Control API | Cloud dashboard | Mac |
+|---|---:|---:|---:|
+| `ORACLE_CLOUD_CONTROL_TOKEN` | Yes | Same exact value | No |
+| `ORACLE_CLOUD_ENROLLMENT_TOKEN` | Yes | No | Same exact value for first pairing |
+| `ORACLE_CLOUD_DASHBOARD_PASSWORD` | No | Yes | No |
+| `ORACLE_CLOUD_API_URL` | No | Internal API URL | Public HTTPS API URL |
+| `OPENROUTER_API_KEY` | No | Optional | Optional |
+| `OPENAI_API_KEY` | No | Optional | Optional |
+| `GEMINI_API_KEY` | No | Optional | Optional |
+| `TAVILY_API_KEY` | No | Optional | Optional |
 
-## ☁️ النشر على Render (موصى به)
+Use a different dashboard password and API tokens. Never put secrets in source files, GitHub commits, screenshots, or chat logs.
 
-1. ارفع مجلد المشروع إلى مستودع **GitHub**.
-2. من Render: **New → Blueprint** واختر المستودع (سيقرأ `render.yaml` تلقائياً).
-3. أدخل قيمة `OPENROUTER_API_KEY` (و `TAVILY_API_KEY` اختيارياً) في حقول الأسرار.
-4. اضغط **Apply** — وستحصل على رابط عام يعمل من أي مكان.
+Configure the cloud web service with:
+- `ORACLE_RUNTIME_MODE=cloud`
+- `ORACLE_CLOUD_API_URL` pointing at the private/internal URL of the control API when the host supports it.
+- `ORACLE_CLOUD_CONTROL_TOKEN` matching the API service value.
+- `ORACLE_CLOUD_DASHBOARD_PASSWORD` set to a strong private password.
+- `ORACLE_DB_PATH` on persistent storage if Oracle's feature data must survive redeploys.
 
-⚠️ **مهم بخصوص الـ 24/7:**
-- الخطة **المجانية** في Render تُنيم الخدمة عند الخمول، فالجدولة الداخلية تتوقف حتى يُفتح الرابط.
-- للعمل المتواصل الحقيقي: استخدم خطة مدفوعة، وفعّل خدمة `worker` المُعلّقة في `render.yaml`
-  (احذف التعليق `#`) لتشغيل `python worker.py` كعامل خلفي لا ينام.
-- القرص الدائم (`disk`) يتطلّب خطة مدفوعة؛ على المجانية احذف قسم `disk` (ستكون البيانات مؤقتة).
+The dashboard login is independent from the control API token. The control token is only used server-side by the dashboard and is not rendered into the browser UI.
 
----
+For genuine 24/7 cloud availability, use an always-on service plan and persistent storage. Free tiers may sleep, restart or discard local container storage; do not rely on them for continuous background operation or durable state. Render documents that container filesystems are ephemeral without a persistent disk and that persistent disks are available on paid services. <https://render.com/docs/disks>
 
-## 🚆 النشر على Railway
+## Pair the MacBook
 
-1. **New Project → Deploy from GitHub repo**. سيكتشف Railway الـ `Dockerfile` تلقائياً.
-2. من **Variables** أضف `OPENROUTER_API_KEY` (وبقية المتغيّرات حسب الحاجة).
-3. Railway يوفّر `$PORT` تلقائياً — التطبيق يلتقطه من الأمر في `railway.json`.
-4. لرادار 24/7 مستقل: أنشئ **خدمة ثانية** في نفس المشروع بأمر التشغيل `python worker.py`.
+1. Deploy the API and web services and copy their HTTPS URLs.
+2. In the Mac's private file `~/.personal_ai_oracle/.env`, set:
 
----
-
-## 🐳 تشغيل عبر Docker مباشرة
-
-```bash
-docker build -t oracle .
-docker run -p 8501:8501 \
-  -e OPENROUTER_API_KEY=sk-or-... \
-  -e ENABLE_RADAR=1 \
-  -v $(pwd)/data:/data \
-  oracle
+```dotenv
+ORACLE_CLOUD_API_URL=https://YOUR-CONTROL-API.example.com
+ORACLE_CLOUD_ENROLLMENT_TOKEN=THE_SAME_ENROLLMENT_SECRET_FROM_CLOUD
+ORACLE_DEVICE_NAME=Personal MacBook
+ORACLE_BROWSER_HEADLESS=1
+ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=0
 ```
 
----
+3. Restart the LaunchAgent. The Mac agent pairs once, stores its device token in `~/.personal_ai_oracle/device-token.json` with mode 0600, and begins polling for jobs.
+4. The dashboard at the cloud web URL shows whether the Mac agent is online and can request Mac-local tools. Public web search remains available from the cloud; browser navigation, page extraction and local actions are dispatched to the Mac. If the Mac is asleep, powered off or disconnected, those Mac-dependent tasks remain queued and the dashboard reports that the agent is unavailable.
 
-## 🕵️ كيف يعمل رادار الفرص؟
+To install Chromium for the isolated browser once:
 
-1. يجمع كلماتك المفتاحية من: ما تكتبه في الإعدادات + ما يُستخرج تلقائياً من يومياتك.
-2. لكل كلمة يبني استعلامات لثلاث فئات: **كورسات / وظائف / منح** (عربي وإنجليزي).
-3. يبحث في الإنترنت (Tavily أو DuckDuckGo)، يزيل المكرّر حسب الرابط.
-4. يرتّب النتائج بالذكاء الاصطناعي (درجة 0–100 + سبب مختصر) ويخزّنها.
-5. تظهر الفرص في تبويب «رادار الفرص» مرتّبة حسب الأهمية، وتُحدَّث دورياً في الخلفية.
+```bash
+cd /path/to/personal-ai-oracle
+.venv/bin/python -m playwright install chromium
+```
 
----
+For a visible browser window on the logged-in Mac desktop, set `ORACLE_BROWSER_HEADLESS=0`. The Oracle browser uses a separate profile under `~/.personal_ai_oracle/browser-profile`; it does not read or reuse the user's everyday Chrome/Safari profile. Any site sign-in should be performed manually in that dedicated browser window.
 
----
+Private LAN and localhost destinations are blocked by default by the browser URL guard. Set `ORACLE_BROWSER_ALLOW_PRIVATE_NETWORK=1` only when you deliberately need to access a local development site or trusted LAN service.
 
-## 🎓 خبير المنح (`scholarship_expert.py`)
+## Multi-model routing
 
-قاعدة معرفة أولية بمنح عالمية ومحلية حقيقية (Fulbright, Chevening, DAAD, Erasmus,
-Türkiye Bursları, MEXT, Knight-Hennessy, Mastercard, GREAT, وجهات مصرية…) + محرك
-فلترة حسب الدولة/المستوى/المجال + بحث حيّ للمواعيد الحالية + إجابة **بالعامية المصرية**.
+Supported providers in this revision:
+- OpenRouter
+- OpenAI
+- Google Gemini
+- Local Ollama
 
-- يظهر كتبويب «🎓 خبير المنح» داخل التطبيق.
-- يُستخدم تلقائياً داخل ردود الواتساب عندما تكون الرسالة عن منح.
-- ⚠️ المواعيد تقريبية وتتغيّر سنوياً؛ الإجابة دائماً تنبّه بمراجعة الموقع الرسمي.
+Configure defaults and per-role overrides using `ORACLE_DEFAULT_PROVIDER`, `ORACLE_AGENT_<ROLE>_PROVIDER`, `ORACLE_AGENT_<ROLE>_MODEL` and task-level `ORACLE_PROVIDER_<TASK>` / `ORACLE_MODEL_<TASK>`.
 
----
+Roles: `assistant`, `planner`, `executor`, `researcher`, `coder`, `writer`, `reviewer`.
 
-## 📲 موديول الرد الآلي على واتساب (`whatsapp_agent.py`)
+Hosted model requests are sent to the selected provider. Ollama model requests remain on the device where Ollama runs. Actions outside the trusted-workspace auto-allow policy continue through the explicit approval/reviewer path; trusted workspace automation is governed deterministically by the local Mac policy.
 
-مبني على **واتساب Cloud API الرسمي من Meta** (وليس أدوات غير رسمية تُعرّض رقمك للحظر).
+## Mac Intelligence: trusted workspaces and local execution
 
-**كيف يعمل:**
-1. Meta يرسل الرسائل الواردة إلى ويبهوك `/webhook` في هذا الموديول.
-2. يحدّد الموديول هوية المرسِل من جدول `contacts` (صاحب/عيلة/شغل/جروب) ويبني
-   System Prompt مصري مناسب للعلاقة.
-3. يولّد رداً طبيعياً بالعامية عبر OpenRouter (ويدمج خبير المنح لو السؤال عن منح).
-4. حسب `WA_AUTO_REPLY`:
-   - `draft` (افتراضي وآمن): يحفظ الرد كـ**مسودّة** تراجعها وتوافق عليها من تبويب «📲 واتساب».
-   - `send`: يرسل الرد تلقائياً فوراً.
+Create `~/.personal_ai_oracle/mac_intelligence.json` on the Mac (permissions: `chmod 600 ~/.personal_ai_oracle/mac_intelligence.json`). Start with only the project folders Oracle is meant to manage:
 
-**خطوات التفعيل (مختصرة):**
-1. أنشئ تطبيقاً على [Meta for Developers](https://developers.facebook.com) وفعّل منتج WhatsApp.
-2. خُذ `WhatsApp Access Token` و `Phone Number ID` وحُطّهم في متغيّرات البيئة.
-3. اختر `WA_VERIFY_TOKEN` أي نص سرّي، وضعه في إعدادات الويبهوك على Meta.
-4. انشر الموديول كخدمة ويب (أمر التشغيل):
-   ```bash
-   gunicorn "whatsapp_agent:create_app()" --bind 0.0.0.0:$PORT
-   ```
-   ثم اضبط رابط الويبهوك على Meta:  `https://<خدمتك>/webhook`
-5. ابدأ بـ `WA_AUTO_REPLY=draft` وراجع المسودّات قبل ما تحوّله لـ `send`.
+```json
+{
+  "version": 1,
+  "trusted_workspaces": ["~/Projects"],
+  "auto_allow_tools": ["local.write_file", "local.run_command", "local.open_app"],
+  "auto_run_commands": [
+    ["git", "status"],
+    ["git", "diff"],
+    ["git", "log"],
+    ["npm", "run", "test"],
+    ["npm", "run", "build"],
+    ["python3", "-m", "pytest"],
+    ["python3", "-m", "compileall"]
+  ],
+  "allowed_applications": ["Visual Studio Code", "Terminal"],
+  "allow_screen_capture": false,
+  "allow_admin_operations": false
+}
+```
 
-**تشغيل محلي للاختبار:** `python whatsapp_agent.py` (افتراضياً على المنفذ 8080)،
-وللاختبار من غير ويبهوك استخدم تبويب «📲 واتساب → 🧪 جرّب الرد».
+The `trusted_workspaces` entries must point to existing absolute directories after `~` expansion. You can also set `ORACLE_TRUSTED_WORKSPACES` to an OS path-separator-delimited list. The Mac agent resolves paths locally (including symlinks) and checks every source/destination or command working directory against those roots.
 
-> ⚠️ ملاحظة مسؤولة: الرد الآلي يكتب رسائل باسمك. ابدأ دائماً بوضع المسودّة، وراجع
-> النبرة، وتجنّب الوعود نيابة عنك (مواعيد/التزامات) قبل التأكيد.
+Automatic file writing is available only when `local.write_file` is explicitly listed and the destination is inside a trusted workspace. Automatic command execution additionally requires an argv prefix in `auto_run_commands`, a trusted working directory, and the existing built-in executable/subcommand allowlist; commands always use an argv array with `shell=false`. Application launch is limited to exact names in `allowed_applications`. These settings are read locally by the Mac agent; a cloud job cannot expand them.
 
----
+Move/delete, recursive deletion, unlisted commands and unlisted apps are not granted by the trusted-workspace profile. Remote move/delete are not exposed by the cloud API. The system inspection tools return OS/resource metadata, a bounded process inventory without full command-line arguments, and application names. Screen capture and elevated/admin execution are reported as not integrated; setting their flags does not activate them. macOS privacy prompts and OS protections remain in force.
 
----
+The policy file is configuration, not a secure sandbox against a compromised Mac account or malicious code already running as that account. Keep trusted workspace roots narrow, and only trust project code that you are willing to execute.
 
-## 🚀 الوكيل الخارق: المخطط + المحتوى + الـ50 ميزة
+## Security boundaries
 
-**🗓️ المخطط الصارم (`hyper_scheduler.py`):** يحلّل منحنى طاقتك من يومياتك (أو منحنى
-افتراضي ذكي)، يقسّم يومك لبلوكات دقيقة، يوزّع التركيز العميق على أوقات الذروة والمهام
-الخفيفة على الهبوط، ويربط أهدافك الكبرى بأفعال صغيرة. يوجّهك لحظياً: «دلوقتي وقت التركيز
-على كذا / دلوقتي وقت راحة». يُحفظ في جدول `schedules`.
+- Cloud dashboard login and control API credentials are separate.
+- Device credentials are random, stored hashed in the control-plane database, and returned only once at pairing.
+- Jobs have bounded payloads, an allow-listed tool identifier, a lease token and a result size limit.
+- The Mac creates the outbound HTTPS connection. No public inbound service is opened on the Mac. Remote write, command and app-launch requests are re-authorized against the Mac's own trusted-workspace policy; remote move/delete and other unlisted tools are rejected.
+- Browser automation uses an isolated profile and blocks non-global destinations by default to reduce SSRF and local-network exposure.
+- Local tools run as the currently logged-in macOS user and use normal OS permissions. The agent does not escalate to root or bypass macOS privacy and safety protections.
+- The system does not extract credentials from the user's ordinary browser profile. Sign in manually in the dedicated Oracle browser.
+- Use HTTPS in production. Keep API tokens, model keys and device tokens out of source control.
+- Remote tool outputs are bounded before upload; cloud results are retained for a configurable period (24-hour default) and terminal job metadata for 7 days.
 
-**🏭 مصنع المحتوى (`content_factory.py`):** يقرأ عيّنات من كتابتك الحقيقية ويولّد منشورات/
-ثريدات/سيناريوهات ريلز/ميمز بالعامية المصرية بصوتك أنت (بثّ فوري + حفظ في `generated_content`).
+## Local operation
 
-**الـ50 ميزة (`features.py`):** كلها مسجّلة في بنية واحدة قابلة للتشغيل عبر موزّع
-(`run_feature`)، وكل ميزة لها حالة واضحة:
+Local-only mode remains supported:
 
-- 🟢 **فعّالة** — تشتغل دلوقتي (تحليل مشاعر، رادار فرص/منح/كورسات/وظائف، رد واتساب،
-  مصنع محتوى، مدرب قرار، فلتر أولويات، محاكي مقابلات، خطة عمل، تنفّس، محفّز صباحي…).
-- 🟡 **تجريبية** — أفضل-جهد عبر الذكاء الاصطناعي/البحث (تتبّع عادات، كاشف تسويف،
-  صائد تريندات/كتب/أخبار، مخطط ميزانية، محلل توتر…).
-- 🔌 **تحتاج ربط** — البنية جاهزة لكنها تتطلّب تكاملاً خارجياً (جدولة نشر تلقائي،
-  تيليجرام، قراءة مصاريف من SMS، تتبّع نوم بسوار، مشغّل موسيقى، تذكيرات مجدولة).
+```bash
+python3 install_local.py
+```
 
-> الفلسفة: كل ميزة دالة pluggable تُسجّل في `features.py`. الميزات «تحتاج ربط» ترجع
-> رسالة واضحة بما يلزم تفعيلها، فتقدر تطوّرها تدريجياً بدون كسر أي شيء.
+Dashboard: `http://127.0.0.1:8765`
 
-تظهر كلها في تبويب «🚀 الـ50 ميزة» مع لوحة تشغيل وسجل تنفيذ (`feature_log`).
+If `ORACLE_CLOUD_API_URL` is configured in the Mac's private environment file, the LaunchAgent also starts the outbound cloud bridge automatically.
 
----
+## Validation
 
-## 🛸 وحدة الذكاء الخارق (50 ميزة في 5 أقسام)
+CI runs Python compilation and the pytest suite, including cloud job validation, token hashing, browser URL validation, provider routing, local tools, agent planning, webhook validation and vault migration.
 
-نواة موحّدة (`ai_core.py`) فيها System Prompt مرن بيتبدّل حسب الموقف: **ودّي** بالعامية
-لشات العلاقات والسعادة، و**احترافي وقور** للإيميلات والمنح والمشاريع، و**صارم** عند التهاون.
+A successful CI run validates the code and API contracts; it does not by itself prove deployment credentials, cloud-provider configuration, browser binaries, or the user's physical Mac hardware are configured.
 
-| الملف | القسم | الميزات |
-|---|---|---|
-| `social_diplomacy.py` | 🤝 العلاقات والدبلوماسية | 1–10 (كاشف النوايا، الصلح، فلتر الفضوليين، الكاريزما، مصحّح الغضب، الواجبات، درع الابتزاز، حافظ الوعود…) |
-| `super_learning.py` | 🧠 التعلّم الخارق | 11–20 (ملخّص فيديو، خرائط ذهنية، فاينمان، مترجم مصطلحات، تكرار متباعد، مدرّب برومبتات…) |
-| `financial_intelligence.py` | 💰 الذكاء المالي | 21–30 (مانع الشراء الاندفاعي، خطة ادخار، حاسبة رسوم مخفية، محلّل عروض وهمية، منظّم فواتير…) |
-| `cyber_security.py` | 🛡️ الأمن السيبراني | 31–40 (مولّد كلمات سر، فاحص تصيّد، خزنة مشفّرة، درع واي فاي، مستشار قانوني رقمي…) |
-| `lifestyle_hub.py` | ✨ أسلوب الحياة | 41–50 (منسّق إطلالات، بومودورو متكيّف، منفّذ التزام صارم، رفيق قراءة، موصّل أحلام الطفولة…) |
 
-كلها مُجمّعة في `advanced_module.py` بموزّع تشغيل `run_feature` وتظهر في تبويب
-«🛸 الوحدة الخارقة». الميزات الحسابية والأدوات تشتغل فعلياً (مولّد كلمات السر، فاحص الروابط،
-حاسبة الرسوم، حافظ الوعود، الفواتير، الخزنة المشفّرة بـ `cryptography`)، والباقي بالذكاء
-الاصطناعي، والميزات اللي تحتاج عتاد/تكامل (كاميرا/مايك، تسريب بيانات، أسعار لحظية…) بحالة
-«🔌 تحتاج ربط» وبترجّع المطلوب بوضوح.
+## Intelligence layer: knowledge graph and automatic model tiers
 
-### 🛑 زر الذعر (Panic Button)
-في تبويب «⚙️ الإعدادات»: `database.panic_wipe()` بيمسح فوراً السجلات الحساسة (المحادثات،
-جهات الاتصال، اليوميات، المالية، الخزنة، الوعود…) بعد تأكيد كتابي. لا يمكن التراجع.
+Oracle can enrich a request with a small, scope-isolated knowledge-graph context.
+Only entities and relationships explicitly saved through `knowledge_graph.py`
+are retrieved; graph records are bounded and treated as untrusted context.
 
-> **الجداول الجديدة:** `promises`, `bills`, `financial_tracker`, `user_wellbeing`, `password_vault`.
+Automatic quality-tier routing is **off by default**. Enable it in the private
+local environment file with:
 
----
+```env
+ORACLE_AUTO_MODEL_ROUTING=true
+ORACLE_MODEL_TIER_FAST=<provider-model-id>
+ORACLE_MODEL_TIER_BALANCED=<provider-model-id>
+ORACLE_MODEL_TIER_DEEP=<provider-model-id>
+ORACLE_PROVIDER_TIER_FAST=<configured-provider>
+ORACLE_PROVIDER_TIER_BALANCED=<configured-provider>
+ORACLE_PROVIDER_TIER_DEEP=<configured-provider>
+```
 
-## 💸 ماكينة الدخل التلقائية (`income_hunter.py`)
+Task-specific `ORACLE_MODEL_<TASK>` / `ORACLE_PROVIDER_<TASK>` settings take
+precedence over tier settings. Explicit role-level provider/model settings take
+precedence over automatic selection. Oracle does not silently switch providers
+when a selected provider is unavailable: configure the intended provider/model
+and its credentials first. This avoids unexpected data transfers or costs.
 
-خمسة محرّكات دخل + لوحة أرباح حيّة في تبويب «💸 ماكينة الدخل»:
 
-1. **مولّد عروض الفريلانس** — يقرأ وصف المشروع، يطابق مهاراتك، ويكتب Proposal مسعّراً
-   مقنعاً ويحفظه في `freelance_proposals`. (يُراجَع ويُرسل يدوياً — انظر الملاحظة أدناه.)
-2. **مصنع المنتجات الرقمية** — يحوّل بيانات الوكيل (منح/فرص/محتوى) لكتاب إلكتروني HTML
-   منسّق جاهز للبيع + هيكل روابط الدفع + **قمع مبيعات واتساب** (يكشف نية الشراء ويرد
-   بالعامية ويرفق رابط الدفع/التحميل تلقائياً).
-3. **وكيل الأفيليت** — يبحث عن منتجات عمولة عالية ويكتب مراجعات بالعامية تتضمّن روابطك.
-4. **مقالات SEO + نشر ووردبريس** — يولّد مقالاً محسّناً (عنوان/ميتا/عناوين فرعية)
-   و**ينشره فعلياً** على WordPress عبر REST API (`WP_URL`/`WP_USER`/`WP_APP_PASSWORD`).
-5. **حارس الأرباح** — `revenue_summary()` + `predict_revenue()`: لوحة تعرض العروض،
-   المبيعات، نقرات الأفيليت، الأرباح بالدولار والجنيه، ومعدل التحويل + نصيحة المجال الأنسب.
+## Workflow trace and execution history
 
-**جداول جديدة:** `freelance_proposals`, `digital_sales`, `affiliate_clicks`, `ad_revenue`.
+When enabled (default), each agent run receives a workflow ID and writes a durable
+execution trace to the configured SQLite database. The ledger stores task, input,
+and output **SHA-256 digests**, tool IDs, statuses, elapsed time, and timestamps;
+it does not store task text, local file contents, tool arguments, or tool outputs.
+Trace rows are scope-isolated and can be cleared using the existing panic-wipe
+allowlist. Set `ORACLE_ENABLE_WORKFLOW_LEDGER=false` to disable trace creation,
+or `ORACLE_WORKFLOW_SCOPE` to choose a stable owner scope when no memory scope
+is passed to the orchestrator. A step left in `running` state is visible as an
+interrupted checkpoint; automatic replay/resume is not enabled by this ledger.
 
-**متغيّرات بيئة اختيارية:** `PAYMENT_LINK`, `PRODUCT_DOWNLOAD_LINK`, `GUMROAD_API_KEY`,
-`WP_URL`, `WP_USER`, `WP_APP_PASSWORD`, `ORACLE_PRODUCTS_DIR`.
 
-> ⚠️ **مهم وبصراحة:** كشط Upwork/Fiverr/Mostaql وإرسال العروض آلياً **يخالف شروط المنصات
-> وقد يحظر حسابك**. لذلك الأداة **تكتب العرض وتخزّنه لمراجعتك وإرساله بنفسك** (أو عبر API
-> رسمي إن توفّر) — مش بوت كشط بيبعت لوحده. وكذلك لا يتم تحريك أموال برمجياً؛ روابط الدفع
-> هي روابط Gumroad/Stripe التي تنشئها أنت.
+## Deep Research Engine
 
----
+The Planner can now select `web.deep_research` for evidence-heavy questions. The
+research engine asks the Researcher for up to four distinct search queries, searches
+and deduplicates normalized HTTP(S) sources, and can extract up to six pages through
+Oracle's isolated browser. In cloud mode, public search runs in the cloud while page
+navigation is dispatched to the paired Mac agent.
 
-## 🏛️ إمبراطورية الدخل (150 ميزة في 6 موديولات)
+Each source receives a stable per-report citation ID (`[S1]`, `[S2]`, ...).
+The synthesis is checked against the actual source IDs; unknown model-generated
+citations are flagged instead of being treated as valid. Reports distinguish
+extracted page text from search-snippet-only evidence and expose limitations,
+queries, URLs and source-domain hints. Domain hints are not reliability guarantees.
 
-`freelance_empire.py` · `digital_products.py` · `affiliate_radar.py` ·
-`seo_content_factory.py` · `arbitrage_finance.py` · `micro_saas_agency.py`
-— مُجمّعة في `wealth_empire.py` وتظهر في تبويب «🏛️ إمبراطورية الدخل» مع لوحة ROI.
+Research limits are bounded in code (up to 4 queries, 12 sources, 6 page fetches
+and a 26,000-character synthesis context). Raw research page contents are returned
+for the current run only and are not persisted by the research engine.
 
-**جداول جديدة:** `revenue_streams`, `affiliate_logs`, `seo_metrics`, `freelance_contracts`.
 
-كل ميزة لها حالة: 🟢 فعّالة · 🟡 تجريبية · 🔌 تحتاج ربط · ⛔ موقوفة.
+## Oracle Control Center
 
-### ⚖️ حدود الامتثال (مهمة وبصراحة)
-بعض ما طُلب لم يُبنَ كأتمتة شغّالة لأنه يضرّك أو يضرّ غيرك، وبُني بديل متوافق بدلاً منه:
-
-| موقوف ⛔ | السبب | البديل المتوافق |
-|---|---|---|
-| كشط Upwork/Fiverr… كل 30 ث + إرسال آلي | مخالفة شروط → حظر الحساب | الصق المشروع → عرض جاهز ترسله بنفسك / API رسمي |
-| Auto-Commenter على فيسبوك/تويتر | سبام يضر سمعتك | انشر مراجعتك على حسابك بقيمة حقيقية |
-| إخفاء/تمويه روابط العمولة | تضليل ممنوع قانونياً | روابط **مع إفصاح** واضح (مدمج تلقائياً) |
-| FOMO «لإجبار» المتردد | تلاعب مضلِّل | ندرة صادقة حقيقية فقط (#46) |
-| كشط خرائط جوجل/فيسبوك للـ cold spam | كشط بيانات شخصية + سبام | عرض لعملاء وافقوا على التواصل (Warm) |
-| تنفيذ صفقات/سحب أموال آلياً، أرباح «مضمونة» | مخاطرة مالية ونصيحة غير مسؤولة | أدوات معلوماتية بإخلاء مسؤولية، القرار بيدك |
-
-ما عدا ذلك يعمل فعلياً: مهندس العروض النفسي، التسعير الذكي، e-books، روابط الدفع،
-قمع الواتساب، المراجعات بإفصاح، الـ SEO والنشر على ووردبريس، الربط الداخلي، الفواتير
-والعقود، لوحة ROI، تقارير العملاء، والنسخ الاحتياطي المشفّر.
-
----
-
-## 🧭 محراب الانضباط (`discipline_oracle.py`)
-
-نظام تركيز وانضباط صارم لكنه صحّي، في تبويب «🧭 محراب الانضباط»:
-مجلس الحكماء (أرشيتايب إلهام بلا اقتباسات منسوبة لأشخاص)، خريطة مستقبل من 4 مستويات
-(تُحفظ في `future_milestones`)، أمر الكورس اليومي، قائمة حجب المشتتات (تُطبَّق بموافقتك)،
-فلتر القيمة، سيناريوهات يوتيوب ومسودّات ردود الكومنتات (بمراجعتك).
-
-**جداول جديدة:** `future_milestones`, `youtube_automation_logs`, `discipline_matrix`.
-
-### ⚖️ ما الذي أُعيدت صياغته ولماذا
-- **حجب المشتتات**: يولّد قائمة `hosts` تطبّقها أنت — لا يعدّل ملفات نظامك تلقائياً (حماية لجهازك).
-- **ردود يوتيوب**: مسودّات تراجعها + هيكل YouTube Data API — لا رد آلي على الكل (سبام/مخالفة شروط).
-- **«العزوف التام عن النساء/الزواج وقمع الشهوة»**: لم يُبنَ كنظام تلقين يومي يؤطّر العلاقات/الزواج
-  كعدوّ. بُدّل بـ`sovereign_focus_prompt`: موجّه تركيز صحّي يحوّل طاقتك نحو العلم والكود وصيد
-  المنح وبناء الثروة، دون الحطّ من أحد ودون آليات «قمع» قسرية. الانضباط هدف، والعلاقات اختيار شخصي.
-
----
-
-## 🧠 مركز الميزات الموحّد (Unified Dashboard)
-
-تم **دمج الأنظمة الثلاثة** في تبويب واحد «🧠 مركز الميزات» عبر `feature_hub.py`، فبدل
-3 تبويبات متكررة بنفس كود التشغيل، بقى فيه واجهة واحدة: **اختر المجموعة → القسم → الميزة →
-شغّل**. المجموعات الثلاث:
-
-- 🧩 **الوكيل الأساسي (50)** — `features.py`
-- 🛸 **الوحدة الخارقة (50)** — `advanced_module.py`
-- 🏛️ **إمبراطورية الدخل (150)** — `wealth_empire.py`
-
-إجمالي **250 ميزة** في مكان واحد، ولوحات البيانات الحيّة (المود/المالي/ROI/الوعود/الفواتير)
-اتجمّعت تحت نفس التبويب. ده قلّل التبويبات من 13 لـ 11 وشال تكرار الكود.
-
----
-
-## 🎓 خبير المنح المطوّر (`advanced_scholarship.py`)
-
-أدوات أكاديمية داخل تبويب «🎓 خبير المنح»:
-- **محسّن خطاب النوايا (Personal Statement)** حسب فئة الجامعة (Ivy/Oxbridge/MIT/عالمي/ثانويات).
-- **محسّن السيرة الذاتية (CV)** متوافق مع ATS.
-- **محاكي المقابلات الشرس (Apex Interview)** بأسلوب Chevening/DAAD/Fulbright — أسئلة فخّ،
-  نقد جادّ، وصيغة بديلة مثالية.
-
-> ⚖️ أمانة: لا ادّعاءات «قبول 100%» أو «اقتباس 0% مضمون» أو «معصوم من الخطأ». الأدوات ترفع
-> الجودة والفرص فقط، وتنصح بمراجعة المواقع الرسمية وفحص الانتحال بأداة متخصّصة. القرار والنتيجة
-> يعتمدان على عوامل كثيرة خارج النص.
-
----
-
-## 🔒 الخصوصية
-كل بياناتك في قاعدة SQLite على خادمك أنت. لا تُرسَل إلا استعلامات البحث (لمحرك البحث)
-والنصوص المطلوب تحليلها أو الرد عليها (إلى OpenRouter)، ورسائل واتساب (عبر Meta Cloud API).
+The Streamlit dashboard now includes an Oracle Control Center that shows workflow
+execution metadata, specialist/provider assignments, configured quality tiers,
+and the owner-scoped Knowledge Graph. It supports explicitly adding entities and
+directed relationships, searching the saved graph context, and running Deep
+Research directly from the dashboard. Workflow history remains digest-only;
+Knowledge Graph records are explicitly user-entered (the system does not silently
+infer or save relationships from private conversations).

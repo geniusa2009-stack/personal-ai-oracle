@@ -1,24 +1,60 @@
-# render.yaml — مخطط نشر Render (Blueprint) — متوافق مع الباقة المجانية
-# ارفع المشروع على GitHub ثم: Render Dashboard > New > Blueprint واختر المستودع.
-# املأ قيم OPENROUTER_API_KEY (و TAVILY_API_KEY اختيارياً) من لوحة Render.
+envVarGroups:
+  - name: oracle-control-shared
+    envVars:
+      - key: ORACLE_CLOUD_CONTROL_TOKEN
+        generateValue: true
 
 services:
-  # خدمة الويب (واجهة Streamlit + جدولة داخلية للرادار)
   - type: web
-    name: personal-ai-oracle
+    name: personal-ai-oracle-control
     runtime: docker
-    plan: free            # الخطة المجانية تنام عند الخمول → الجدولة الداخلية تتوقف مؤقتاً
-    healthCheckPath: /_stcore/health
+    plan: starter
+    dockerfilePath: ./Dockerfile.cloud-api
+    dockerContext: .
+    healthCheckPath: /healthz
+    disk:
+      name: oracle-control-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
+      - fromGroup: oracle-control-shared
+      - key: ORACLE_CLOUD_DB_PATH
+        value: /var/data/control.db
+      - key: ORACLE_CLOUD_ENROLLMENT_TOKEN
+        generateValue: true
+      - key: ORACLE_CLOUD_RESULT_RETENTION_HOURS
+        value: "24"
+      - key: ORACLE_CLOUD_JOB_RETENTION_DAYS
+        value: "7"
+
+  - type: web
+    name: personal-ai-oracle-web
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.cloud-web
+    dockerContext: .
+    healthCheckPath: /_stcore/health
+    disk:
+      name: oracle-web-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - fromGroup: oracle-control-shared
+      - key: ORACLE_RUNTIME_MODE
+        value: cloud
+      - key: ORACLE_DB_PATH
+        value: /var/data/oracle.db
+      - key: ORACLE_CLOUD_API_URL
+        sync: false
+      - key: ORACLE_CLOUD_DASHBOARD_PASSWORD
+        sync: false
+      - key: ORACLE_DEFAULT_PROVIDER
+        value: openrouter
       - key: OPENROUTER_API_KEY
-        sync: false        # تُدخَل يدوياً (سرّية)
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: TAVILY_API_KEY
         sync: false
-      - key: OPENROUTER_MODEL
-        value: deepseek/deepseek-chat
-      - key: SCAN_INTERVAL_HOURS
-        value: "12"
-      - key: ENABLE_RADAR
-        value: "1"
-      - key: ORACLE_DB_PATH
-        value: /data/oracle.db   # ملاحظة: على المجانية البيانات مؤقتة (تُمسح عند إعادة النشر)

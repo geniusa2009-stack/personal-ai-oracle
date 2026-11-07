@@ -7,15 +7,11 @@ a custom filter/search engine + an Egyptian-dialect answer generator.
 والإجابة النهائية تنصح دائماً بمراجعة الموقع الرسمي وتستعين بالبحث الحيّ للمواعيد الحالية.
 """
 
-import os
 import re
-import json
 
-import requests
-
+import ai_core
 from search import web_search
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # --------------------------------------------------------------------------
 # قاعدة المعرفة الأولية (مصادر رسمية معروفة — راجع الموقع لكل تحديث)
@@ -209,25 +205,18 @@ def format_scholarship(s: dict) -> str:
 # توليد الإجابة (بالعامية المصرية) + بحث حيّ اختياري
 # --------------------------------------------------------------------------
 def _llm(prompt: str, system: str) -> str:
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    if not key:
+    """Generate the final scholarship answer through the shared AI pipeline."""
+    if not ai_core.has_key():
         return ""
-    try:
-        r = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            data=json.dumps({
-                "model": model, "temperature": 0.6,
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": prompt}],
-            }),
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception:
+    answer = ai_core.chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+        temperature=0.6,
+        task_type="research",
+        agent_role="researcher",
+    )
+    if not answer or answer.startswith(("⚠️", "(تعذّر")):
         return ""
+    return answer
 
 
 def answer_scholarship_query(text: str, use_web: bool = True) -> str:

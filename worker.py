@@ -1,9 +1,8 @@
 """
 worker.py — العملية الخلفية المستقلة (24/7)
-Standalone background worker that runs the Opportunity Radar on a fixed interval.
+Standalone background worker that runs the Opportunity Radar on the owner's MacBook.
 
-استخدمه كـ Background Worker على Render أو خدمة منفصلة على Railway لضمان
-عمل البحث التلقائي على مدار الساعة حتى لو لم يفتح أحد التطبيق.
+يتم تشغيله محلياً بواسطة local_runtime.py وLaunchAgent.
 
 التشغيل:  python worker.py
 يعتمد على متغيّرات البيئة:
@@ -14,6 +13,9 @@ import os
 import time
 import traceback
 from datetime import datetime
+
+from local_config import load_local_environment
+load_local_environment()
 
 import db
 import database

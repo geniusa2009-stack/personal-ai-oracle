@@ -1,14 +1,9 @@
 """
-🔮 الوكيل الذكي الشخصي والمحلل الاستراتيجي — نسخة سحابية
-Personal AI Agent & Strategic Analyst — Cloud edition
+Personal AI Oracle — Local Mac edition.
 
-- تحليل عميق متدفّق (Streaming) عبر OpenRouter (DeepSeek-V3 / GPT-4o).
-- رادار فرص يعمل في الخلفية تلقائياً (كورسات / وظائف / منح).
-- جاهز للنشر على Render / Railway عبر Docker.
-
-التشغيل محلياً:  streamlit run app.py
-المفاتيح تُقرأ من القائمة الجانبية أو من متغيّرات البيئة (الأفضل على السحابة):
-  OPENROUTER_API_KEY, TAVILY_API_KEY (اختياري), SCAN_INTERVAL_HOURS, OPENROUTER_MODEL
+The dashboard runs on the owner's MacBook and binds to localhost only.
+The local runtime and LaunchAgent keep the UI and background worker alive.
+AI requests can use hosted providers or models served locally by Ollama.
 """
 
 import os
@@ -16,8 +11,10 @@ import re
 import json
 from datetime import datetime, timedelta
 
-import requests
 import streamlit as st
+
+from local_config import load_local_environment
+load_local_environment()
 
 import db
 import database
@@ -27,21 +24,77 @@ import whatsapp_agent
 import hyper_scheduler
 import content_factory
 import ai_core
+import memory
+import agent_orchestrator
+import agent_profiles
 import income_hunter
 import discipline_oracle
 import advanced_scholarship
 import feature_hub  # يجمّع features + advanced_module + wealth_empire
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-MODELS = {
-    "🧠 DeepSeek-V3 (العقل المفكّر العميق)": "deepseek/deepseek-chat",
-    "⚡ GPT-4o (سريع وذكي)": "openai/gpt-4o",
-    "🔬 DeepSeek-R1 (تفكير منطقي متسلسل)": "deepseek/deepseek-r1",
+PROVIDER_LABELS = {
+    "openrouter": "OpenRouter",
+    "openai": "OpenAI",
+    "gemini": "Google Gemini",
+    "ollama": "Ollama (local Mac models)",
+}
+PROVIDER_KEY_ENV = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
 }
 
 st.set_page_config(page_title="الوكيل الذكي الشخصي", page_icon="🔮",
                    layout="wide", initial_sidebar_state="expanded")
+
+# Cloud mode is private: authenticate before rendering any personal data.
+if os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud":
+    import secrets as _secrets
+    _dashboard_password = os.environ.get("ORACLE_CLOUD_DASHBOARD_PASSWORD", "")
+    if len(_dashboard_password) < 16:
+        st.error("Cloud dashboard is not configured with a strong dashboard password.")
+        st.stop()
+    if not st.session_state.get("oracle_cloud_authenticated", False):
+        st.title("Personal AI Oracle")
+        st.caption("Private cloud workspace")
+        with st.form("oracle_cloud_login"):
+            _entered_password = st.text_input("Dashboard password", type="password")
+            _submitted = st.form_submit_button("Sign in")
+        if _submitted:
+            if _secrets.compare_digest(_entered_password, _dashboard_password):
+                st.session_state["oracle_cloud_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+    if st.sidebar.button("Sign out"):
+        st.session_state.pop("oracle_cloud_authenticated", None)
+        st.rerun()
+    st.sidebar.divider()
+    st.sidebar.caption("Hybrid connection · Cloud + Mac")
+    try:
+        import cloud_client
+        _oracle_devices = cloud_client.list_devices()
+        if not _oracle_devices:
+            st.sidebar.warning("No Mac agent paired yet.")
+        for _device in _oracle_devices:
+            _label = str(_device.get("name") or "Mac agent")
+            if _device.get("online"):
+                st.sidebar.success(f"{_label} · online")
+            elif _device.get("disabled"):
+                st.sidebar.error(f"{_label} · disabled")
+            else:
+                st.sidebar.warning(f"{_label} · offline")
+    except Exception:
+        st.sidebar.caption("Mac connection status is temporarily unavailable.")
+
+# Local mode remains private to 127.0.0.1; cloud mode uses the authenticated dashboard.
+
+def render_report(content):
+    """Render untrusted model/data output as Markdown, never raw HTML."""
+    with st.container(border=True):
+        st.markdown(str(content))
+
 
 # ---------------------------------------------------------------------------
 # تهيئة قاعدة البيانات + تشغيل المجدول الخلفي مرة واحدة لكل عملية
@@ -69,9 +122,13 @@ def start_background_scheduler():
 
 
 # يُفعّل تلقائياً فقط لو كان مفتاح البحث/التحليل متاحاً في البيئة (وضع السحابة)
-AUTO_RADAR = bool(os.environ.get("OPENROUTER_API_KEY") or os.environ.get("TAVILY_API_KEY")
-                  or os.environ.get("ENABLE_RADAR"))
-if AUTO_RADAR:
+AUTO_RADAR = bool(
+    os.environ.get("ENABLE_RADAR")
+    or os.environ.get("OPENROUTER_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("GEMINI_API_KEY")
+)
+if AUTO_RADAR and not os.environ.get("ORACLE_EXTERNAL_WORKER"):
     start_background_scheduler()
 
 # ---------------------------------------------------------------------------
@@ -109,52 +166,46 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # OpenRouter — البث الفوري + استخراج الكلمات المفتاحية
 # ---------------------------------------------------------------------------
-def _headers(api_key):
-    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:8501", "X-Title": "Personal AI Oracle"}
+def stream_openrouter(api_key, model, prompt, provider_name=None):
+    """Compatibility wrapper for selected multi-provider streaming."""
+    yield from ai_core.stream(
+        [{"role": "user", "content": prompt}],
+        temperature=0.8,
+        task_type="reasoning",
+        requested_model=model,
+        provider_name=provider_name,
+        api_key=api_key,
+        agent_role="assistant",
+    )
 
 
-def stream_openrouter(api_key, model, prompt):
-    payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-               "stream": True, "temperature": 0.8}
-    with requests.post(OPENROUTER_URL, headers=_headers(api_key),
-                       data=json.dumps(payload), stream=True, timeout=180) as resp:
-        resp.raise_for_status()
-        for raw in resp.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            chunk = line[6:].strip()
-            if chunk == "[DONE]":
-                break
-            try:
-                delta = json.loads(chunk)["choices"][0]["delta"].get("content")
-                if delta:
-                    yield delta
-            except Exception:
-                continue
-
-
-def extract_keywords(api_key, model, text):
-    """يستخرج كلمات مفتاحية يستخدمها الرادار للبحث عن الفرص."""
+def extract_keywords(api_key, model, text, provider_name=None):
+    """Extract radar keywords through the shared router with validated JSON output."""
+    prompt = (
+        "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
+        "مجالات يبحث فيها صاحبه عن فرص. أعد JSON فقط بهذا الشكل: "
+        '{"keywords":["..."]}.\n\nالنص:\n' + text
+    )
     try:
-        payload = {"model": model, "temperature": 0.2,
-                   "response_format": {"type": "json_object"},
-                   "messages": [{"role": "user", "content":
-                       "استخرج من النص التالي حتى 6 كلمات مفتاحية تمثّل مهارات/اهتمامات/"
-                       "مجالات يبحث فيها صاحبه عن فرص. أعد JSON فقط: "
-                       '{"keywords":["..."]}.\n\nالنص:\n' + text}]}
-        r = requests.post(OPENROUTER_URL, headers=_headers(api_key),
-                          data=json.dumps(payload), timeout=60)
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        data = json.loads(match.group(0) if match else content)
-        kws = data.get("keywords", [])
-        return [str(k).strip() for k in kws if str(k).strip()][:6]
-    except Exception:
+        content = ai_core.chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.2,
+            task_type="research",
+            requested_model=model,
+            provider_name=provider_name,
+            api_key=api_key,
+            response_format={"type": "json_object"},
+            agent_role="researcher",
+        )
+        if not content or content.startswith(("⚠️", "(تعذّر")):
+            return []
+        data = json.loads(content)
+        keywords = data.get("keywords", [])
+        if not isinstance(keywords, list):
+            return []
+        return [str(keyword).strip() for keyword in keywords
+                if isinstance(keyword, str) and keyword.strip()][:6]
+    except (TypeError, ValueError, KeyError):
         return []
 
 
@@ -184,16 +235,59 @@ def build_prompt(user_log):
 # القائمة الجانبية
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### 🔮 لوحة التحكم")
-    env_key = os.environ.get("OPENROUTER_API_KEY", "")
-    api_key = st.text_input("🔑 مفتاح OpenRouter API:", type="password", value=env_key)
-    if api_key:
-        st.success("تم تحميل المفتاح ✅")
-    else:
-        st.warning("🔑 أدخل مفتاح الـ API لتشغيل التحليل.")
+    st.markdown("### 🔮 Oracle — Local Mac")
+    st.caption("يعمل محلياً تحت حساب macOS الحالي، وليس موقعاً عاماً.")
+    st.divider()
 
-    model_name = st.selectbox("🧠 النموذج الذكي:", list(MODELS.keys()))
-    model = MODELS[model_name]
+    provider_options = ai_core.available_providers() or ["openrouter", "ollama"]
+    current_provider = ai_core.default_provider_name()
+    provider_name = st.selectbox(
+        "مزود الذكاء الاصطناعي",
+        provider_options,
+        index=provider_options.index(current_provider) if current_provider in provider_options else 0,
+        format_func=lambda value: PROVIDER_LABELS.get(value, value),
+    )
+    key_env = PROVIDER_KEY_ENV.get(provider_name)
+    api_key = None
+    if key_env:
+        default_api_key = os.environ.get(key_env, "")
+        if provider_name == "gemini":
+            default_api_key = default_api_key or os.environ.get("GOOGLE_API_KEY", "")
+        api_key = st.text_input(
+            f"مفتاح {PROVIDER_LABELS.get(provider_name, provider_name)}",
+            type="password",
+            value=default_api_key,
+        )
+        if api_key:
+            os.environ[key_env] = api_key
+    model = st.text_input(
+        "اسم الموديل",
+        value=ai_core.default_model_name(provider_name),
+        help="اكتب اسم موديل المزوّد كما يظهر في حسابك أو في Ollama المحلي.",
+    )
+    os.environ["ORACLE_DEFAULT_PROVIDER"] = provider_name
+    if model.strip():
+        os.environ["ORACLE_DEFAULT_MODEL"] = model.strip()
+    else:
+        os.environ.pop("ORACLE_DEFAULT_MODEL", None)
+
+    if provider_name == "ollama":
+        st.info("موديلات Ollama محلية؛ يجب تشغيل Ollama وتثبيت الموديل المختار.")
+    elif ai_core.has_key(provider_name):
+        st.success("بيانات المزوّد موجودة ✅")
+    else:
+        st.warning("أضف مفتاح المزوّد في إعدادات Oracle المحلية.")
+
+    with st.expander("🧠 نماذج الوكلاء المتخصصين"):
+        st.dataframe(
+            [{
+                "Agent": item["role"],
+                "Provider": item["provider"],
+                "Model": item["model"] or "استخدم موديل المهمة الافتراضي",
+            } for item in agent_profiles.profile_catalog()],
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.divider()
     last_scan = db.get_setting("last_scan", "—")
@@ -214,10 +308,10 @@ st.markdown(
 )
 
 (tab_analyze, tab_sched, tab_factory, tab_chat, tab_radar, tab_scholar,
- tab_wa, tab_income, tab_hub, tab_disc, tab_settings) = st.tabs(
+ tab_wa, tab_income, tab_hub, tab_disc, tab_settings, tab_oracle) = st.tabs(
     ["✍️ التحليل العميق", "🗓️ المخطط الصارم", "🏭 مصنع المحتوى", "💬 الشات المرن",
      "🕵️ رادار الفرص", "🎓 خبير المنح", "📲 واتساب", "💸 ماكينة الدخل",
-     "🧠 مركز الميزات", "🧭 محراب الانضباط", "⚙️ الإعدادات"]
+     "🧠 مركز الميزات", "🧭 محراب الانضباط", "⚙️ الإعدادات", "🔮 Oracle Control Center"]
 )
 
 # ====================== تبويب التحليل ======================
@@ -233,28 +327,24 @@ with tab_analyze:
     with col2:
         st.markdown("### 📊 لوحة التحليل الاستراتيجي")
         if analyze_button:
-            if not api_key:
-                st.error("ضع مفتاح الـ API أولاً في القائمة الجانبية.")
+            if not ai_core.has_key(provider_name):
+                st.error("اضبط مزود الذكاء الاصطناعي في القائمة الجانبية.")
             elif not user_log.strip():
                 st.warning("اكتب بعض الأفكار أولاً.")
             else:
-                st.markdown('<div class="report-card">', unsafe_allow_html=True)
                 try:
-                    with st.spinner("⚡ يتم تشغيل العقول التحليلية وقراءة ما بين السطور…"):
-                        result = st.write_stream(
-                            stream_openrouter(api_key, model, build_prompt(user_log)))
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    with st.container(border=True):
+                        with st.spinner("⚡ يتم تشغيل العقول التحليلية وقراءة ما بين السطور…"):
+                            result = st.write_stream(
+                                stream_openrouter(api_key, model, build_prompt(user_log), provider_name)
+                            )
                     # حفظ اليومية + كلماتها لتغذية الرادار
-                    kws = extract_keywords(api_key, model, user_log)
+                    kws = extract_keywords(api_key, model, user_log, provider_name)
                     db.save_entry(user_log, kws)
                     if kws:
                         st.caption("🧠 كلمات أُضيفت لرادارك: " + "، ".join(kws))
                     st.toast("🎯 تم التحليل وتغذية الرادار بنجاح!", icon="✅")
-                except requests.exceptions.HTTPError as e:
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    st.error(f"خطأ من الخادم: تأكد من المفتاح والرصيد. {e}")
                 except Exception as e:
-                    st.markdown("</div>", unsafe_allow_html=True)
                     st.error(f"حدث خطأ أثناء الاتصال: {e}")
         else:
             st.markdown('<div class="report-card">اكتب على اليمين واضغط زر التحليل… '
@@ -268,9 +358,7 @@ with tab_radar:
     with top[0]:
         if st.button("🔄 شغّل مسحاً الآن", use_container_width=True):
             with st.spinner("🔎 يتم البحث في الإنترنت عن أحدث الفرص…"):
-                # على السحابة المفتاح في البيئة؛ محلياً نمرّره مؤقتاً
-                if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-                    os.environ["OPENROUTER_API_KEY"] = api_key
+                _ensure_env_key()
                 res = radar.run_opportunity_scan()
             if res["status"] == "no_keywords":
                 st.warning("لا توجد كلمات مفتاحية بعد — اكتب يومية أو أضف اهتماماتك في الإعدادات.")
@@ -289,21 +377,21 @@ with tab_radar:
         for o in opps:
             label = radar.CATEGORY_LABELS_AR.get(o["category"], o["category"])
             summary = o.get("summary") or o.get("snippet") or ""
-            st.markdown(
-                f'''<div class="opp-card">
-                    <span class="score">{o["score"]}%</span>
-                    <a href="{o["url"]}" target="_blank">🔗 {o["title"] or o["url"]}</a>
-                    <div style="color:#6b7280;font-size:13px;margin:4px 0;">
-                        {label} · {o["keyword"]} · {o["source"]}</div>
-                    <div style="color:#374151;font-size:14px;">{summary}</div>
-                </div>''',
-                unsafe_allow_html=True,
-            )
+            with st.container(border=True):
+                st.markdown(f"**{o['score']}% · {o['title'] or o['url']}**")
+                st.caption(f"{label} · {o['keyword']} · {o['source']}")
+                if o.get("url"):
+                    st.write(o["url"])
+                if summary:
+                    st.write(summary)
 
 def _ensure_env_key():
-    """يضمن توفّر المفتاح في البيئة للموديولات الخلفية أثناء الاستخدام المحلي."""
-    if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-        os.environ["OPENROUTER_API_KEY"] = api_key
+    """Keep the selected model profile available to all feature modules in this local process."""
+    os.environ["ORACLE_DEFAULT_PROVIDER"] = provider_name
+    if model.strip():
+        os.environ["ORACLE_DEFAULT_MODEL"] = model.strip()
+    if api_key and key_env:
+        os.environ[key_env] = api_key
 
 
 # ====================== تبويب خبير المنح ======================
@@ -319,7 +407,7 @@ with tab_scholar:
             _ensure_env_key()
             with st.spinner("بدوّر على أنسب المنح ليك…"):
                 ans = scholarship_expert.answer_scholarship_query(sc_q, use_web=True)
-            st.markdown(f'<div class="report-card">{ans}</div>', unsafe_allow_html=True)
+            render_report(ans)
             st.caption("📌 المواعيد تقريبية وبتتغيّر سنوياً — راجع الموقع الرسمي لكل منحة.")
 
     with st.expander("📚 تصفّح قاعدة المنح المدمجة"):
@@ -329,8 +417,7 @@ with tab_scholar:
                                               "Japan", "Australia", "Egypt", "Multiple"])
         for s in scholarship_expert.search_scholarships(level=f_level or None,
                                                         country=f_country or None, limit=20):
-            st.markdown(f'<div class="opp-card">{scholarship_expert.format_scholarship(s)}</div>',
-                        unsafe_allow_html=True)
+            render_report(scholarship_expert.format_scholarship(s))
 
     # ----- الأدوات الأكاديمية المطوّرة -----
     st.divider()
@@ -349,7 +436,7 @@ with tab_scholar:
                 _ensure_env_key()
                 with st.spinner("براجع وأطوّر…"):
                     out = advanced_scholarship.optimize_personal_statement(ps, prog, TIERS[tier_l])
-                st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+                render_report(out)
                 st.caption("📌 بنرفع الجودة والفرص — القبول بيعتمد على عوامل كتير، مفيش ضمان نتيجة.")
     with st.expander("📄 محسّن السيرة الذاتية (CV / ATS)"):
         role = st.text_input("الوظيفة/البرنامج المستهدف", key="cv_role")
@@ -361,7 +448,7 @@ with tab_scholar:
                 _ensure_env_key()
                 with st.spinner("بحسّن…"):
                     out = advanced_scholarship.optimize_cv(cv, role)
-                st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+                render_report(out)
     with st.expander("🎤 محاكي المقابلات الشرس (Apex Interview)"):
         if "apex_hist" not in st.session_state:
             st.session_state.apex_hist = ""
@@ -372,7 +459,7 @@ with tab_scholar:
             with st.spinner("المفتّش بيجهّز…"):
                 q = advanced_scholarship.start_apex_interview(sch)
             st.session_state.apex_hist = "مفتّش: " + q
-            st.markdown(f'<div class="report-card">{q}</div>', unsafe_allow_html=True)
+            render_report(q)
         ans = st.text_area("إجابتك على آخر سؤال", height=110, key="apex_ans")
         if cews[1].button("📨 سلّم الإجابة", key="apex_send"):
             if not ans.strip():
@@ -382,7 +469,7 @@ with tab_scholar:
                 with st.spinner("بيقيّم بصرامة…"):
                     fb = advanced_scholarship.apex_interview_turn(sch, st.session_state.apex_hist, ans)
                 st.session_state.apex_hist += f"\nأنا: {ans}\nمفتّش: {fb}"
-                st.markdown(f'<div class="report-card">{fb}</div>', unsafe_allow_html=True)
+                render_report(fb)
 
     # ----- لوحة المنح المكتشفة تلقائياً (Dashboard) -----
     st.divider()
@@ -427,7 +514,7 @@ with tab_wa:
             _ensure_env_key()
             with st.spinner("بكتب رد بالعامية…"):
                 preview = whatsapp_agent.generate_reply(test_msg, {"relationship": test_rel, "name": ""})
-            st.markdown(f'<div class="opp-card">{preview}</div>', unsafe_allow_html=True)
+            render_report(preview)
 
     st.divider()
     st.markdown("#### 📝 المسودّات بانتظار موافقتك")
@@ -495,9 +582,7 @@ with tab_sched:
     sleep = sc3.text_input("ميعاد النوم", value="00:00")
 
     if st.button("🚀 ابنِ جدول اليوم", use_container_width=True):
-        _ensure_env_key() if False else None  # المخطط يعمل بدون مفتاح (افتراضي ذكي)
-        if api_key and not os.environ.get("OPENROUTER_API_KEY"):
-            os.environ["OPENROUTER_API_KEY"] = api_key
+        _ensure_env_key()
         goals = [g.strip() for g in goals_txt.splitlines() if g.strip()]
         conn = db.get_conn()
         rows = conn.execute("SELECT text FROM entries ORDER BY id DESC LIMIT 8").fetchall()
@@ -531,15 +616,14 @@ with tab_factory:
     fc_topic = st.text_area("الفكرة / الموضوع",
                             placeholder="اكتب الفكرة اللي عايز تعمل حواليها محتوى…", height=120)
     if st.button("✨ ولّد المحتوى بأسلوبي", use_container_width=True):
-        if not api_key:
+        if not ai_core.has_key(provider_name):
             st.error("ضع مفتاح الـ API أولاً.")
         elif not fc_topic.strip():
             st.warning("اكتب الفكرة أولاً.")
         else:
             _ensure_env_key()
-            st.markdown('<div class="report-card">', unsafe_allow_html=True)
-            out = st.write_stream(content_factory.stream_content(fc_type, fc_topic))
-            st.markdown("</div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                out = st.write_stream(content_factory.stream_content(fc_type, fc_topic))
             if out and not out.startswith("⚠️"):
                 database.save_content(fc_type, fc_topic, out)
                 st.download_button("⬇️ تحميل", out,
@@ -550,10 +634,9 @@ with tab_factory:
     if saved:
         with st.expander(f"🗂️ أرشيف المحتوى ({len(saved)})"):
             for c in saved:
-                st.markdown(f"**{c['content_type']} — {c['topic']}**  \n"
-                            f"<span style='color:#6b7280;font-size:12px'>{c['created_at']}</span>",
-                            unsafe_allow_html=True)
-                st.markdown(f'<div class="opp-card">{c["body"]}</div>', unsafe_allow_html=True)
+                st.markdown(f"**{c['content_type']} — {c['topic']}**")
+                st.caption(c["created_at"])
+                render_report(c["body"])
 
 # ====================== تبويب مركز الميزات الموحّد ======================
 with tab_hub:
@@ -587,9 +670,9 @@ with tab_hub:
         _ensure_env_key()
         with st.spinner("بشتغل…"):
             res = group["run"](fid, hub_in)
-        st.markdown(f'<div class="report-card"><b>{res["name"]}</b> '
-                    f'({badge.get(res["status"], res["status"])})<br><br>'
-                    f'{res["result"]}</div>', unsafe_allow_html=True)
+        render_report(
+            f"**{res['name']}** ({badge.get(res['status'], res['status'])})\n\n{res['result']}"
+        )
 
     with st.expander(f"📜 كل ميزات «{g_label}»"):
         for s in secs:
@@ -659,8 +742,16 @@ with tab_chat:
                   "مدرّب محفّز": "coach", "صارم وحاسم": "strict"}
     mode_label = st.radio("نبرة المساعد", list(CHAT_MODES.keys()), horizontal=True)
     chat_mode = CHAT_MODES[mode_label]
+    agent_mode = st.toggle(
+        "🤖 وضع الوكيل المحلي — صلاحيات حساب Mac الحالي",
+        value=True,
+        help="يستطيع استخدام أدوات Oracle وقراءة/كتابة الملفات وتشغيل البرامج والأوامر بصلاحيات حساب macOS الحالي. لا يتجاوز موافقات macOS أو صلاحيات root."
+    )
     if "chat_msgs" not in st.session_state:
         st.session_state.chat_msgs = []
+    # Bound conversation context to 12 recent turns to control latency and token cost.
+    st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
+    memory_scope = (os.environ.get("ORACLE_MEMORY_SCOPE") or "user:oracle-owner").strip()
     cc = st.columns([1, 5])
     if cc[0].button("🧹 مسح الشات"):
         st.session_state.chat_msgs = []
@@ -669,18 +760,104 @@ with tab_chat:
             st.markdown(m["content"])
     prompt = st.chat_input("اكتب رسالتك…")
     if prompt:
-        if not api_key:
+        if not ai_core.has_key(provider_name):
             st.error("ضع مفتاح الـ API أولاً في القائمة الجانبية.")
         else:
             _ensure_env_key()
             st.session_state.chat_msgs.append({"role": "user", "content": prompt})
+            st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
             with st.chat_message("user"):
                 st.markdown(prompt)
-            msgs = [{"role": "system", "content": ai_core.system_prompt(chat_mode)}] \
-                + st.session_state.chat_msgs
             with st.chat_message("assistant"):
-                out = st.write_stream(ai_core.stream(msgs))
+                if agent_mode:
+                    try:
+                        with st.spinner("🤖 Oracle بيخطط وينفّذ على جهازك المحلي…"):
+                            agent_result = agent_orchestrator.run(
+                                prompt,
+                                memory_scope=memory_scope,
+                                max_steps=None,
+                            )
+                        out = agent_result["answer"]
+                        st.markdown(out)
+                        if agent_result.get("steps"):
+                            with st.expander("🔎 تفاصيل خطوات الوكيل"):
+                                for index, step in enumerate(agent_result["steps"], start=1):
+                                    st.markdown(
+                                        f"**{index}. {step['name']}** — {step['status']}"
+                                    )
+                                    st.caption(f"المدخل: {step['input'][:300]}")
+                                    st.write(step["result"][:1200])
+                        elif agent_result.get("clarifying_question"):
+                            st.info(agent_result["clarifying_question"])
+                    except agent_orchestrator.AgentError as exc:
+                        out = f"تعذّر تنفيذ وضع الوكيل: {exc}"
+                        st.warning(out)
+                    except Exception as exc:
+                        out = f"حدث خطأ غير متوقع في الوكيل: {type(exc).__name__}"
+                        st.error(out)
+                else:
+                    msgs = [{"role": "system", "content": ai_core.system_prompt(chat_mode)}] \
+                        + st.session_state.chat_msgs
+                    out = st.write_stream(
+                        ai_core.stream(msgs, memory_scope=memory_scope)
+                    )
             st.session_state.chat_msgs.append({"role": "assistant", "content": out})
+            st.session_state.chat_msgs = st.session_state.chat_msgs[-24:]
+
+    with st.expander("🧠 الذاكرة الشخصية — أنت تتحكم فيما يُحفظ", expanded=False):
+        st.caption("الذكريات المحفوظة صراحةً فقط تدخل في سياق المحادثة. لا تُحفظ رسائلك تلقائياً.")
+        with st.form("oracle_memory_write", clear_on_submit=True):
+            memory_content = st.text_area(
+                "معلومة أو تفضيل أو هدف تريد من Oracle تذكّره",
+                max_chars=4000,
+            )
+            memory_type_label = st.selectbox(
+                "نوع الذاكرة", ["حقيقة", "تفضيل", "هدف"]
+            )
+            memory_saved = st.form_submit_button("💾 احفظ في ذاكرتي")
+        if memory_saved:
+            type_map = {"حقيقة": "fact", "تفضيل": "preference", "هدف": "goal"}
+            try:
+                record = memory.write_memory(
+                    memory_content,
+                    type_map[memory_type_label],
+                    memory_scope,
+                    "manual",
+                )
+                st.success(f"اتحفظت الذاكرة رقم {record.id}.")
+                st.rerun()
+            except memory.MemoryValidationError as exc:
+                st.error(str(exc))
+
+        saved_memories = memory.list_memories(memory_scope, limit=50)
+        if saved_memories:
+            st.dataframe(
+                [{
+                    "ID": item.id,
+                    "النوع": {"fact": "حقيقة", "preference": "تفضيل", "goal": "هدف"}.get(item.memory_type, item.memory_type),
+                    "المحتوى": item.content,
+                    "المصدر": item.source,
+                    "التاريخ": item.created_at,
+                } for item in saved_memories],
+                use_container_width=True,
+                hide_index=True,
+            )
+            memory_labels = {
+                item.id: f"#{item.id} — {item.content[:70]}"
+                for item in saved_memories
+            }
+            selected_memory = st.selectbox(
+                "اختر ذاكرة لحذفها",
+                options=list(memory_labels),
+                format_func=lambda item_id: memory_labels[item_id],
+                key="oracle_memory_delete_id",
+            )
+            if st.button("🗑️ احذف الذاكرة المختارة", key="oracle_memory_delete"):
+                memory.delete_memory(selected_memory, memory_scope)
+                st.success("تم حذف الذاكرة.")
+                st.rerun()
+        else:
+            st.caption("لسه مفيش ذكريات محفوظة.")
 
 # ====================== تبويب ماكينة الدخل ======================
 with tab_income:
@@ -715,7 +892,7 @@ with tab_income:
             else:
                 with st.spinner("بكتب عرض يكسب…"):
                     p = income_hunter.tailor_proposal(proj, skills, rate, curr)
-                st.markdown(f'<div class="report-card">{p}</div>', unsafe_allow_html=True)
+                render_report(p)
         props = database.list_proposals(20)
         if props:
             with st.expander(f"📂 العروض المحفوظة ({len(props)})"):
@@ -755,7 +932,7 @@ with tab_income:
         if st.button("📝 اكتب مراجعة بالعامية"):
             with st.spinner("بكتب…"):
                 rev = income_hunter.write_review(prod or "منتج", link or "")
-            st.markdown(f'<div class="report-card">{rev}</div>', unsafe_allow_html=True)
+            render_report(rev)
 
     elif eng == "📝 مقالات SEO + نشر ووردبريس":
         kw = st.text_input("الكلمة المفتاحية", placeholder="منح ممولة بالكامل 2026")
@@ -768,7 +945,7 @@ with tab_income:
         if art:
             st.text_input("العنوان", art["title"], key="seo_title")
             st.caption("Meta: " + (art["meta"] or "—"))
-            st.markdown(f'<div class="report-card">{art["content"]}</div>', unsafe_allow_html=True)
+            render_report(art["content"])
             pubcol = st.columns([1, 1])
             pstatus = pubcol[0].selectbox("حالة النشر", ["draft", "publish"])
             if pubcol[1].button("🚀 انشر على ووردبريس"):
@@ -787,7 +964,7 @@ with tab_income:
             pc[0].metric("توقّع الشهر", pred["projected_month"])
             pc[1].metric("آخر 30 يوم", pred["last_30_days"])
             st.info(f"🏆 المجال الأنسب حالياً: **{pred['best_channel']}**")
-            st.markdown(f'<div class="report-card">{pred["advice"]}</div>', unsafe_allow_html=True)
+            render_report(pred["advice"])
         with st.expander("➕ سجّل بيع/إعلان يدوياً (للتجربة)"):
             mc = st.columns(4)
             kind = mc[0].selectbox("النوع", ["بيع منتج", "إعلان"])
@@ -817,7 +994,7 @@ with tab_disc:
         if st.button("⚖️ استدعِ المجلس", use_container_width=True):
             with st.spinner("المجلس بيتشاور…"):
                 out = discipline_oracle.compile_masters_council(sit)
-            st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+            render_report(out)
 
     elif tool == "🗺️ خريطة المستقبل (4 مستويات)":
         g = st.text_input("هدفك الأكبر", placeholder="أبقى مهندس AI وأبني دخل سحابي")
@@ -825,7 +1002,7 @@ with tab_disc:
         if st.button("🧱 ابنِ الخريطة", use_container_width=True):
             with st.spinner("ببني خريطة 10 سنين → اليوم…"):
                 res = discipline_oracle.generate_hyper_realistic_roadmap(g, sk)
-            st.markdown(f'<div class="report-card">{res["text"]}</div>', unsafe_allow_html=True)
+            render_report(res["text"])
         ms = database.list_milestones(limit=200)
         if ms:
             with st.expander(f"📌 المعالم المحفوظة ({len(ms)})"):
@@ -839,8 +1016,7 @@ with tab_disc:
         cc = st.columns(2)
         a = cc[0].text_input("من", "09:00"); b = cc[1].text_input("إلى", "11:00")
         if st.button("🟥 أصدر أمر النهاردة", use_container_width=True):
-            st.markdown(f'<div class="report-card">{discipline_oracle.daily_course_enforcer(courses, a, b)}</div>',
-                        unsafe_allow_html=True)
+            render_report(discipline_oracle.daily_course_enforcer(courses, a, b))
 
     elif tool == "🔒 حجب المشتتات":
         hrs = st.slider("ساعات التركيز", 1, 8, 3)
@@ -864,20 +1040,19 @@ with tab_disc:
         if st.button("🎬 اكتب سيناريو كامل", use_container_width=True):
             with st.spinner("بكتب السيناريو…"):
                 sc = discipline_oracle.youtube_trend_scout(niche or "تكنولوجيا")
-            st.markdown(f'<div class="report-card">{sc}</div>', unsafe_allow_html=True)
+            render_report(sc)
 
     elif tool == "💬 مسودّات ردود الكومنتات":
         cmnts = st.text_area("الصق الكومنتات (كومنت لكل سطر)", height=140)
         if st.button("✍️ اكتب مسودّات الردود", use_container_width=True):
-            st.markdown(f'<div class="report-card">{discipline_oracle.youtube_comment_drafts(cmnts)}</div>',
-                        unsafe_allow_html=True)
+            render_report(discipline_oracle.youtube_comment_drafts(cmnts))
 
     else:  # موجّه التركيز الصحّي
         ctx = st.text_area("إيه اللي حاسس إنه بيشتتك أو محتاج تركّز عليه؟", height=100)
         if st.button("🎯 وجّهني", use_container_width=True):
             with st.spinner("…"):
                 out = discipline_oracle.sovereign_focus_prompt(ctx)
-            st.markdown(f'<div class="report-card">{out}</div>', unsafe_allow_html=True)
+            render_report(out)
 
     st.divider()
     dm = database.list_discipline(20)
@@ -905,24 +1080,31 @@ with tab_settings:
             st.success("تم مسح الفرص.")
 
     st.divider()
-    st.markdown("#### 🔐 متغيّرات البيئة (للنشر السحابي)")
+    st.markdown("#### 🧠 إعدادات النماذج والوكلاء — محلية")
+    st.caption("احفظ المفاتيح وأسماء النماذج في ~/.personal_ai_oracle/.env. لا تضعها في Git.")
     st.code(
-        "OPENROUTER_API_KEY=...        # مطلوب للتحليل والردود وترتيب الفرص\n"
-        "TAVILY_API_KEY=...            # اختياري: بحث أكثر موثوقية على السحابة\n"
-        "SCAN_INTERVAL_HOURS=12        # كل كم ساعة يعمل الرادار\n"
-        "OPENROUTER_MODEL=deepseek/deepseek-chat\n"
-        "ORACLE_DB_PATH=/data/oracle.db   # قرص دائم على السحابة\n"
-        "\n# --- واتساب (Cloud API الرسمي) ---\n"
-        "WA_VERIFY_TOKEN=...           # رمز تحقق الويبهوك (تختاره أنت)\n"
-        "WA_ACCESS_TOKEN=...           # توكن الوصول من Meta\n"
-        "WA_PHONE_NUMBER_ID=...        # معرّف رقم الواتساب من Meta\n"
-        "WA_AUTO_REPLY=draft           # draft (مسودّة) أو send (إرسال تلقائي)",
+        "ORACLE_DEFAULT_PROVIDER=ollama\n"
+        "OLLAMA_BASE_URL=http://127.0.0.1:11434/v1\n"
+        "OLLAMA_MODEL=اسم-موديل-مثبت-في-Ollama\n"
+        "OPENROUTER_API_KEY=...\n"
+        "OPENAI_API_KEY=...\n"
+        "GEMINI_API_KEY=...\n"
+        "ORACLE_AGENT_PLANNER_PROVIDER=...\n"
+        "ORACLE_AGENT_PLANNER_MODEL=...\n"
+        "ORACLE_AGENT_RESEARCHER_PROVIDER=...\n"
+        "ORACLE_AGENT_RESEARCHER_MODEL=...\n"
+        "ORACLE_AGENT_CODER_PROVIDER=...\n"
+        "ORACLE_AGENT_CODER_MODEL=...\n"
+        "ORACLE_AGENT_REVIEWER_PROVIDER=...\n"
+        "ORACLE_AGENT_REVIEWER_MODEL=...\n"
+        "ORACLE_MAX_AGENT_STEPS=12\n"
+        "SCAN_INTERVAL_HOURS=12",
         language="bash",
     )
 
     st.divider()
     st.markdown("#### 🔐 الخزنة المشفّرة (password_vault)")
-    reveal = st.toggle("اعرض كلمات السر (محلياً فقط)", value=False)
+    reveal = st.toggle("اعرض كلمات السر (يتطلب ORACLE_VAULT_KEY)", value=False)
     vault = database.list_vault(reveal=reveal)
     if vault:
         st.dataframe([{"الاسم": v["label"], "اليوزر": v["username"],
@@ -944,3 +1126,368 @@ with tab_settings:
             st.json(wiped)
         else:
             st.error("اكتب كلمة «تأكيد» بالظبط في الخانة قبل التفعيل.")
+
+
+# ====================== Oracle Control Center ======================
+with tab_oracle:
+    import knowledge_graph
+    import workflow_ledger
+    import deep_research
+    import execution_policy
+    import model_observability
+
+    oracle_scope = (
+        os.environ.get("ORACLE_MEMORY_SCOPE")
+        or os.environ.get("ORACLE_WORKFLOW_SCOPE")
+        or "user:oracle-owner"
+    ).strip()
+    st.markdown("### 🔮 Oracle Control Center")
+    st.caption(
+        "لوحة تشغيل وذاكرة وبحث وموافقات صريحة. الإجراءات المحلية الحساسة تتوقف حتى تراجعها بنفسك."
+    )
+
+    st.divider()
+    st.markdown("#### 🛡️ صندوق موافقات التنفيذ المحلي")
+    try:
+        approval_items = execution_policy.list_approvals(oracle_scope, include_decided=True, limit=50)
+    except Exception as exc:
+        approval_items = []
+        st.error(f"تعذّر تحميل طلبات الموافقة: {type(exc).__name__}")
+
+    pending_items = [item for item in approval_items if item["status"] == "pending"]
+    approved_items = [item for item in approval_items if item["status"] == "approved"]
+    ap1, ap2 = st.columns(2)
+    ap1.metric("تحتاج موافقتك", len(pending_items))
+    ap2.metric("موافقات جاهزة للاستكمال", len(approved_items))
+    if not approval_items:
+        st.info("لا توجد إجراءات محلية معلّقة. Oracle سيطلب موافقتك قبل أول كتابة أو حذف أو أمر محلي.")
+    for item in approval_items:
+        approval_label = f"{item['tool_id']} · {item['approval_id'][:10]} · {item['status']}"
+        with st.expander(approval_label, expanded=item["status"] == "pending"):
+            st.json(item["preview"])
+            expires = datetime.fromtimestamp(item["expires_at"]).strftime("%Y-%m-%d %H:%M:%S")
+            st.caption(f"بصمة العملية: {item['action_digest'][:16]} · تنتهي: {expires}")
+            if item["status"] == "pending":
+                approve_col, deny_col = st.columns(2)
+                if approve_col.button("أوافق على العملية دي فقط", key=f"oracle_approve_{item['approval_id']}"):
+                    changed = execution_policy.decide_approval(item["approval_id"], scope=oracle_scope, approve=True)
+                    if changed:
+                        st.success("تمت الموافقة على العملية المحددة لمرة واحدة.")
+                        st.rerun()
+                    else:
+                        st.warning("انتهت صلاحية الطلب أو تم اتخاذ قرار بشأنه بالفعل.")
+                if deny_col.button("ارفض العملية", key=f"oracle_deny_{item['approval_id']}"):
+                    changed = execution_policy.decide_approval(item["approval_id"], scope=oracle_scope, approve=False)
+                    if changed:
+                        st.warning("تم رفض العملية.")
+                        st.rerun()
+                    else:
+                        st.info("الطلب لم يعد في حالة انتظار.")
+            elif item["status"] == "approved":
+                checkpoint = item.get("checkpoint_id") or ""
+                if checkpoint:
+                    if st.button("Resume — استكمال المهمة", key=f"oracle_resume_{item['approval_id']}"):
+                        try:
+                            with st.spinner("يتم استكمال المهمة من Checkpoint مشفّر…"):
+                                resumed = agent_orchestrator.resume(checkpoint, scope=oracle_scope)
+                            st.markdown(resumed.get("answer", ""))
+                            st.success("انتهى استكمال سير العمل.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"تعذّر استكمال المهمة: {type(exc).__name__}")
+                else:
+                    st.info("تمت الموافقة، لكن لا يوجد Checkpoint صالح؛ أعد إرسال المهمة من وضع Mac المحلي.")
+    st.caption(
+        "الموافقة مربوطة ببصمة SHA-256 للمدخلات الدقيقة، وتُستهلك مرة واحدة. "
+        "محتوى الملف المراد كتابته لا يظهر داخل معاينة الموافقة."
+    )
+
+    st.divider()
+    st.markdown("#### 📈 أداء النماذج والمزوّدين")
+    try:
+        model_rows = model_observability.summary(oracle_scope, limit=1000)
+        if model_rows:
+            st.dataframe(
+                [{
+                    "المزوّد": row["provider"],
+                    "النموذج": row["model"],
+                    "الطلبات": row["requests"],
+                    "نسبة النجاح": f"{row['success_rate']:.1%}",
+                    "الأخطاء": row["errors"],
+                    "P50 ms": row["p50_latency_ms"],
+                    "P95 ms": row["p95_latency_ms"],
+                } for row in model_rows],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("ستظهر إحصائيات الأداء بعد أول استدعاء لنموذج.")
+    except Exception as exc:
+        st.warning(f"تعذّر تحميل إحصائيات النماذج: {type(exc).__name__}")
+    st.caption("المقاييس لا تحتوي على نصوص الطلبات أو الردود أو محتوى الملفات.")
+
+    try:
+        graph_entities = knowledge_graph.list_entities(oracle_scope, limit=100)
+        graph_relations = knowledge_graph.list_relations(oracle_scope, limit=200)
+        workflow_runs = workflow_ledger.list_runs(oracle_scope, limit=30)
+    except Exception as exc:
+        graph_entities, graph_relations, workflow_runs = [], [], []
+        st.error(f"تعذّر تحميل بيانات مركز التحكم: {type(exc).__name__}")
+
+    routing_enabled = os.environ.get("ORACLE_AUTO_MODEL_ROUTING", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    tools_count = len(agent_orchestrator.available_tools())
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("الأدوات المتاحة", tools_count)
+    m2.metric("الوكل المتخصصون", len(agent_profiles.ROLE_DEFAULTS))
+    m3.metric("كيانات الذاكرة المعرفية", len(graph_entities))
+    m4.metric("سجلات التشغيل", len(workflow_runs))
+    st.caption(
+        f"التوجيه التلقائي للنماذج: {'مفعّل' if routing_enabled else 'متوقف'} · "
+        f"نطاق البيانات: {oracle_scope}"
+    )
+
+    st.divider()
+    st.markdown("#### 🧭 سجل تنفيذ الوكيل")
+    if workflow_runs:
+        st.dataframe(
+            [{
+                "Workflow ID": item["workflow_id"][:12],
+                "الحالة": item["status"],
+                "الخطوات القصوى": item["max_steps"],
+                "البداية": item["created_at"],
+                "آخر تحديث": item["updated_at"],
+                "رمز الخطأ": item["error_code"] or "—",
+            } for item in workflow_runs],
+            use_container_width=True,
+            hide_index=True,
+        )
+        run_ids = [item["workflow_id"] for item in workflow_runs]
+        selected_run = st.selectbox(
+            "تفاصيل تشغيل محدد",
+            run_ids,
+            format_func=lambda value: value[:12],
+            key="oracle_selected_workflow",
+        )
+        steps = workflow_ledger.list_steps(oracle_scope, selected_run)
+        if steps:
+            st.dataframe(
+                [{
+                    "الخطوة": item["step_index"] + 1,
+                    "الأداة": item["tool_id"],
+                    "الحالة": item["status"],
+                    "المدة (ms)": item["duration_ms"],
+                    "بصمة المدخل": item["input_digest"][:12],
+                    "بصمة الناتج": item["output_digest"][:12],
+                    "آخر تحديث": item["updated_at"],
+                } for item in steps],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("لا توجد خطوات مسجلة لهذا التشغيل حتى الآن.")
+    else:
+        st.info("لا توجد سجلات تشغيل بعد. أول مهمة ينفذها الوكيل ستظهر هنا.")
+    st.caption(
+        "السجل يحفظ بصمات SHA-256 وبيانات التشغيل فقط، وليس نص المهمة أو محتوى الملفات أو مخرجات الأدوات."
+    )
+
+    st.divider()
+    st.markdown("#### 🧠 Knowledge Graph — إدارة المعرفة")
+    with st.expander("إضافة كيان جديد", expanded=False):
+        with st.form("oracle_add_knowledge_entity"):
+            entity_name = st.text_input("اسم الكيان", max_chars=180)
+            entity_type = st.selectbox(
+                "نوع الكيان",
+                ["person", "project", "organization", "skill", "topic",
+                 "place", "tool", "concept", "event", "custom"],
+            )
+            entity_saved = st.form_submit_button("حفظ الكيان")
+        if entity_saved:
+            try:
+                saved_entity = knowledge_graph.add_entity(
+                    oracle_scope, entity_name, entity_type
+                )
+                st.success(f"تم حفظ «{saved_entity.name}» بالمعرّف #{saved_entity.id}.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"تعذّر حفظ الكيان: {type(exc).__name__}: {exc}")
+
+    graph_entities = knowledge_graph.list_entities(oracle_scope, limit=100)
+    if graph_entities:
+        st.dataframe(
+            [{
+                "ID": item.id,
+                "الاسم": item.name,
+                "النوع": item.entity_type,
+                "آخر تحديث": item.updated_at,
+            } for item in graph_entities],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("ابدأ بإضافة مشاريع أو أشخاص أو مؤسسات أو مهارات تريد ربطها ببعضها.")
+
+    if len(graph_entities) >= 2:
+        labels = {
+            f"#{item.id} · {item.name} ({item.entity_type})": item.id
+            for item in graph_entities
+        }
+        with st.expander("إنشاء علاقة بين كيانين", expanded=False):
+            with st.form("oracle_add_knowledge_relation"):
+                source_label = st.selectbox("من", list(labels), key="oracle_relation_source")
+                target_options = [key for key in labels if labels[key] != labels[source_label]]
+                target_label = st.selectbox("إلى", target_options, key="oracle_relation_target")
+                relation_type = st.text_input(
+                    "نوع العلاقة (مثال: works_on / uses / belongs_to)",
+                    value="related_to",
+                    max_chars=64,
+                )
+                relation_evidence = st.text_input(
+                    "دليل أو ملاحظة اختيارية",
+                    max_chars=2000,
+                )
+                relation_saved = st.form_submit_button("حفظ العلاقة")
+            if relation_saved:
+                try:
+                    created = knowledge_graph.link_entities(
+                        oracle_scope,
+                        labels[source_label],
+                        labels[target_label],
+                        relation_type,
+                        evidence=relation_evidence,
+                    )
+                    st.success("تم حفظ العلاقة." if created else "العلاقة موجودة بالفعل.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"تعذّر حفظ العلاقة: {type(exc).__name__}: {exc}")
+
+    graph_relations = knowledge_graph.list_relations(oracle_scope, limit=100)
+    if graph_relations:
+        with st.expander(f"العلاقات المحفوظة ({len(graph_relations)})"):
+            st.dataframe(
+                [{
+                    "من": item["source_name"],
+                    "العلاقة": item["relation_type"],
+                    "إلى": item["target_name"],
+                    "الدليل": item["evidence"] or "—",
+                } for item in graph_relations],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    with st.expander("استرجاع سياق من الرسم المعرفي", expanded=False):
+        graph_query = st.text_input(
+            "ابحث في العلاقات والكيانات",
+            key="oracle_graph_query",
+        )
+        if st.button("استرجاع السياق", key="oracle_graph_retrieve"):
+            if graph_query.strip():
+                graph_context = knowledge_graph.retrieve_context(
+                    oracle_scope, graph_query, max_entities=5, max_relations=12
+                )
+                if graph_context:
+                    st.code(graph_context)
+                else:
+                    st.info("لا توجد كيانات أو علاقات مطابقة في هذا النطاق.")
+
+    st.divider()
+    st.markdown("#### 🧑‍💻 خريطة النماذج والوكلاء")
+    try:
+        profile_rows = []
+        for profile in agent_profiles.profile_catalog():
+            prefix = agent_profiles.ROLE_DEFAULTS[profile["role"]][0]
+            profile_rows.append({
+                "الوكيل": profile["role"],
+                "المهمة": profile["task_type"],
+                "المزوّد الحالي": profile["provider"],
+                "الموديل": profile["model"] or "افتراضي المزوّد",
+                "الحرارة": profile["temperature"],
+                "تخصيص مباشر": bool(
+                    os.environ.get(f"{prefix}_PROVIDER")
+                    or os.environ.get(f"{prefix}_MODEL")
+                ),
+            })
+        st.dataframe(profile_rows, use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.warning(f"تعذّر عرض إعدادات الوكلاء: {type(exc).__name__}")
+
+    tier_rows = []
+    for tier in ("FAST", "BALANCED", "DEEP"):
+        tier_rows.append({
+            "المستوى": tier.lower(),
+            "المزوّد": os.environ.get(f"ORACLE_PROVIDER_TIER_{tier}") or "الافتراضي",
+            "الموديل": os.environ.get(f"ORACLE_MODEL_TIER_{tier}") or "الافتراضي",
+        })
+    st.dataframe(tier_rows, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("#### 🔬 بحث عميق متعدد المصادر")
+    st.caption(
+        "يجمع استعلامات ومصادر مستقلة، ويحاول استخراج الصفحات من متصفح Oracle المعزول، "
+        "ثم يعرض مراجع قابلة للمراجعة. في وضع السحابة يحتاج استخراج الصفحات إلى اتصال الماك."
+    )
+    with st.form("oracle_deep_research_form"):
+        research_question = st.text_area(
+            "سؤال البحث",
+            height=100,
+            max_chars=500,
+            placeholder="اكتب سؤالاً يحتاج إلى مقارنة مصادر وتحليل الأدلة…",
+        )
+        rc1, rc2, rc3 = st.columns(3)
+        research_query_count = rc1.selectbox("عدد الاستعلامات", [2, 3, 4], index=1)
+        research_source_count = rc2.selectbox("عدد المصادر الأقصى", [4, 6, 8, 10, 12], index=2)
+        research_fetch = rc3.checkbox("استخراج محتوى الصفحات", value=True)
+        run_research_button = st.form_submit_button("ابدأ البحث العميق")
+    if run_research_button:
+        if not research_question.strip():
+            st.warning("اكتب سؤال البحث أولاً.")
+        elif not ai_core.has_key(provider_name):
+            st.warning("اضبط مزوّد الذكاء الاصطناعي قبل تشغيل التحليل.")
+        else:
+            try:
+                with st.spinner("الباحث بيجمع المصادر ويفحص الأدلة…"):
+                    research_report = deep_research.run_research(
+                        research_question,
+                        memory_scope=oracle_scope,
+                        max_queries=research_query_count,
+                        max_sources=research_source_count,
+                        fetch_pages=research_fetch,
+                    )
+                if research_report["status"] == "success":
+                    st.success("اكتمل البحث مع أدلة قابلة للمراجعة.")
+                elif research_report["status"] == "partial":
+                    st.warning("اكتمل البحث جزئياً؛ راجع القيود ومصادر النتائج.")
+                else:
+                    st.error("لم يتم العثور على مصادر بحث صالحة.")
+                st.markdown(research_report["answer"])
+                if research_report.get("key_findings"):
+                    st.markdown("**أهم النتائج**")
+                    for finding in research_report["key_findings"]:
+                        st.markdown(f"- {finding}")
+                if research_report.get("limitations"):
+                    st.markdown("**حدود البحث**")
+                    for limitation in research_report["limitations"]:
+                        st.warning(limitation)
+                if research_report.get("citations"):
+                    st.markdown("**المراجع المستشهد بها**")
+                    for citation in research_report["citations"]:
+                        st.markdown(
+                            f"- [{citation['id']}] [{citation['title']}]({citation['url']}) "
+                            f"— {citation['page_status']}"
+                        )
+                with st.expander("كل المصادر التي جرى جمعها"):
+                    st.dataframe(
+                        [{
+                            "المرجع": source["citation_id"],
+                            "العنوان": source["title"],
+                            "النطاق": source["domain"],
+                            "حالة الصفحة": source["page_status"],
+                            "الرابط": source["url"],
+                        } for source in research_report["sources"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            except Exception as exc:
+                st.error(f"تعذّر تشغيل البحث: {type(exc).__name__}: {str(exc)[:300]}")

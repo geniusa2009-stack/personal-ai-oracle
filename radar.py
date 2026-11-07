@@ -14,13 +14,10 @@ import re
 import json
 from datetime import datetime
 
-import requests
-
 import db
 import database
+import ai_core
 from search import web_search
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # قوالب الاستعلام لكل فئة (عربي + إنجليزي لتغطية أوسع)
 CATEGORY_TEMPLATES = {
@@ -52,45 +49,49 @@ def active_keywords(limit: int = 8) -> list:
 # ترتيب النتائج بالذكاء الاصطناعي (اختياري)
 # --------------------------------------------------------------------------
 def _rank_with_llm(items: list) -> list:
-    """يضيف score (0-100) وملخّصاً قصيراً لكل فرصة. يتطلب OPENROUTER_API_KEY."""
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    if not key or not items:
+    """Rank opportunity results through the shared AI router using JSON mode."""
+    if not ai_core.has_key() or not items:
         return items
     compact = [
         {"i": idx, "title": it["title"], "snippet": it["snippet"], "category": it["category"]}
         for idx, it in enumerate(items[:30])
     ]
     prompt = (
-        "أنت مستشار مهني. قيّم مدى قيمة كل فرصة من 0 إلى 100 من حيث الجدية والفائدة، "
-        "واكتب ملخصاً عربياً من سطر واحد يوضّح لماذا قد تهم الباحث. "
+        "أنت مستشار مهني. قيّم مدى قيمة كل فرصة من 0 إلى 100 من حيث الصلة والجدية "
+        "والفائدة، واكتب ملخصاً عربياً موجزاً لكل فرصة. لا تعتبر وجود النتيجة دليلاً "
+        "على صحتها، ولا تمنح درجة مرتفعة لمجرد صياغة جذابة. "
         "أعد JSON فقط بهذا الشكل: "
-        '{"ranked":[{"i":<index>,"score":<0-100>,"summary":"<سطر واحد>"}]}\n\n'
+        '{"ranked":[{"i":0,"score":50,"summary":"سبب مختصر"}]}\n\n'
         f"الفرص:\n{json.dumps(compact, ensure_ascii=False)}"
     )
+    content = ai_core.chat(
+        [{"role": "user", "content": prompt}],
+        temperature=0.2,
+        task_type="research",
+        response_format={"type": "json_object"},
+        agent_role="researcher",
+    )
     try:
-        r = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            data=json.dumps({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            }),
-            timeout=90,
-        )
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        data = json.loads(match.group(0) if match else content)
-        for entry in data.get("ranked", []):
-            i = int(entry.get("i", -1))
-            if 0 <= i < len(items):
-                items[i]["score"] = max(0, min(100, int(entry.get("score", 50))))
-                items[i]["summary"] = str(entry.get("summary", "")).strip()
-    except Exception:
-        pass  # لو فشل الترتيب، نُبقي الفرص بدرجة افتراضية
+        if not content or content.startswith(("⚠️", "(تعذّر")):
+            return items
+        data = json.loads(content)
+        ranked = data.get("ranked", [])
+        if not isinstance(ranked, list):
+            return items
+        for entry in ranked:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                index = int(entry.get("i", -1))
+                score = int(entry.get("score", 50))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < min(30, len(items)):
+                items[index]["score"] = max(0, min(100, score))
+                summary = entry.get("summary", "")
+                items[index]["summary"] = summary.strip()[:500] if isinstance(summary, str) else ""
+    except (TypeError, ValueError):
+        return items
     return items
 
 
