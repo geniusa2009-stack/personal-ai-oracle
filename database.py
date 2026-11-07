@@ -497,6 +497,58 @@ def init_database():
         );
         CREATE INDEX IF NOT EXISTS idx_oracle_model_events_scope_id
             ON oracle_model_events(scope, id DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_model_benchmark_runs (
+            run_id              TEXT PRIMARY KEY,
+            scope               TEXT NOT NULL,
+            suite_id            TEXT NOT NULL,
+            status              TEXT NOT NULL,
+            candidate_count     INTEGER NOT NULL,
+            case_count          INTEGER NOT NULL,
+            request_count       INTEGER NOT NULL DEFAULT 0,
+            success_count       INTEGER NOT NULL DEFAULT 0,
+            failure_count       INTEGER NOT NULL DEFAULT 0,
+            allow_remote        INTEGER NOT NULL DEFAULT 0,
+            evaluator_id        TEXT,
+            created_at          TEXT NOT NULL,
+            finished_at         TEXT,
+            CHECK(status IN ('running', 'completed', 'partial', 'failed')),
+            CHECK(candidate_count >= 1),
+            CHECK(case_count >= 1),
+            CHECK(request_count >= 0),
+            CHECK(success_count >= 0),
+            CHECK(failure_count >= 0),
+            CHECK(allow_remote IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_model_benchmark_runs_scope
+            ON oracle_model_benchmark_runs(scope, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_model_benchmark_results (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id                  TEXT NOT NULL,
+            scope                   TEXT NOT NULL,
+            provider                TEXT NOT NULL,
+            model                   TEXT NOT NULL,
+            case_id                 TEXT NOT NULL,
+            task_type               TEXT,
+            latency_ms              INTEGER NOT NULL,
+            outcome                 TEXT NOT NULL,
+            output_chars            INTEGER NOT NULL DEFAULT 0,
+            quality_score           REAL,
+            evaluator_id            TEXT,
+            error_code              TEXT,
+            evaluation_error_code   TEXT,
+            created_at              TEXT NOT NULL,
+            UNIQUE(run_id, provider, model, case_id),
+            CHECK(latency_ms >= 0),
+            CHECK(outcome IN ('success', 'error')),
+            CHECK(output_chars >= 0),
+            CHECK(quality_score IS NULL OR (quality_score >= 0.0 AND quality_score <= 1.0))
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_model_benchmark_results_scope
+            ON oracle_model_benchmark_results(scope, provider, model, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_oracle_model_benchmark_results_run
+            ON oracle_model_benchmark_results(run_id, id);
         """
     )
 
@@ -1326,7 +1378,9 @@ SENSITIVE_TABLES = [
     "memory_consolidation_proposals", "memory_consolidation_proposal_members",
     "memory_consolidation_observations", "knowledge_relations", "knowledge_entities",
     "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
-    "oracle_workflow_checkpoints", "oracle_model_events", "wa_processed_messages",
+    "oracle_workflow_checkpoints", "oracle_model_events",
+    "oracle_model_benchmark_runs", "oracle_model_benchmark_results",
+    "wa_processed_messages",
 ]
 
 

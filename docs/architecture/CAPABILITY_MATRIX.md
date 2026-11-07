@@ -27,7 +27,8 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Provider adapters | `llm_provider.py`, `ai_executor.py` | Provider APIs, environment config | `IMPLEMENTED_AND_VERIFIED` | `test_ai_core_provider.py`, `test_multi_provider.py` | Live credential/provider contract tests remain optional |
 | Role-specific profiles | `agent_profiles.py`, `ai_core.py` | Environment configuration | `IMPLEMENTED_AND_VERIFIED` | Covered by multi-provider/core tests | Add role capability validation and UI diagnostics |
 | Deterministic router | `model_router.py`, `ai_core.py` | Profile and environment config | `IMPLEMENTED_AND_VERIFIED` | `test_ai_core_provider.py`, `test_multi_provider.py` | Add task complexity and capability-aware route policies |
-| Performance-based router | `model_router.py`, `model_observability.py` | Benchmarks, persisted metrics | `PLANNED` | No integrated quality-feedback routing test found | Persist benchmark outcomes and measured cost; add safe selection policy |
+| Performance-based router | `model_router.py`, `model_benchmark.py`, `model_observability.py` | Evidence-gated benchmark scorecards available; route decision still follows explicit/category/tier policy | `PARTIALLY_IMPLEMENTED` | `test_model_benchmark.py`, `test_model_observability.py`; 290-test CI | Scorecards are advisory; no automatic route change until real provider data, evaluator comparability, and verified cost signals are available |
+| Measured model benchmarking | `model_benchmark.py`, `model_observability.py`, `ai_executor.py` | Explicit candidate/case runs, privacy-safe outcomes, latency, optional rubric score, evaluator/suite-isolated scorecards and runtime health floor | `IMPLEMENTED_AND_VERIFIED` | `test_model_benchmark.py`, `test_multi_provider.py`; 290-test Ubuntu/macOS CI | Synthetic phrase rubric is a smoke check only; live provider quality, token usage and cost remain unmeasured |
 | Sequential agent tool loop | `agent_orchestrator.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py` | Evolve without breaking existing bounded behavior |
 | Persistent DAG task engine | Not present as a complete subsystem | DB, queue, checkpoint, tool registry | `PLANNED` | Ledger/checkpoint tests are not task-engine tests | Durable task/step state, dependency graph, retries, cancellation, resume |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
@@ -217,3 +218,18 @@ The `oracle/phase-02-graph-aware-retrieval` branch adds a third retrieval channe
 - Graph expansion can be disabled explicitly for deterministic baseline comparisons.
 
 This closes the graph-aware *retrieval/ranking* part of Phase 2, not all knowledge-graph work. Temporal edge validity, graph conflict handling, graph-aware consolidation and large-scale ranking calibration remain unfinished.
+
+
+## Phase 03 — Measured model benchmarking
+
+The `oracle/phase-03-model-benchmarking` branch adds:
+
+- A synthetic, deterministic smoke suite with bounded arithmetic, classification, Arabic instruction-following and simple factual questions.
+- Explicit provider/model candidate matrices with an opt-in remote-call gate.
+- Privacy-safe persisted results: latency, outcome, output length, case ID, evaluator ID and optional numeric quality score; no prompt/completion storage.
+- Scorecards separated by evaluator ID so incompatible metrics are not combined.
+- Minimum sample and scored-case thresholds before a model becomes recommendation-eligible.
+- Conservative use of runtime telemetry: lower observed success rate and higher observed p95 latency are used when sufficient operational samples exist.
+- Ranking is advisory and does not change `ModelRouter` automatically.
+
+See `docs/architecture/MODEL_BENCHMARKING.md`. Cost and token usage are not guessed; the provider adapters must first expose verified usage metadata. Live provider benchmarking has not been executed in CI.

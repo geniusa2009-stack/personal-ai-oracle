@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "suite_id": "oracle-model-smoke-v1",
+  "scope": "synthetic_objective_smoke_checks",
+  "limitations": [
+    "Phrase matching is a deterministic smoke-test rubric, not semantic evaluation or factual verification.",
+    "The suite is intentionally small and does not represent broad reasoning, coding, research, or multilingual quality.",
+    "A provider success and low latency do not prove a model response is correct.",
+    "No token usage or provider cost is recorded unless a provider later supplies verified usage metadata."
+  ],
+  "cases": [
+    {
+      "id": "arithmetic_multiply",
+      "task_type": "reasoning",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Answer exactly as requested. Do not add explanation."
+        },
+        {
+          "role": "user",
+          "content": "Calculate 17 multiplied by 19. Return the integer only."
+        }
+      ],
+      "expected_contains": [
+        "323"
+      ],
+      "forbidden_contains": [
+        "322"
+      ]
+    },
+    {
+      "id": "arithmetic_order",
+      "task_type": "reasoning",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Answer exactly as requested. Do not add explanation."
+        },
+        {
+          "role": "user",
+          "content": "Calculate (6 + 4) multiplied by 3. Return the integer only."
+        }
+      ],
+      "expected_contains": [
+        "30"
+      ],
+      "forbidden_contains": [
+        "28"
+      ]
+    },
+    {
+      "id": "positive_classification",
+      "task_type": "fast",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify the sentence using exactly one word: positive or negative."
+        },
+        {
+          "role": "user",
+          "content": "The team delivered ahead of schedule and achieved every target."
+        }
+      ],
+      "expected_contains": [
+        "positive"
+      ],
+      "forbidden_contains": [
+        "negative"
+      ]
+    },
+    {
+      "id": "negative_classification",
+      "task_type": "fast",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Classify the sentence using exactly one word: positive or negative."
+        },
+        {
+          "role": "user",
+          "content": "The service failed repeatedly and missed every deadline."
+        }
+      ],
+      "expected_contains": [
+        "negative"
+      ],
+      "forbidden_contains": [
+        "positive"
+      ]
+    },
+    {
+      "id": "arabic_instruction_following",
+      "task_type": "writing",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "اتبع التعليمات كما هي، من غير شرح إضافي."
+        },
+        {
+          "role": "user",
+          "content": "اكتب كلمة تم فقط."
+        }
+      ],
+      "expected_contains": [
+        "تم"
+      ]
+    },
+    {
+      "id": "simple_geography",
+      "task_type": "fast",
+      "temperature": 0,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Return only the requested name."
+        },
+        {
+          "role": "user",
+          "content": "The Nile flows north and empties into which sea? Return the sea name only."
+        }
+      ],
+      "expected_contains": [
+        "Mediterranean Sea"
+      ]
+    }
+  ]
+}

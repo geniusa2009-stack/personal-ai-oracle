@@ -273,3 +273,33 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Pull Request:** [PR #12 — Add review-only memory consolidation and conflict candidate discovery](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/12)
 - **PR status:** Open, draft; base `oracle/phase-02-graph-aware-retrieval` (PR #11). Published head: `9833720dccd553ceca25c8d232f2e7d8c3ab7fee`. No earlier PR was merged or retargeted.
+
+
+### Phase 03a — Measured model benchmarking
+
+- **Branch:** `oracle/phase-03-model-benchmarking`
+- **Base:** `oracle/phase-02-memory-consolidation` (PR #12).
+- **Dependency:** PR #13 → PR #12 → PR #11 → PR #10 → PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `model_benchmark.py` — explicit candidate/case benchmark API, provider-call gate, privacy-safe result persistence, optional evaluator, scorecards and measured ranking.
+  - `benchmarks/model_benchmark_cases.json` — six synthetic objective smoke checks.
+  - `test_model_benchmark.py` — runner, remote gate, error handling, privacy, scorecard thresholds, evaluator/suite separation, runtime-health floor, bounded matrix and panic-wipe tests.
+  - `docs/architecture/MODEL_BENCHMARKING.md`.
+- **Files updated:**
+  - `database.py` — benchmark run/result tables and sensitive-table wipe allowlist.
+  - `ai_executor.py` — request context owner scope overrides environment fallback for model telemetry.
+  - `test_multi_provider.py` — request-scoped telemetry regression test.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Measurements recorded:** End-to-end latency, success/error outcome, output character count, optional rubric score and evaluator ID. Prompt and completion content are never stored.
+- **Quality policy:** Built-in `phrase_rubric_v1` is a deterministic phrase smoke-check, not semantic correctness or factual verification. Custom evaluators must provide a stable ID and return a finite score from 0 to 1. Scorecards are separated by suite version and evaluator ID.
+- **Scorecard policy:** Default ranking weights are quality 0.65, success 0.20 and latency 0.15. Minimum evidence defaults to three benchmark requests and three quality-scored cases. Runtime telemetry contributes a conservative floor using the lower success rate and higher p95 latency when sufficient runtime observations exist.
+- **Provider/cost safety:** No benchmark runs on startup or import. The default only permits a loopback Ollama endpoint. Hosted/non-loopback candidates require explicit `allow_remote=True`. No provider cost or token usage is guessed; existing provider adapters do not yet expose verified usage metadata.
+- **Routing boundary:** Scorecards are advisory only. `ModelRouter` continues using explicit/category/tier configuration; no automatic model switching is introduced by this phase.
+- **Validation:** GitHub Actions run `42418984170` passed on implementation head `245cf74f4327b51bcf930d67fc746d7e50f4a76c`.
+  - Ubuntu: **290 passed, 1 warning**.
+  - macOS: **290 passed, 1 warning**.
+  - Compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** The bundled suite is a small synthetic smoke set. No live provider benchmark was executed in CI. Cost, token throughput, energy and hardware-normalized performance remain unmeasured. The RRF/benchmark ranking weights are policy defaults, not statistically calibrated.
+- **Pull Request:** [PR #13 — Add explicit measured model benchmarking and evidence-gated scorecards](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/13)
+- **PR status:** Open, draft; base `oracle/phase-02-memory-consolidation` (PR #12). Initial published head: `3b396abecc0b07261414e0b5f36afb45fe5f9446`. No earlier PR was merged or retargeted.

@@ -5,7 +5,7 @@ import pytest
 
 import agent_profiles
 from ai_executor import AIExecutor
-from ai_request import AIRequest
+from ai_request import AIRequest, Context
 from llm_provider import (
     OpenAICompatibleProvider,
     OpenRouterProvider,
@@ -371,3 +371,29 @@ def test_executor_records_stream_failure_without_prompt_or_completion(monkeypatc
     serialized = json.dumps(events)
     assert "NEVER STORE THIS PROMPT" not in serialized
     assert "secret-bearing exception detail" not in serialized
+
+
+
+def test_executor_metrics_use_explicit_request_owner_scope(monkeypatch, tmp_path):
+    import db
+    import model_observability
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "request-scoped-benchmark-metrics.db"))
+    monkeypatch.setenv("ORACLE_MEMORY_SCOPE", "owner-from-environment")
+    provider = Mock()
+    provider.chat.return_value = "measured answer"
+    executor = AIExecutor(
+        router=ModelRouter("ollama", "local-model"),
+        provider=provider,
+        provider_name="ollama",
+    )
+    request = AIRequest(
+        messages=({"role": "user", "content": "Synthetic benchmark prompt"},),
+        temperature=0.0,
+        context=Context(metadata={"owner_scope": "owner-benchmark", "benchmark": True}),
+    )
+
+    executor.execute(request)
+
+    assert len(model_observability.list_events("owner-benchmark")) == 1
+    assert model_observability.list_events("owner-from-environment") == []
