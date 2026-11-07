@@ -43,7 +43,7 @@ def write_memory(content: str, memory_type: str, scope: str, source: str) -> Mem
     conn = get_conn()
     try:
         created_at = datetime.now().isoformat(timespec="microseconds")
-        conn.execute(
+        cursor = conn.execute(
             """INSERT OR IGNORE INTO memories
                (content, normalized_content, memory_type, scope, source, created_at)
                VALUES(?,?,?,?,?,?)""",
