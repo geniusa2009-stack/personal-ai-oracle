@@ -141,6 +141,7 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - `docs/architecture/CAPABILITY_MATRIX.md`
 - **Implemented scope:** Explicit scope-bound event storage/retrieval, separate event occurrence and record timestamps, source metadata, candidate/validated/retired procedures, success/failure counters, explicit procedure validation, validated-only procedure retrieval, additive database initialization, and AI Core context integration.
 - **Important limitations:** Retrieval is lexical only; no embeddings/vector search, automatic memory extraction, consolidation, revision history, or automatic Knowledge Graph links. The phase does not add any memory deletion API.
-- **Tests:** Unit and integration tests have been added, including legacy memory-table compatibility and prompt-context markup escaping. CI has not yet run for this branch; no local test execution is claimed.
-- **Pull Request:** Pending creation.
-- **PR status / CI:** Pending.
+- **Tests:** Initial CI on Ubuntu/macOS reported 237 passed, 1 failed, 1 warning. The lone failure was an incorrect assertion that the second test scope should have no episodic memory, despite intentionally storing a private event in that scope. The assertion was corrected to verify that each scope sees its own event and not the other scope's event. CI for corrected head `733ca24e6daf9ef5d1587c9e80cfbd63f30f2886` is pending; no local test execution is claimed.
+- **Pull Request:** [PR #8 — Add episodic and validated procedural memory layers](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/8)
+- **PR status:** Open, draft; base is `oracle/phase-01-temporal-evidence` (PR #7).
+- **PR CI:** Runs `42397781790` (push) and `42397802426` (pull_request) are running/queued on the corrected head.
