@@ -441,11 +441,11 @@ def test_research_applies_domain_freshness_policy_and_flags_old_sources(monkeypa
         "Find current scholarship deadlines",
         max_queries=1,
         max_sources=1,
-        freshness_profile="scholarship_deadline",
     )
 
     assert report["freshness_assessment"]["profile"] == "scholarship_deadline"
-    assert report["freshness_assessment"]["policy_source"] == "explicit"
+    assert report["freshness_assessment"]["policy_source"] == "query_hint"
+    assert report["freshness_assessment"]["matched_hint"] == "scholarship"
     assert report["freshness_assessment"]["counts"]["stale"] == 1
     assert report["sources"][0]["freshness"]["status"] == "stale"
     assert report["citations"][0]["freshness"]["status"] == "stale"
