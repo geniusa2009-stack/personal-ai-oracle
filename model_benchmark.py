@@ -255,15 +255,18 @@ def load_suite(path: str | Path = DEFAULT_SUITE) -> BenchmarkSuite:
     for entry in cases_data:
         if not isinstance(entry, dict):
             raise ModelBenchmarkError("every benchmark case must be an object")
-        cases.append(BenchmarkCase(
-            case_id=entry.get("id"),
-            task_type=entry.get("task_type"),
-            messages=tuple(entry.get("messages", ())),
-            temperature=entry.get("temperature", 0.2),
-            expected_contains=tuple(entry.get("expected_contains", ())),
-            forbidden_contains=tuple(entry.get("forbidden_contains", ())),
-            response_format=entry.get("response_format"),
-        ))
+        try:
+            cases.append(BenchmarkCase(
+                case_id=entry.get("id"),
+                task_type=entry.get("task_type"),
+                messages=tuple(entry.get("messages", ())),
+                temperature=entry.get("temperature", 0.2),
+                expected_contains=tuple(entry.get("expected_contains", ())),
+                forbidden_contains=tuple(entry.get("forbidden_contains", ())),
+                response_format=entry.get("response_format"),
+            ))
+        except (TypeError, ValueError) as exc:
+            raise ModelBenchmarkError("benchmark case contains invalid fields") from exc
     return BenchmarkSuite(str(payload.get("suite_id", "custom")), tuple(cases))
 
 
@@ -325,6 +328,10 @@ def run_benchmark(
         raise ModelBenchmarkError(f"candidates must contain 1 to {MAX_CANDIDATES} models")
     if not isinstance(allow_remote, bool):
         raise ModelBenchmarkError("allow_remote must be a boolean")
+    if runner is not None and not callable(runner):
+        raise ModelBenchmarkError("runner must be callable")
+    if quality_evaluator is not None and not callable(quality_evaluator):
+        raise ModelBenchmarkError("quality_evaluator must be callable")
 
     normalized_candidates = tuple(candidates)
     if any(not isinstance(item, ModelCandidate) for item in normalized_candidates):
