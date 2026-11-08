@@ -124,6 +124,7 @@ def dispatch_once(
     handlers: Mapping[str, TaskHandler],
     *,
     lease_seconds: int = 120,
+    graph_id: str | None = None,
 ) -> TaskDispatchResult | None:
     """Claim and process at most one task of an explicitly registered type.
 
@@ -140,6 +141,7 @@ def dispatch_once(
         worker_id,
         lease_seconds=lease_seconds,
         task_types=tuple(registry),
+        graph_id=graph_id,
     )
     if lease is None:
         return None
@@ -227,6 +229,7 @@ def dispatch_batch(
     *,
     max_tasks: int = 10,
     lease_seconds: int = 120,
+    graph_id: str | None = None,
 ) -> list[TaskDispatchResult]:
     """Process at most max_tasks ready jobs; never sleeps or runs indefinitely."""
     if (
@@ -245,6 +248,7 @@ def dispatch_batch(
             worker_id,
             registry,
             lease_seconds=lease_seconds,
+            graph_id=graph_id,
         )
         if result is None:
             break
