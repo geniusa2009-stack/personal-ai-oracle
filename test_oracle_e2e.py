@@ -222,16 +222,30 @@ def test_end_to_end_evidence_agent_revision_persistence_and_control_center(
         item for item in calls
         if item["role"] == "reviewer" and "specialist_results" in item["content"]
     )
-    assert '"task_key":"evidence_research"' in initial_review_call["content"]
+    initial_review_payload = json.loads(initial_review_call["content"])
+    assert any(
+        item["task_key"] == "evidence_research"
+        for item in initial_review_payload["specialist_results"]
+    )
     writer_payload = json.loads(writer_call["content"])
     assert writer_payload["dependency_results"][0]["task_key"] == "evidence_research"
-    assert '"id":"S1"' in writer_payload["dependency_results"][0]["output"]
+    writer_evidence = json.loads(writer_payload["dependency_results"][0]["output"])
+    assert writer_evidence["citations"][0]["id"] == "S1"
 
     revision = agent_task_execution.create_revision_graph(scope, graph.graph_id)
     revision_tasks = durable_task_engine.list_tasks(scope, revision.graph_id)
     assert {item["task_key"] for item in revision_tasks} == {"r1_draft", "final_review"}
     revision_dispatches = agent_task_execution.dispatch_agent_tasks(
         scope, "e2e-revision-worker", max_tasks=4, graph_id=revision.graph_id
+    )
+    revision_review_call = [
+        item for item in calls
+        if item["role"] == "reviewer" and "merged_specialist_results" in item["content"]
+    ][-1]
+    revision_review_payload = json.loads(revision_review_call["content"])
+    assert any(
+        item["task_key"] == "evidence_research"
+        for item in revision_review_payload["merged_specialist_results"]
     )
     assert len(revision_dispatches) == 2
     assert all(item.status == "succeeded" for item in revision_dispatches)
