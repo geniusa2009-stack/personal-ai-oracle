@@ -9,6 +9,7 @@ AI requests can use hosted providers or models served locally by Ollama.
 import os
 import re
 import json
+import uuid
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -1133,6 +1134,7 @@ with tab_oracle:
     import knowledge_graph
     import workflow_ledger
     import task_control_center
+    import task_execution
     import deep_research
     import execution_policy
     import model_observability
@@ -1297,8 +1299,43 @@ with tab_oracle:
     st.divider()
     st.markdown("#### 🧵 Durable Task Queue — المهام الدائمة")
     st.caption(
-        "عرض وإدارة حالة الـTask Graphs فقط. اللوحة لا تبدأ Worker ولا تنفّذ مهامًا تلقائيًا."
+        "إنشاء مهام البحث وتشغيل مهمة واحدة يتم بطلب صريح منك. لا توجد خدمة خلفية أو Worker دائم."
     )
+    if "oracle_research_idempotency_key" not in st.session_state:
+        st.session_state["oracle_research_idempotency_key"] = uuid.uuid4().hex
+    with st.expander("إنشاء مهمة بحث دائمة", expanded=False):
+        with st.form("oracle_create_research_task"):
+            research_query = st.text_area(
+                "سؤال البحث", max_chars=500,
+                placeholder="اكتب سؤال البحث الذي تريد من Oracle دراسته..."
+            )
+            research_col1, research_col2 = st.columns(2)
+            research_max_queries = research_col1.slider(
+                "عدد استعلامات البحث", min_value=1, max_value=4, value=3
+            )
+            research_max_sources = research_col2.slider(
+                "أقصى عدد مصادر", min_value=1, max_value=12, value=8
+            )
+            research_fetch_pages = st.checkbox("استخراج نص الصفحات المختارة", value=True)
+            research_verify_claims = st.checkbox("تشغيل تقييم الأدلة والادعاءات", value=True)
+            research_submitted = st.form_submit_button("إضافة إلى قائمة المهام")
+        if research_submitted:
+            try:
+                created_graph = task_execution.create_research_graph(
+                    oracle_scope,
+                    f"control-center-research-{st.session_state['oracle_research_idempotency_key']}",
+                    research_query,
+                    max_queries=research_max_queries,
+                    max_sources=research_max_sources,
+                    fetch_pages=research_fetch_pages,
+                    verify_claims=research_verify_claims,
+                )
+                st.session_state["oracle_research_idempotency_key"] = uuid.uuid4().hex
+                st.success(f"تم إنشاء مهمة البحث. Graph ID: {created_graph.graph_id[:12]}")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"تعذّر إنشاء المهمة: {type(exc).__name__}")
+
     try:
         task_graph_rows = task_control_center.list_graph_summaries(oracle_scope, limit=50)
     except Exception as exc:
@@ -1315,6 +1352,21 @@ with tab_oracle:
         q2.metric("نشطة", queue_active)
         q3.metric("متوقفة مؤقتًا", queue_paused)
         q4.metric("مهام معلّقة", queue_pending)
+        if queue_pending:
+            if st.button("تشغيل مهمة بحث واحدة الآن", key="oracle_dispatch_one_research_task"):
+                try:
+                    dispatched = task_execution.dispatch_research_once(
+                        oracle_scope, f"control-center-{uuid.uuid4().hex[:16]}"
+                    )
+                    if dispatched is None:
+                        st.info("لا توجد مهمة بحث مسجلة وجاهزة للتشغيل حالياً.")
+                    else:
+                        st.success(
+                            f"انتهى التشغيل المحدود: {dispatched.task_key} · {dispatched.status}"
+                        )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"تعذّر تشغيل المهمة: {type(exc).__name__}")
         st.dataframe(
             [{
                 "Graph": item["graph_id"][:12],
@@ -1446,13 +1498,38 @@ with tab_oracle:
                         st.info("لا توجد محاولات مسجلة لهذه المهمة.")
                 except Exception as exc:
                     st.warning(f"تعذّر تحميل محاولات المهمة: {type(exc).__name__}")
+
+                try:
+                    research_result = task_execution.get_research_result(
+                        oracle_scope, selected_task_id
+                    )
+                    if research_result:
+                        st.markdown("##### نتيجة البحث المحفوظة")
+                        st.caption(f"حالة التقرير: {research_result['status']}")
+                        st.write(research_result["answer"])
+                        if research_result["key_findings"]:
+                            st.markdown("**أهم النتائج**")
+                            for finding in research_result["key_findings"]:
+                                st.write(f"• {finding}")
+                        if research_result["citations"]:
+                            st.markdown("**المصادر المستشهد بها**")
+                            st.dataframe(research_result["citations"], use_container_width=True, hide_index=True)
+                        st.caption("ملخص التقييم لا يثبت الحقيقة؛ راجع حدود الأدلة والتحقق الدلالي.")
+                        st.json({
+                            "evidence": research_result["evidence_summary"],
+                            "quality": research_result["quality_summary"],
+                            "semantic": research_result["semantic_summary"],
+                            "freshness": research_result["freshness_summary"],
+                        })
+                except Exception as exc:
+                    st.warning(f"تعذّر تحميل نتيجة البحث: {type(exc).__name__}")
             if queue_failed:
                 st.caption(f"إجمالي المهام الفاشلة أو المحجوبة في النطاق: {queue_failed}")
     else:
         st.info("لا توجد Task Graphs في هذا النطاق حتى الآن.")
 
     st.caption(
-        "المعروض هنا Metadata فقط؛ لا تُعرض Payloads أو Results. لا يوجد Worker production متصل بهذه اللوحة حتى الآن."
+        "التشغيل يتم لمهمة واحدة فقط عند الضغط على الزر. لا توجد جدولة تلقائية أو خدمة دائمة؛ النتائج البحثية تُعرض بملخص محدود داخل نطاق المالك."
     )
 
     st.divider()
