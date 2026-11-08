@@ -121,7 +121,17 @@ def test_control_center_returns_none_for_graph_outside_scope_or_missing(monkeypa
 
 def test_memory_scan_result_summary_is_allowlisted_and_scope_bound(monkeypatch, tmp_path):
     _use_db(monkeypatch, tmp_path)
-    graph = _create_graph("owner:one", "scan-result-summary")
+    graph = engine.create_graph(
+        "owner:one",
+        "scan-result-summary",
+        [
+            engine.TaskSpec(
+                task_key="scan",
+                task_type="memory.consolidation.scan",
+                payload={"candidate_limit": 10, "max_pair_checks": 20, "max_proposals": 5},
+            )
+        ],
+    )
     lease = engine.claim_next("owner:one", "worker-a")
     assert lease is not None
     engine.start_task("owner:one", lease.task_id, lease.worker_id, lease.lease_token)
