@@ -186,7 +186,7 @@ def test_end_to_end_evidence_agent_revision_persistence_and_control_center(
     tasks = durable_task_engine.list_tasks(scope, graph.graph_id, include_payload=True)
     by_key = {item["task_key"]: item for item in tasks}
     assert set(by_key) == {"evidence_research", "draft", "technical_review", "final_review"}
-    assert by_key["evidence_research"]["task_type"] == "oracle.deep_research"
+    assert by_key["evidence_research"]["task_type"] == "oracle.agent.evidence_research"
     assert by_key["draft"]["payload"]["dependency_keys"] == ["evidence_research"]
     assert by_key["technical_review"]["payload"]["dependency_keys"] == [
         "evidence_research", "draft"

@@ -22,6 +22,7 @@ TASK_TYPE_AGENT_STEP = "oracle.agent.step"
 TASK_TYPE_AGENT_REVIEW = "oracle.agent.review"
 TASK_TYPE_AGENT_REVISION_STEP = "oracle.agent.revision_step"
 TASK_TYPE_AGENT_REVISION_REVIEW = "oracle.agent.revision_review"
+TASK_TYPE_AGENT_EVIDENCE_RESEARCH = "oracle.agent.evidence_research"
 MAX_REQUEST_CHARS = 8_000
 MAX_PLAN_STEPS = 8
 MAX_INSTRUCTION_CHARS = 3_000
@@ -124,7 +125,7 @@ def create_agent_graph(
     research_spec = None
     if include_evidence_research:
         try:
-            research_spec = task_execution.create_research_task_spec(
+            research_task = task_execution.create_research_task_spec(
                 "evidence_research",
                 request,
                 max_queries=research_max_queries,
@@ -132,6 +133,13 @@ def create_agent_graph(
                 fetch_pages=research_fetch_pages,
                 verify_claims=research_verify_claims,
                 freshness_profile="general",
+            )
+            research_spec = task_engine.TaskSpec(
+                task_key="evidence_research",
+                task_type=TASK_TYPE_AGENT_EVIDENCE_RESEARCH,
+                payload=research_task.payload,
+                max_attempts=1,
+                retry_safe=False,
             )
         except task_execution.TaskExecutionError as exc:
             raise AgentTaskExecutionError("evidence research options are invalid") from exc
@@ -233,7 +241,7 @@ def _dependency_results(
     graph_id: str,
     dependency_keys: Any,
 ) -> list[dict[str, Any]]:
-    if not isinstance(dependency_keys, list) or len(dependency_keys) > MAX_PLAN_STEPS:
+    if not isinstance(dependency_keys, list) or len(dependency_keys) > MAX_PLAN_STEPS + 1:
         raise AgentTaskExecutionError("dependency_keys is invalid")
     tasks = task_engine.list_tasks(scope, graph_id, limit=task_engine.MAX_GRAPH_TASKS)
     by_key = {item["task_key"]: item for item in tasks}
@@ -540,7 +548,7 @@ def _effective_agent_results(
         if not isinstance(result, Mapping):
             continue
         if (
-            item["task_type"] == task_execution.TASK_TYPE_RESEARCH
+            item["task_type"] == TASK_TYPE_AGENT_EVIDENCE_RESEARCH
             and item["task_key"] == "evidence_research"
             and result.get("kind") == "research_report"
         ):
@@ -1077,10 +1085,10 @@ def dispatch_agent_tasks(
         )
         if any(
             item["task_key"] == "evidence_research"
-            and item["task_type"] == task_execution.TASK_TYPE_RESEARCH
+            and item["task_type"] == TASK_TYPE_AGENT_EVIDENCE_RESEARCH
             for item in graph_tasks
         ):
-            handlers[task_execution.TASK_TYPE_RESEARCH] = task_worker.TaskHandler(
+            handlers[TASK_TYPE_AGENT_EVIDENCE_RESEARCH] = task_worker.TaskHandler(
                 execute=task_execution._research_handler,
                 retryable_exceptions=(),
             )
