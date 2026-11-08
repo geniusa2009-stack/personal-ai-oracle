@@ -5,6 +5,7 @@ import pytest
 import ai_core
 import agent_task_execution as agent_tasks
 agent_task_execution = agent_tasks
+agent_task_execution = agent_tasks
 import durable_task_engine as engine
 
 
@@ -171,8 +172,8 @@ def test_revision_creation_is_idempotent_and_old_parent_cannot_branch(monkeypatc
     assert first.graph_id == second.graph_id
     assert calls == ["planner"]
     assert agent_tasks.get_agent_graph_result("owner:one", root.graph_id)["revision"]["can_create_revision"] is False
-    with pytest.raises(agent_tasks.AgentTaskExecutionError, match="newer revision"):
-        agent_tasks.create_revision_graph("owner:one", root.graph_id)
+    # Repeating the same parent request returns its existing child, never a branch.
+    assert agent_tasks.create_revision_graph("owner:one", root.graph_id).graph_id == first.graph_id
 
 
 def test_revision_requires_completed_rejected_review_and_owner_scope(monkeypatch, tmp_path):
