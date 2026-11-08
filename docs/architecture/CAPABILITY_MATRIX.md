@@ -60,7 +60,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Model telemetry | `model_observability.py`, `ai_executor.py` | SQLite, execution events | `IMPLEMENTED_AND_VERIFIED` | `test_model_observability.py` | Add token/cost and task-quality correlation where available |
 | Cost intelligence | No integrated cost ledger identified | Provider usage metadata/pricing inputs | `PLANNED` | No cost evaluation tests found | Capture actual usage where providers expose it; label estimates |
 | Local Mac tools | `local_tools.py` | macOS user account and OS permissions | `IMPLEMENTED_BUT_UNVERIFIED` | `test_local_tools.py` | Physical Mac execution and platform-permission validation |
-| Mac policy engine | `mac_intelligence.py`, `execution_policy.py` | Local JSON policy, owner-scoped approvals | `PARTIALLY_IMPLEMENTED` | `test_mac_intelligence.py`, `test_execution_policy.py` | Align all operations with owner policy; enforce deletion approval at every path |
+| Mac policy engine | `mac_intelligence.py`, `execution_policy.py`, `local_tools.py` | Trusted-workspace allowlists, exact single-use grants, owner-scoped approval queue | `PARTIALLY_IMPLEMENTED` | `test_mac_intelligence.py`, `test_execution_policy.py`, `test_local_tools.py`, `test_agent_orchestrator.py` | Direct registered local-tool deletion is approval-gated; indirect side effects of arbitrary project scripts still require OS-level mediation |
 | Cloud control plane | `cloud_control.py` | FastAPI, DB/config, HTTPS deployment | `IMPLEMENTED_BUT_UNVERIFIED` | `test_hybrid_runtime.py` | Live deployment, pairing and operational recovery validation |
 | Mac cloud agent | `cloud_agent.py`, `cloud_client.py` | Local runtime, device token, API | `IMPLEMENTED_BUT_UNVERIFIED` | `test_hybrid_runtime.py` | Physical device enrollment, network interruption and sleep/wake tests |
 | Isolated browser | `web_browser.py` | Playwright, browser install, network guard | `IMPLEMENTED_BUT_UNVERIFIED` | Hybrid/browser-related tests where present | Validate Chromium setup and actual browser workflow on Mac |
@@ -320,3 +320,19 @@ The `oracle/phase-04-explicit-task-dispatch` branch adds a single typed producti
 - A bounded, allowlisted result preview exposes answer/findings/citations/evidence summaries only to the matching owner scope; encrypted payloads and raw task objects remain private.
 
 Status: `IMPLEMENTED_BUT_UNVERIFIED` pending branch CI and live-provider/deployed-UI validation. See `docs/architecture/EXPLICIT_TASK_EXECUTION.md`.
+
+
+## Phase 07a — Local execution policy and deletion approval enforcement
+
+The `oracle/phase-07-deletion-approval-enforcement` branch strengthens the Mac execution boundary:
+
+- Read-only local operations remain approval-free.
+- File writes, approved development commands and app launches can run without a separate approval only when explicitly configured by the Mac policy and scoped to trusted workspaces/allowlists.
+- Moves can be automatic only when both paths are inside the same trusted workspace and the destination does not exist; overwriting an existing destination falls back to explicit approval.
+- Deletion is always routed to the one-time owner approval path, even if a policy file lists `local.delete_path` as auto-allowed.
+- `local_tools._execute` is now the shared policy boundary for direct registered local tool calls; the agent orchestrator passes an exact single-use grant bound to scope, tool ID and payload.
+- The agent's encrypted checkpoint/resume approval flow is retained.
+
+Status remains `PARTIALLY_IMPLEMENTED`: registered direct local-tool deletion is guarded and covered by deterministic tests, but the application cannot statically prove the side effects of arbitrary allowed third-party project scripts. A filesystem sandbox or equivalent OS-level mediation is still required before claiming that every indirect deletion path is blocked.
+
+See `docs/architecture/LOCAL_EXECUTION_POLICY.md`.
