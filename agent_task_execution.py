@@ -507,8 +507,15 @@ def _revision_step_handler(
         raise AgentTaskExecutionError("revision index is invalid")
     if not isinstance(source_key, str) or not _TASK_KEY.fullmatch(source_key):
         raise AgentTaskExecutionError("source task key is invalid")
-    if role not in _ALLOWED_SPECIALISTS:
+    if not isinstance(role, str) or role not in _ALLOWED_SPECIALISTS:
         raise AgentTaskExecutionError("revision specialist role is invalid")
+    lineage = _revision_metadata(context.scope, context.graph_id)
+    if (
+        lineage["root_graph_id"] != root_id
+        or lineage["parent_graph_id"] != parent_id
+        or lineage["revision_index"] != revision_index
+    ):
+        raise AgentTaskExecutionError("revision step lineage does not match its graph")
     request = _text(payload["request"], "request", MAX_REQUEST_CHARS)
     instruction = _text(payload["instruction"], "revision instruction", MAX_INSTRUCTION_CHARS)
     issue_items = payload["issue_items"]
@@ -619,8 +626,18 @@ def _revision_review_handler(
     revision_task_keys = payload["revision_task_keys"]
     if not isinstance(revision_task_keys, list) or not 1 <= len(revision_task_keys) <= MAX_REVISION_TASKS:
         raise AgentTaskExecutionError("revision review task list is invalid")
-    if any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in revision_task_keys):
-        raise AgentTaskExecutionError("revision review task key is invalid")
+    if (
+        any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in revision_task_keys)
+        or len(set(revision_task_keys)) != len(revision_task_keys)
+    ):
+        raise AgentTaskExecutionError("revision review task keys are invalid or duplicated")
+    lineage = _revision_metadata(context.scope, context.graph_id)
+    if (
+        lineage["root_graph_id"] != root_id
+        or lineage["parent_graph_id"] != parent_id
+        or lineage["revision_index"] != revision_index
+    ):
+        raise AgentTaskExecutionError("revision review lineage does not match its graph")
     prior_issues = payload["prior_review_issues"]
     if not isinstance(prior_issues, list) or not 1 <= len(prior_issues) <= MAX_REVISION_ISSUES:
         raise AgentTaskExecutionError("prior review issues are invalid")
