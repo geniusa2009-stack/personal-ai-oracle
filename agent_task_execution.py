@@ -733,18 +733,21 @@ def create_revision_graph(scope: str, parent_graph_id: str) -> task_engine.TaskG
     metadata = _revision_metadata(scope, parent_graph_id)
     root_id = metadata["root_graph_id"]
     history = _revision_history(scope, root_id)
-    latest_graph_id = history[-1]["graph_id"] if history else root_id
-    if parent_graph_id != latest_graph_id:
-        raise AgentTaskExecutionError("a newer revision exists; continue from the latest graph")
-    revision_index = (history[-1]["revision_index"] if history else 0) + 1
+    revision_index = metadata["revision_index"] + 1
     if revision_index > MAX_REVISION_CYCLES:
         raise AgentTaskExecutionError(
             f"maximum revision cycles ({MAX_REVISION_CYCLES}) have been reached"
         )
     idempotency_key = f"oracle-agent-revision-{root_id}-{revision_index}"
+    # Return an already-created child for this parent before rejecting stale
+    # parents. This makes repeated clicks/retries idempotent after a successful
+    # graph creation while still preventing a second branch from being created.
     existing = _find_graph_by_idempotency_key(scope, idempotency_key)
     if existing is not None:
         return existing
+    latest_graph_id = history[-1]["graph_id"] if history else root_id
+    if parent_graph_id != latest_graph_id:
+        raise AgentTaskExecutionError("a newer revision exists; continue from the latest graph")
 
     previous_results = _effective_agent_results(scope, parent_graph_id)
     if not previous_results:
