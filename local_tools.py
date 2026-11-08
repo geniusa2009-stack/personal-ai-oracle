@@ -461,6 +461,7 @@ def _execute(
     tool_input: str | dict,
     *,
     execution_grant: str | None = None,
+    execution_scope: str | None = None,
 ) -> dict[str, Any]:
     """Enforce the owner policy at the local execution boundary, including direct callers."""
     if tool_id not in MUTATING_TOOLS:
@@ -473,7 +474,8 @@ def _execute(
         import execution_policy
 
         scope = (
-            os.environ.get("ORACLE_MEMORY_SCOPE")
+            execution_scope
+            or os.environ.get("ORACLE_MEMORY_SCOPE")
             or os.environ.get("ORACLE_WORKFLOW_SCOPE")
             or "user:oracle-owner"
         ).strip()
@@ -519,9 +521,14 @@ def execute(
     tool_input: str | dict,
     *,
     execution_grant: str | None = None,
+    execution_scope: str | None = None,
 ) -> dict[str, Any]:
     """Run a policy-checked local tool and append a content-free audit record."""
-    result = _execute(tool_id, tool_input, execution_grant=execution_grant)
+    result = _execute(
+        tool_id, tool_input,
+        execution_grant=execution_grant,
+        execution_scope=execution_scope,
+    )
     _append_audit(tool_id, result)
     return result
 
