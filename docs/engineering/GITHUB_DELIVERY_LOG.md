@@ -359,5 +359,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Compile and full pytest passed on both platforms.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** This is a queue/state engine, not a production worker. No task handlers, Control Center UI, recurring scheduler, distributed multi-host queue, key rotation, or general versioned migration framework is included. Retry safety remains an explicit caller assertion.
-- **Pull Request:** Pending final documentation CI; planned as draft PR #15 stacked on PR #14.
-- **PR status:** Not yet created; no earlier PR was merged, closed or retargeted.
+- **Pull Request:** [PR #15 — Add durable DAG task queue, leases and retry-safe scheduling](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/15)
+- **PR status:** Open, draft; base `oracle/phase-03-bounded-self-correction` (PR #14). Published head: `8a7338684097930a5c8c0689c53e1084ebcad743`. No earlier PR was merged, closed or retargeted.
