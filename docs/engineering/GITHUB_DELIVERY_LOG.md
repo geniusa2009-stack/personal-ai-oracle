@@ -361,3 +361,50 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** This is a queue/state engine, not a production worker. No task handlers, Control Center UI, recurring scheduler, distributed multi-host queue, key rotation, or general versioned migration framework is included. Retry safety remains an explicit caller assertion.
 - **Pull Request:** [PR #15 — Add durable DAG task queue, leases and retry-safe scheduling](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/15)
 - **PR status:** Open, draft; base `oracle/phase-03-bounded-self-correction` (PR #14). Published head: `8a7338684097930a5c8c0689c53e1084ebcad743`. No earlier PR was merged, closed or retargeted.
+
+
+### Phase 04b — Explicit typed task worker adapter
+
+- **Branch:** `oracle/phase-04-task-worker-adapter`
+- **Base:** `oracle/phase-04-durable-task-engine` (planned PR #15).
+- **Dependency:** Planned PR #16 → PR #15 → PR #14 → PR #13 → PR #12 → PR #11 → PR #10 → preceding stack.
+- **Files added:**
+  - `task_worker.py` — per-call typed handler registry, one-task dispatcher, bounded sequential batch, scope-bound execution context, lease heartbeat and cooperative cancellation observation.
+  - `test_task_worker.py` — successful dispatch, one-task semantics, unknown-type filtering, retry safety, lease heartbeat, cancellation during handler execution, error redaction, bounded batch dependency advancement and registry validation.
+  - `docs/architecture/TASK_WORKER_ADAPTER.md`.
+- **Files updated:**
+  - `durable_task_engine.py` — optional `task_types` filter in `claim_next`, using parameterized SQL placeholders so only registered handlers can be claimed by this adapter.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Execution contract:** The caller supplies a mapping from task type to a `TaskHandler`. Unknown task types remain queued. The adapter executes at most one task with `dispatch_once`, or at most 100 sequential tasks with `dispatch_batch`; neither API sleeps, polls indefinitely, nor installs a background worker.
+- **Handler context:** Includes task/graph metadata plus a lease-heartbeat callback that does not disclose the lease token and a cancellation query. Handler payload and result are not copied into dispatch metadata.
+- **Retry behavior:** Handler-declared retryable exception classes are advisory only. The durable task must also be explicitly `retry_safe=True`, and the engine still enforces the task attempt budget/backoff.
+- **Tool/side-effect boundary:** No default shell, browser, filesystem, app-launch or generic tool handler is registered. Any future tool handler must delegate through existing Oracle execution/approval paths.
+- **Validation:** CI pending on the latest branch head; prior base Worker API run `42431059838` passed with **335 passed, 1 warning** on both Ubuntu and macOS. The new Batch behavior and current documentation changes require fresh CI validation.
+- **Limitations:** This is a synchronous adapter, not production process supervision. No built-in production task handlers, parallel worker management, recurring scheduler, Control Center task UI or automatic startup service is included.
+- **Pull Request:** Pending latest CI; planned as draft PR #16 stacked on PR #15.
+- **PR status:** Not yet created; no earlier PR was merged, closed or retargeted.
+
+
+### Phase 04b — Explicit typed task worker adapter
+
+- **Branch:** `oracle/phase-04-task-worker-adapter`
+- **Base:** `oracle/phase-04-durable-task-engine` (PR #15).
+- **Dependency:** Planned PR #16 → PR #15 → PR #14 → PR #13 → PR #12 → PR #11 → PR #10 → PR #9 → earlier stack.
+- **Files added:**
+  - `task_worker.py` — explicit task-type handler registry, one-task dispatcher, bounded sequential batch, task execution context, lease heartbeat and cooperative cancellation checks.
+  - `test_task_worker.py` — successful dispatch, unregistered task filtering, retry gating, lease heartbeat, cancellation during handler execution, error redaction, dependency advancement within a bounded batch, and registry/type-filter limits.
+  - `docs/architecture/TASK_WORKER_ADAPTER.md`.
+- **Files updated:**
+  - `durable_task_engine.py` — `claim_next(task_types=...)` uses parameterized filters so this adapter only leases task types registered by its caller; filter count is capped at 100.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Worker contract:** No handlers are registered globally. Each explicit dispatch call supplies the registry. Unknown task types stay queued. Each dispatch executes one task; a batch is sequential and caller-bounded to 100, with no infinite loop or background process.
+- **Retry contract:** Retry requires a handler-declared retryable exception type **and** the durable task's explicit `retry_safe=True`, plus remaining attempt budget. The handler may heartbeat through context without receiving the lease token.
+- **Security/side-effect boundary:** No default shell/browser/filesystem/app/model handler is included. Tool handlers must use the existing Oracle execution/approval paths. Handler exception messages and raw results are not copied to dispatch metadata.
+- **Validation:** GitHub Actions run `42431449868` passed on implementation/documentation head `5cdd281decf01e19d5655146d6191b18ada04b63`.
+  - Ubuntu: **338 passed, 1 warning**.
+  - macOS: **338 passed, 1 warning**.
+  - Compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** No production handler catalogue, parallel worker scheduler, supervised daemon, recurring scheduler or Control Center UI. Cancellation remains cooperative for work already executing outside the queue.
+- **Pull Request:** [PR #16 — Add bounded typed worker adapter for durable tasks](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/16)
+- **PR status:** Open, draft; base `oracle/phase-04-durable-task-engine` (PR #15). Published head: `5cdd281decf01e19d5655146d6191b18ada04b63`. No prior PR was merged, closed or retargeted.

@@ -17,6 +17,7 @@ from db import get_conn
 import workflow_checkpoints
 
 MAX_GRAPH_TASKS = 100
+MAX_TASK_TYPES_PER_CLAIM = 100
 MAX_ATTEMPTS = 5
 MAX_LEASE_SECONDS = 3600
 MIN_LEASE_SECONDS = 5
@@ -498,11 +499,27 @@ def claim_next(
     worker_id: str,
     *,
     lease_seconds: int = 120,
+    task_types: Sequence[str] | None = None,
 ) -> TaskLease | None:
-    """Atomically lease one ready task. The queue never executes the task itself."""
+    """Atomically lease one ready task, optionally filtered to registered task types."""
     scope = _scope(scope)
     worker_id = _worker_id(worker_id)
     lease_seconds = _lease_seconds(lease_seconds)
+    normalized_types: tuple[str, ...] | None = None
+    if task_types is not None:
+        if (
+            not isinstance(task_types, (list, tuple))
+            or not task_types
+            or len(task_types) > MAX_TASK_TYPES_PER_CLAIM
+        ):
+            raise TaskEngineError(
+                f"task_types must contain 1 to {MAX_TASK_TYPES_PER_CLAIM} entries"
+            )
+        normalized_types = tuple(
+            _label(value, "task_type", 80, _TYPE) for value in task_types
+        )
+        if len(set(normalized_types)) != len(normalized_types):
+            raise TaskEngineError("task_types must be unique")
     now = time.time()
     init_database()
     conn = get_conn()
@@ -515,13 +532,19 @@ def claim_next(
         ).fetchall()
         for graph in graphs:
             _reap_graph_expired(conn, scope, graph["graph_id"])
+        type_filter = ""
+        query_params: list[Any] = [scope, now]
+        if normalized_types is not None:
+            type_filter = " AND task.task_type IN (" + ",".join("?" for _ in normalized_types) + ")"
+            query_params.extend(normalized_types)
         task = conn.execute(
             """SELECT task.* FROM oracle_durable_tasks AS task
                JOIN oracle_task_graphs AS graph
                  ON graph.graph_id=task.graph_id AND graph.scope=task.scope
                WHERE task.scope=? AND task.status='queued' AND task.available_at<=?
-                 AND task.attempt_count<task.max_attempts AND graph.status='active'
-                 AND NOT EXISTS (
+                 AND task.attempt_count<task.max_attempts AND graph.status='active'"""
+            + type_filter +
+            """ AND NOT EXISTS (
                    SELECT 1 FROM oracle_task_dependencies AS dep
                    JOIN oracle_durable_tasks AS parent
                      ON parent.task_id=dep.depends_on_task_id AND parent.scope=dep.scope
@@ -529,7 +552,7 @@ def claim_next(
                      AND parent.status<>'succeeded'
                  )
                ORDER BY task.created_at,task.task_key LIMIT 1""",
-            (scope, now),
+            query_params,
         ).fetchone()
         if task is None:
             for graph in graphs:
