@@ -13,6 +13,9 @@ from typing import Any, Callable, Mapping
 import durable_task_engine as task_engine
 
 
+MAX_REGISTERED_HANDLERS = 100
+
+
 class TaskWorkerError(ValueError):
     """Invalid handler registry or worker invocation."""
 
