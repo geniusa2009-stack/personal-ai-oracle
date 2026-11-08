@@ -330,5 +330,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Compile and full pytest passed on both platforms.
   - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** This corrects structure/citation integrity and planner catalogue compliance, not general reasoning quality. No model is allowed to retry a tool call through this correction loop. A repaired answer may still be factually wrong and is subject to existing verification limitations.
-- **Pull Request:** Pending final documentation CI; planned as draft PR #14 based on PR #13.
-- **PR status:** Not yet created; no earlier PR was merged or retargeted.
+- **Pull Request:** [PR #14 — Add bounded self-correction and loop prevention](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/14)
+- **PR status:** Open, draft; base `oracle/phase-03-model-benchmarking` (PR #13). Published head: `7ada00ce00f94900ec2a2fbb9c44e11b798fad97`. No earlier PR was merged or retargeted.
