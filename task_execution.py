@@ -303,25 +303,78 @@ def get_research_result(scope: str, task_id: str) -> dict[str, Any] | None:
     stored = task.get("result")
     if not isinstance(stored, Mapping) or stored.get("kind") != "research_report":
         raise TaskExecutionError("stored research result is malformed")
-    # Re-project the stored value to a strict UI contract.
+    # Re-project the stored value to a strict UI contract; never trust arbitrary keys.
+    evidence = stored.get("evidence_summary", {})
+    quality = stored.get("quality_summary", {})
+    semantic = stored.get("semantic_summary", {})
+    freshness = stored.get("freshness_summary", {})
+    evidence = evidence if isinstance(evidence, Mapping) else {}
+    quality = quality if isinstance(quality, Mapping) else {}
+    semantic = semantic if isinstance(semantic, Mapping) else {}
+    freshness = freshness if isinstance(freshness, Mapping) else {}
+
+    citations = []
+    for item in stored.get("citations", [])[:8]:
+        if not isinstance(item, Mapping):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str):
+            continue
+        try:
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+                continue
+        except ValueError:
+            continue
+        citations.append({
+            "id": str(item.get("id") or "")[:12],
+            "title": str(item.get("title") or "")[:240],
+            "url": url[:2048],
+            "domain": str(item.get("domain") or "")[:160],
+        })
+
     return {
         "status": str(stored.get("status") or "partial")[:20],
         "query": str(stored.get("query") or "")[:deep_research.MAX_QUERY_LENGTH],
         "answer": str(stored.get("answer") or "")[:4200],
-        "key_findings": [str(item)[:350] for item in stored.get("key_findings", [])[:6]],
-        "limitations": [str(item)[:350] for item in stored.get("limitations", [])[:8]],
-        "citations": [
-            {
-                "id": str(item.get("id") or "")[:12],
-                "title": str(item.get("title") or "")[:240],
-                "url": str(item.get("url") or "")[:2048],
-                "domain": str(item.get("domain") or "")[:160],
-            }
-            for item in stored.get("citations", [])[:8]
-            if isinstance(item, Mapping)
-        ],
-        "evidence_summary": dict(stored.get("evidence_summary") or {}),
-        "quality_summary": dict(stored.get("quality_summary") or {}),
-        "semantic_summary": dict(stored.get("semantic_summary") or {}),
-        "freshness_summary": dict(stored.get("freshness_summary") or {}),
+        "key_findings": [
+            str(item)[:350] for item in stored.get("key_findings", [])[:6]
+        ] if isinstance(stored.get("key_findings", []), list) else [],
+        "limitations": [
+            str(item)[:350] for item in stored.get("limitations", [])[:8]
+        ] if isinstance(stored.get("limitations", []), list) else [],
+        "citations": citations,
+        "evidence_summary": {
+            key: evidence[key]
+            for key in (
+                "source_count", "extracted_page_count", "snippet_only_count",
+                "unavailable_or_partial_count", "claim_candidate_count",
+                "semantic_verification", "freshness_profile",
+                "freshness_policy_source", "freshness_max_age_days",
+                "freshness_counts",
+            )
+            if key in evidence
+        },
+        "quality_summary": {
+            key: quality[key]
+            for key in (
+                "status", "assessment_scope", "semantic_entailment_checked",
+                "truth_verified", "claim_count", "citation_coverage",
+                "uncited_claim_count", "invalid_reference_claim_count",
+            )
+            if key in quality
+        },
+        "semantic_summary": {
+            "status": str(semantic.get("status") or "not_performed")[:30],
+            "semantic_entailment_checked": semantic.get("semantic_entailment_checked") is True,
+            "factual_truth_verified": False,
+            "checked_claim_count": semantic.get("checked_claim_count", 0),
+            "unverified_claim_count": semantic.get("unverified_claim_count", 0),
+        },
+        "freshness_summary": {
+            "profile": str(freshness.get("profile") or "general")[:40],
+            "policy_source": str(freshness.get("policy_source") or "unknown")[:40],
+            "max_age_days": freshness.get("max_age_days"),
+            "counts": freshness.get("counts", {}) if isinstance(freshness.get("counts", {}), Mapping) else {},
+        },
     }
