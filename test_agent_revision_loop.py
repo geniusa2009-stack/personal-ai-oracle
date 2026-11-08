@@ -9,7 +9,7 @@ import durable_task_engine as engine
 
 
 def _needs_revision_graph(monkeypatch, tmp_path, *, issues=None):
-    agent_tasks_test_setup(monkeypatch, tmp_path)
+    agent_task_execution_test_setup(monkeypatch, tmp_path)
     graph = agent_tasks.create_agent_graph(
         "owner:one", "root-agent-plan", "Prepare a grounded technical proposal.", max_steps=5
     )
