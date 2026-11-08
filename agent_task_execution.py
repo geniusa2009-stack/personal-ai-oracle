@@ -226,14 +226,82 @@ def create_agent_graph(
 
 
 def _research_result_output(result: Mapping[str, Any]) -> str:
-    """Serialize only the bounded, sanitized evidence result for dependent agents."""
-    allowed = (
-        "status", "query", "answer", "key_findings", "limitations", "citations",
-        "sources", "evidence_summary", "quality_summary", "semantic_summary",
-        "freshness_summary",
-    )
-    projection = {key: result[key] for key in allowed if key in result}
-    return json.dumps(projection, ensure_ascii=False, separators=(",", ":"))[:MAX_AGENT_OUTPUT_CHARS]
+    """Serialize a valid, bounded allowlist of sanitized evidence for dependent agents."""
+    def text_value(value: Any, maximum: int) -> str:
+        return value[:maximum] if isinstance(value, str) else ""
+
+    def string_list(value: Any, *, count: int, maximum: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [item[:maximum] for item in value[:count] if isinstance(item, str)]
+
+    citations = []
+    for item in result.get("citations", [])[:4] if isinstance(result.get("citations", []), list) else []:
+        if isinstance(item, Mapping):
+            citations.append({
+                "id": text_value(item.get("id"), 12),
+                "title": text_value(item.get("title"), 180),
+                "url": text_value(item.get("url"), 1024),
+                "domain": text_value(item.get("domain"), 120),
+                "publisher": text_value(item.get("publisher"), 120),
+            })
+    sources = []
+    for item in result.get("sources", [])[:4] if isinstance(result.get("sources", []), list) else []:
+        if isinstance(item, Mapping):
+            sources.append({
+                "citation_id": text_value(item.get("citation_id"), 12),
+                "title": text_value(item.get("title"), 180),
+                "domain": text_value(item.get("domain"), 120),
+                "page_status": text_value(item.get("page_status"), 40),
+                "evidence_excerpt": text_value(item.get("evidence_excerpt"), 220),
+                "evidence_level": text_value(item.get("evidence_level"), 40),
+            })
+
+    summary_fields = {
+        "evidence_summary": (
+            "source_count", "extracted_page_count", "snippet_only_count",
+            "unavailable_or_partial_count", "claim_candidate_count",
+            "semantic_verification", "freshness_profile",
+            "freshness_policy_source", "freshness_max_age_days", "freshness_counts",
+        ),
+        "quality_summary": (
+            "status", "assessment_scope", "semantic_entailment_checked",
+            "truth_verified", "claim_count", "citation_coverage",
+            "uncited_claim_count", "invalid_reference_claim_count",
+        ),
+        "semantic_summary": (
+            "status", "semantic_entailment_checked", "factual_truth_verified",
+            "checked_claim_count", "unverified_claim_count",
+        ),
+        "freshness_summary": ("profile", "policy_source", "max_age_days", "counts"),
+    }
+    projection = {
+        "status": text_value(result.get("status"), 20),
+        "query": text_value(result.get("query"), 500),
+        "answer": text_value(result.get("answer"), 2200),
+        "key_findings": string_list(result.get("key_findings"), count=4, maximum=260),
+        "limitations": string_list(result.get("limitations"), count=4, maximum=260),
+        "citations": citations,
+        "sources": sources,
+    }
+    for target, fields in summary_fields.items():
+        value = result.get(target)
+        if isinstance(value, Mapping):
+            projection[target] = {key: value[key] for key in fields if key in value}
+
+    encoded = json.dumps(projection, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > MAX_AGENT_OUTPUT_CHARS:
+        projection["answer"] = projection["answer"][:900]
+        projection["key_findings"] = projection["key_findings"][:2]
+        projection["limitations"] = projection["limitations"][:2]
+        projection["citations"] = projection["citations"][:2]
+        projection["sources"] = projection["sources"][:2]
+        for source in projection["sources"]:
+            source["evidence_excerpt"] = source["evidence_excerpt"][:120]
+        encoded = json.dumps(projection, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > MAX_AGENT_OUTPUT_CHARS:
+        raise AgentTaskExecutionError("bounded research evidence exceeds the specialist context limit")
+    return encoded
 
 
 def _dependency_results(

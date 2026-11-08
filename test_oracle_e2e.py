@@ -267,3 +267,36 @@ def test_end_to_end_evidence_agent_revision_persistence_and_control_center(
     assert control_center["graph"]["status"] == "completed"
     assert all(item["status"] == "succeeded" for item in control_center["tasks"])
     assert task_control_center.get_graph_detail("owner:other", revision.graph_id) is None
+
+
+
+def test_research_result_projection_is_valid_json_and_bounded():
+    result = {
+        "kind": "research_report",
+        "status": "success",
+        "query": "q" * 2000,
+        "answer": "answer " * 1000,
+        "key_findings": ["finding " * 100] * 8,
+        "limitations": ["limitation " * 100] * 8,
+        "citations": [{
+            "id": "S1", "title": "title " * 100,
+            "url": "https://example.org/" + "x" * 1800,
+            "domain": "example.org", "publisher": "publisher " * 100,
+        }] * 8,
+        "sources": [{
+            "citation_id": "S1", "title": "source " * 100,
+            "domain": "example.org", "page_status": "extracted",
+            "evidence_excerpt": "excerpt " * 300,
+            "evidence_level": "extracted_page",
+        }] * 8,
+        "evidence_summary": {"source_count": 8, "freshness_counts": {"fresh": 8}},
+        "semantic_summary": {"factual_truth_verified": False},
+    }
+
+    encoded = agent_task_execution._research_result_output(result)
+    decoded = json.loads(encoded)
+
+    assert len(encoded) <= agent_task_execution.MAX_AGENT_OUTPUT_CHARS
+    assert decoded["citations"]
+    assert decoded["sources"]
+    assert decoded["semantic_summary"]["factual_truth_verified"] is False
