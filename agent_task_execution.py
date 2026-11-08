@@ -217,6 +217,17 @@ def create_agent_graph(
     return task_engine.create_graph(scope, idempotency_key, specs)
 
 
+def _research_result_output(result: Mapping[str, Any]) -> str:
+    """Serialize only the bounded, sanitized evidence result for dependent agents."""
+    allowed = (
+        "status", "query", "answer", "key_findings", "limitations", "citations",
+        "sources", "evidence_summary", "quality_summary", "semantic_summary",
+        "freshness_summary",
+    )
+    projection = {key: result[key] for key in allowed if key in result}
+    return json.dumps(projection, ensure_ascii=False, separators=(",", ":"))[:MAX_AGENT_OUTPUT_CHARS]
+
+
 def _dependency_results(
     scope: str,
     graph_id: str,
@@ -236,10 +247,16 @@ def _dependency_results(
         result = task.get("result")
         if not isinstance(result, Mapping):
             raise AgentTaskExecutionError("a dependency result is unavailable")
+        if result.get("kind") == "research_report":
+            agent_role = "researcher"
+            output = _research_result_output(result)
+        else:
+            agent_role = str(result.get("agent_role") or "")[:40]
+            output = str(result.get("output") or "")[:MAX_AGENT_OUTPUT_CHARS]
         results.append({
             "task_key": key,
-            "agent_role": str(result.get("agent_role") or "")[:40],
-            "output": str(result.get("output") or "")[:MAX_AGENT_OUTPUT_CHARS],
+            "agent_role": agent_role,
+            "output": output,
         })
     return results
 
@@ -516,11 +533,24 @@ def _effective_agent_results(
 
     effective: dict[str, dict[str, str]] = {}
     for item in tasks:
-        if item["task_type"] != TASK_TYPE_AGENT_STEP or item["status"] != "succeeded":
+        if item["status"] != "succeeded":
             continue
         stored = task_engine.get_task(scope, item["task_id"], include_result=True)
         result = stored.get("result") if stored else None
-        if not isinstance(result, Mapping) or result.get("kind") != "oracle_agent_step":
+        if not isinstance(result, Mapping):
+            continue
+        if (
+            item["task_type"] == task_execution.TASK_TYPE_RESEARCH
+            and item["task_key"] == "evidence_research"
+            and result.get("kind") == "research_report"
+        ):
+            effective["evidence_research"] = {
+                "task_key": "evidence_research",
+                "agent_role": "researcher",
+                "output": _research_result_output(result),
+            }
+            continue
+        if item["task_type"] != TASK_TYPE_AGENT_STEP or result.get("kind") != "oracle_agent_step":
             continue
         role = result.get("agent_role")
         output = result.get("output")
@@ -829,7 +859,11 @@ def create_revision_graph(scope: str, parent_graph_id: str) -> task_engine.TaskG
         raise AgentTaskExecutionError("a newer revision exists; continue from the latest graph")
 
     previous_results = _effective_agent_results(scope, parent_graph_id)
-    if not previous_results:
+    revision_candidates = {
+        key: value for key, value in previous_results.items()
+        if key != "evidence_research"
+    }
+    if not revision_candidates:
         raise AgentTaskExecutionError("no successful specialist outputs are available to revise")
     planner_input = {
         "original_request": _original_request(scope, root_id),
@@ -846,7 +880,7 @@ def create_revision_graph(scope: str, parent_graph_id: str) -> task_engine.TaskG
                 "agent_role": item["agent_role"],
                 "previous_output": item["output"],
             }
-            for key, item in previous_results.items()
+            for key, item in revision_candidates.items()
         ],
         "required_json_schema": {
             "revisions": [{
@@ -893,10 +927,10 @@ def create_revision_graph(scope: str, parent_graph_id: str) -> task_engine.TaskG
     if not isinstance(plan, dict) or set(plan) != {"revisions"}:
         raise AgentTaskExecutionError("revision planner response has an invalid shape")
     revisions = plan["revisions"]
-    if not isinstance(revisions, list) or not 1 <= len(revisions) <= min(MAX_REVISION_TASKS, len(previous_results)):
+    if not isinstance(revisions, list) or not 1 <= len(revisions) <= min(MAX_REVISION_TASKS, len(revision_candidates)):
         raise AgentTaskExecutionError("revision planner must select a bounded non-empty task set")
 
-    source_keys = set(previous_results)
+    source_keys = set(revision_candidates)
     selected: dict[str, dict[str, Any]] = {}
     covered_issues: set[int] = set()
     for item in revisions:
@@ -1036,10 +1070,24 @@ def dispatch_agent_tasks(
     """Explicitly process a bounded batch, optionally within one selected graph."""
     if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or not 1 <= max_tasks <= 8:
         raise AgentTaskExecutionError("max_tasks must be between 1 and 8")
+    handlers = dict(_HANDLERS)
+    if graph_id is not None:
+        graph_tasks = task_engine.list_tasks(
+            scope, graph_id, limit=task_engine.MAX_GRAPH_TASKS
+        )
+        if any(
+            item["task_key"] == "evidence_research"
+            and item["task_type"] == task_execution.TASK_TYPE_RESEARCH
+            for item in graph_tasks
+        ):
+            handlers[task_execution.TASK_TYPE_RESEARCH] = task_worker.TaskHandler(
+                execute=task_execution._research_handler,
+                retryable_exceptions=(),
+            )
     return task_worker.dispatch_batch(
         scope,
         worker_id,
-        _HANDLERS,
+        handlers,
         max_tasks=max_tasks,
         lease_seconds=180,
         graph_id=graph_id,
@@ -1066,6 +1114,12 @@ def get_agent_graph_result(scope: str, graph_id: str) -> dict[str, Any] | None:
                         "agent_role": str(candidate.get("agent_role") or "")[:40],
                         "output": str(candidate.get("output") or "")[:MAX_AGENT_OUTPUT_CHARS],
                         "source_task_key": str(candidate.get("source_task_key") or candidate.get("task_key") or "")[:100],
+                    }
+                elif candidate.get("kind") == "research_report":
+                    result = {
+                        "agent_role": "researcher",
+                        "output": _research_result_output(candidate),
+                        "source_task_key": "evidence_research",
                     }
                 elif candidate.get("kind") == "oracle_agent_final_review":
                     final_review = {

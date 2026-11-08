@@ -370,3 +370,15 @@ The `oracle/phase-04-bounded-agent-revision-loop` branch adds selective, lineage
 - Revision agents remain content/reasoning specialists only; no shell, browser, filesystem, executor or Mac action handlers are registered.
 
 Status: `IMPLEMENTED_AND_VERIFIED` by run `42469959196` (379 tests passed on Ubuntu and macOS). Live provider quality/cost, deployed Streamlit interaction, and physical-Mac restart validation remain outstanding. The final reviewer assesses completeness/internal consistency, not factual truth. See `docs/architecture/AUTONOMOUS_AGENT_DAG.md`.
+
+
+## Phase 04f — Composed evidence-to-agent end-to-end workflow
+
+| Increment | Owning modules | Status on this branch | Verified scope | Remaining work |
+|---|---|---|---|---|
+| Evidence research task composition | `task_execution.py`, `agent_task_execution.py` | `IMPLEMENTED_BUT_UNVERIFIED` | A validated Deep Research task can be composed into the same encrypted specialist DAG; research is a prerequisite for every specialist and final review | Current branch CI; live search/provider validation |
+| Evidence handoff to specialists | `agent_task_execution.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Only allowlisted bounded report fields are projected to dependent specialists; research evidence is inherited across revision lineage and excluded from revision-target candidates | Verify quality with real provider outputs; preserve strict result-size limits |
+| Control Center evidence projection | `app.py`, `agent_task_execution.py` | `IMPLEMENTED_BUT_UNVERIFIED` | UI can show the persisted evidence answer, evidence summary, limitations and validated HTTP(S) citations alongside specialist outputs | Live Streamlit browser validation |
+| End-to-end regression | `test_oracle_e2e.py` | `IMPLEMENTED_TESTS_PENDING` | Offline test exercises memory context, encrypted graph creation, mocked research, specialist dependency handoff, reviewer rejection, selective revision, merged result projection and owner-scoped Control Center metadata | Await Ubuntu/macOS CI; live provider run remains a separate opt-in operation |
+
+The composed path remains explicitly dispatched by the user. Research uses bounded query/source settings and a non-retryable task. The final reviewer assesses request coverage and internal consistency, not factual truth. See `docs/testing/ORACLE_END_TO_END.md`.
