@@ -789,11 +789,33 @@ def pause_graph(scope: str, graph_id: str) -> bool:
     init_database()
     conn = get_conn()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = _now_iso()
         cur = conn.execute(
             """UPDATE oracle_task_graphs SET status='paused',updated_at=?
                WHERE graph_id=? AND scope=? AND status='active'""",
-            (_now_iso(), graph_id, scope),
+            (now, graph_id, scope),
         )
+        if cur.rowcount:
+            # A lease not yet started is safe to release; already-running work
+            # remains leased so its worker can finish/heartbeat cooperatively.
+            leased = conn.execute(
+                """SELECT task_id,attempt_count FROM oracle_durable_tasks
+                   WHERE graph_id=? AND scope=? AND status='leased'""",
+                (graph_id, scope),
+            ).fetchall()
+            for item in leased:
+                conn.execute(
+                    """UPDATE oracle_task_attempts SET status='cancelled',finished_at=?
+                       WHERE task_id=? AND scope=? AND attempt_number=? AND status='leased'""",
+                    (now, item["task_id"], scope, item["attempt_count"]),
+                )
+            conn.execute(
+                """UPDATE oracle_durable_tasks SET status='queued',lease_owner='',
+                   lease_token_digest='',lease_expires_at=NULL,updated_at=?
+                   WHERE graph_id=? AND scope=? AND status='leased'""",
+                (now, graph_id, scope),
+            )
         conn.commit()
         return cur.rowcount == 1
     finally:
