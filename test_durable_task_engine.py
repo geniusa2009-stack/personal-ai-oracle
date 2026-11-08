@@ -308,3 +308,19 @@ def test_invalid_retry_policy_and_worker_arguments_are_rejected(monkeypatch, tmp
         engine.claim_next("owner:one", "worker with spaces")
     with pytest.raises(engine.TaskEngineError):
         engine.claim_next("owner:one", "worker", lease_seconds=1)
+
+
+
+def test_task_lease_representation_does_not_disclose_payload_or_lease_token(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = engine.create_graph(
+        "owner:one",
+        "redacted-repr",
+        [_task("private", payload={"api_key": "never-print-this-value"})],
+    )
+    lease = _claim("owner:one")
+
+    rendered = repr(lease)
+    assert "never-print-this-value" not in rendered
+    assert lease.lease_token not in rendered
+    assert graph.graph_id in rendered
