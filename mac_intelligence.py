@@ -134,9 +134,10 @@ def authorize_workspace_action(tool_id: str, payload: dict[str, Any]) -> dict[st
     """Authorize only an explicitly configured action inside a configured workspace."""
     try:
         policy = _load_policy()
-        # Move and delete are deliberately never covered by trusted-workspace
-        # automation; they continue through the exact one-time approval gate.
-        if tool_id in {"local.move_path", "local.delete_path"}:
+        # Deletion is never covered by workspace automation. Moving is allowed
+        # only when explicitly enabled and both paths stay inside the same
+        # trusted workspace; overwriting an existing destination needs approval.
+        if tool_id == "local.delete_path":
             return {"allowed": False, "reason": "explicit_approval_required"}
         auto_tools = set(policy["auto_allow_tools"])
         if tool_id not in auto_tools:
@@ -146,7 +147,15 @@ def authorize_workspace_action(tool_id: str, payload: dict[str, Any]) -> dict[st
         if tool_id == "local.write_file":
             paths = [payload.get("path")]
         elif tool_id == "local.move_path":
-            paths = [payload.get("source"), payload.get("destination")]
+            source = payload.get("source")
+            destination = payload.get("destination")
+            if not isinstance(destination, str) or Path(destination).expanduser().exists():
+                return {"allowed": False, "reason": "destination_exists_requires_approval"}
+            source_root = trusted_workspace_for(source)
+            destination_root = trusted_workspace_for(destination)
+            if source_root is None or destination_root is None or source_root != destination_root:
+                return {"allowed": False, "reason": "path_outside_trusted_workspace"}
+            return {"allowed": True, "reason": "trusted_workspace_move"}
         elif tool_id == "local.delete_path":
             if payload.get("recursive", False) is not False:
                 return {"allowed": False, "reason": "recursive_delete_never_auto_allowed"}
