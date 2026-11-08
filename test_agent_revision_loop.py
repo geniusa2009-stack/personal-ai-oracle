@@ -144,6 +144,12 @@ def test_revision_loop_reruns_only_affected_agents_and_merges_unchanged_results(
     assert result["revision"]["completed_cycles"] == 1
     assert result["revision"]["remaining_cycles"] == agent_tasks.MAX_REVISION_CYCLES - 1
     assert result["final_review"]["decision"] == "accepted"
+    effective = {item["task_key"]: item["output"] for item in result["effective_results"]}
+    assert effective == {
+        "research": "Original researcher output.",
+        "draft": "Revised draft with a dedicated risk section.",
+        "technical_review": "Revised technical review with explicit constraints.",
+    }
     assert [item["result"]["source_task_key"] for item in result["tasks"] if item["result"]] == [
         "draft", "technical_review"
     ]
