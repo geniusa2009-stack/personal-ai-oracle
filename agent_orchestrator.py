@@ -397,6 +397,7 @@ def _execute_step(
         is_cloud_runtime = os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud"
         execution_policy_module = None
         execution_grant = None
+        policy_scope = None
         if tool_id.startswith("local."):
             import execution_policy as execution_policy_module
             if is_cloud_runtime and tool_id in execution_policy_module.APPROVAL_TOOLS:
@@ -460,7 +461,10 @@ def _execute_step(
                     }
         elif tool_id.startswith("local."):
             result = local_tools.execute(
-                tool_id, step["input"], execution_grant=execution_grant
+                tool_id,
+                step["input"],
+                execution_grant=execution_grant,
+                execution_scope=policy_scope,
             )
         else:
             result = web_browser.execute(tool_id, step["input"])
