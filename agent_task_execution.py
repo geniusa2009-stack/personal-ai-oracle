@@ -410,12 +410,29 @@ def _revision_history(scope: str, root_graph_id: str) -> list[dict[str, Any]]:
     history = []
     for row in rows:
         suffix = row["idempotency_key"][len(prefix):]
-        if suffix.isdigit():
-            history.append({
-                "revision_index": int(suffix),
-                "graph_id": row["graph_id"],
-            })
+        if not suffix.isdigit():
+            continue
+        revision_index = int(suffix)
+        metadata = _revision_metadata(scope, row["graph_id"])
+        if (
+            metadata["root_graph_id"] != root_graph_id
+            or metadata["revision_index"] != revision_index
+        ):
+            raise AgentTaskExecutionError("revision idempotency namespace collision")
+        history.append({
+            "revision_index": revision_index,
+            "graph_id": row["graph_id"],
+            "parent_graph_id": metadata["parent_graph_id"],
+        })
     history.sort(key=lambda item: item["revision_index"])
+    expected_parent = root_graph_id
+    for expected_index, item in enumerate(history, start=1):
+        if (
+            item["revision_index"] != expected_index
+            or item["parent_graph_id"] != expected_parent
+        ):
+            raise AgentTaskExecutionError("revision history is not a single contiguous lineage")
+        expected_parent = item["graph_id"]
     return history
 
 
@@ -456,6 +473,9 @@ def _effective_agent_results(
                 or not isinstance(output, str) or not output.strip()
             ):
                 raise AgentTaskExecutionError("persisted revision result is invalid")
+            previous = effective.get(source_key)
+            if previous is None or previous["agent_role"] != role:
+                raise AgentTaskExecutionError("revision result does not match an existing source specialist")
             effective[source_key] = {
                 "task_key": source_key,
                 "agent_role": role,
