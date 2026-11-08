@@ -489,6 +489,88 @@ def init_database():
         CREATE INDEX IF NOT EXISTS idx_oracle_checkpoints_scope_expiry
             ON oracle_workflow_checkpoints(scope, expires_at);
 
+        CREATE TABLE IF NOT EXISTS oracle_task_graphs (
+            graph_id          TEXT PRIMARY KEY,
+            scope             TEXT NOT NULL,
+            idempotency_key   TEXT NOT NULL,
+            plan_digest       TEXT NOT NULL,
+            status            TEXT NOT NULL,
+            task_count        INTEGER NOT NULL,
+            created_at        TEXT NOT NULL,
+            updated_at        TEXT NOT NULL,
+            finished_at       TEXT,
+            UNIQUE(scope, idempotency_key),
+            CHECK(status IN ('active', 'paused', 'completed', 'failed', 'cancelled')),
+            CHECK(task_count >= 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_task_graphs_scope
+            ON oracle_task_graphs(scope, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS oracle_durable_tasks (
+            task_id             TEXT PRIMARY KEY,
+            graph_id            TEXT NOT NULL,
+            scope               TEXT NOT NULL,
+            task_key            TEXT NOT NULL,
+            task_type           TEXT NOT NULL,
+            status              TEXT NOT NULL,
+            payload_ciphertext  TEXT NOT NULL,
+            payload_digest      TEXT NOT NULL,
+            result_ciphertext   TEXT NOT NULL DEFAULT '',
+            result_digest       TEXT NOT NULL DEFAULT '',
+            attempt_count       INTEGER NOT NULL DEFAULT 0,
+            max_attempts        INTEGER NOT NULL DEFAULT 1,
+            retry_safe          INTEGER NOT NULL DEFAULT 0,
+            available_at        REAL NOT NULL,
+            lease_owner         TEXT NOT NULL DEFAULT '',
+            lease_token_digest  TEXT NOT NULL DEFAULT '',
+            lease_expires_at    REAL,
+            last_error_code     TEXT NOT NULL DEFAULT '',
+            created_at          TEXT NOT NULL,
+            updated_at          TEXT NOT NULL,
+            UNIQUE(graph_id, task_key),
+            CHECK(status IN ('queued', 'leased', 'running', 'succeeded', 'failed', 'blocked', 'cancelled')),
+            CHECK(attempt_count >= 0),
+            CHECK(max_attempts >= 1 AND max_attempts <= 5),
+            CHECK(retry_safe IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_durable_tasks_claim
+            ON oracle_durable_tasks(scope, status, available_at, created_at);
+        CREATE INDEX IF NOT EXISTS idx_oracle_durable_tasks_graph
+            ON oracle_durable_tasks(scope, graph_id, status);
+
+        CREATE TABLE IF NOT EXISTS oracle_task_dependencies (
+            graph_id             TEXT NOT NULL,
+            scope                TEXT NOT NULL,
+            task_id              TEXT NOT NULL,
+            depends_on_task_id   TEXT NOT NULL,
+            PRIMARY KEY(task_id, depends_on_task_id, scope),
+            CHECK(task_id <> depends_on_task_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_task_dependencies_parent
+            ON oracle_task_dependencies(scope, depends_on_task_id);
+
+        CREATE TABLE IF NOT EXISTS oracle_task_attempts (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id        TEXT NOT NULL,
+            scope          TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL,
+            worker_id      TEXT NOT NULL,
+            status         TEXT NOT NULL,
+            error_code     TEXT NOT NULL DEFAULT '',
+            result_digest  TEXT NOT NULL DEFAULT '',
+            result_length  INTEGER NOT NULL DEFAULT 0,
+            started_at     TEXT NOT NULL,
+            finished_at    TEXT,
+            duration_ms    INTEGER,
+            UNIQUE(task_id, attempt_number, scope),
+            CHECK(attempt_number >= 1),
+            CHECK(status IN ('leased', 'running', 'succeeded', 'retryable_failure', 'permanent_failure', 'lease_expired', 'cancelled')),
+            CHECK(result_length >= 0),
+            CHECK(duration_ms IS NULL OR duration_ms >= 0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oracle_task_attempts_scope_task
+            ON oracle_task_attempts(scope, task_id, attempt_number DESC);
+
         CREATE TABLE IF NOT EXISTS oracle_model_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, provider TEXT NOT NULL,
             model TEXT NOT NULL, route_reason TEXT NOT NULL, latency_ms INTEGER NOT NULL,
@@ -1378,7 +1460,8 @@ SENSITIVE_TABLES = [
     "memory_consolidation_proposals", "memory_consolidation_proposal_members",
     "memory_consolidation_observations", "knowledge_relations", "knowledge_entities",
     "oracle_workflow_steps", "oracle_workflow_runs", "oracle_execution_approvals",
-    "oracle_workflow_checkpoints", "oracle_model_events",
+    "oracle_workflow_checkpoints", "oracle_task_graphs", "oracle_durable_tasks",
+    "oracle_task_dependencies", "oracle_task_attempts", "oracle_model_events",
     "oracle_model_benchmark_runs", "oracle_model_benchmark_results",
     "wa_processed_messages",
 ]

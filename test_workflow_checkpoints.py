@@ -71,3 +71,28 @@ def test_checkpoint_size_and_ttl_are_bounded(monkeypatch, tmp_path):
         workflow_checkpoints.save_checkpoint("owner-a", {"value": "x" * 300_000})
     with pytest.raises(workflow_checkpoints.CheckpointError):
         workflow_checkpoints.save_checkpoint("owner-a", {"task": "x"}, ttl_hours=0)
+
+
+
+def test_scoped_payload_encryption_is_authenticated_and_scope_bound(monkeypatch, tmp_path):
+    _database(monkeypatch, tmp_path)
+    payload = {"task": "private durable task", "nested": [{"value": "secret-result"}]}
+
+    ciphertext = workflow_checkpoints.encrypt_scoped_payload("owner-a", payload)
+
+    assert "private durable task" not in ciphertext
+    assert "secret-result" not in ciphertext
+    assert workflow_checkpoints.decrypt_scoped_payload("owner-a", ciphertext) == payload
+    with pytest.raises(workflow_checkpoints.CheckpointError, match="ownership"):
+        workflow_checkpoints.decrypt_scoped_payload("owner-b", ciphertext)
+
+
+def test_scoped_payload_encryption_rejects_tampered_and_oversized_values(monkeypatch, tmp_path):
+    _database(monkeypatch, tmp_path)
+    ciphertext = workflow_checkpoints.encrypt_scoped_payload("owner-a", {"value": "private"})
+    with pytest.raises(workflow_checkpoints.CheckpointError, match="authentication"):
+        workflow_checkpoints.decrypt_scoped_payload("owner-a", ciphertext[:-4] + "xxxx")
+    with pytest.raises(workflow_checkpoints.CheckpointError, match="larger"):
+        workflow_checkpoints.encrypt_scoped_payload(
+            "owner-a", {"value": "x" * workflow_checkpoints.MAX_CHECKPOINT_BYTES}
+        )
