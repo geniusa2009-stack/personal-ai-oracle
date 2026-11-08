@@ -1132,6 +1132,7 @@ with tab_settings:
 with tab_oracle:
     import knowledge_graph
     import workflow_ledger
+    import task_control_center
     import deep_research
     import execution_policy
     import model_observability
@@ -1291,6 +1292,167 @@ with tab_oracle:
         st.info("لا توجد سجلات تشغيل بعد. أول مهمة ينفذها الوكيل ستظهر هنا.")
     st.caption(
         "السجل يحفظ بصمات SHA-256 وبيانات التشغيل فقط، وليس نص المهمة أو محتوى الملفات أو مخرجات الأدوات."
+    )
+
+    st.divider()
+    st.markdown("#### 🧵 Durable Task Queue — المهام الدائمة")
+    st.caption(
+        "عرض وإدارة حالة الـTask Graphs فقط. اللوحة لا تبدأ Worker ولا تنفّذ مهامًا تلقائيًا."
+    )
+    try:
+        task_graph_rows = task_control_center.list_graph_summaries(oracle_scope, limit=50)
+    except Exception as exc:
+        task_graph_rows = []
+        st.error(f"تعذّر تحميل قائمة المهام: {type(exc).__name__}")
+
+    if task_graph_rows:
+        queue_active = sum(item["status"] == "active" for item in task_graph_rows)
+        queue_paused = sum(item["status"] == "paused" for item in task_graph_rows)
+        queue_pending = sum(item["pending_count"] for item in task_graph_rows)
+        queue_failed = sum(item["failed_count"] + item["blocked_count"] for item in task_graph_rows)
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Task Graphs", len(task_graph_rows))
+        q2.metric("نشطة", queue_active)
+        q3.metric("متوقفة مؤقتًا", queue_paused)
+        q4.metric("مهام معلّقة", queue_pending)
+        st.dataframe(
+            [{
+                "Graph": item["graph_id"][:12],
+                "الحالة": item["status"],
+                "عدد المهام": item["task_count"],
+                "نجحت": item["succeeded_count"],
+                "فشلت": item["failed_count"],
+                "محجوبة": item["blocked_count"],
+                "قيد الانتظار/التنفيذ": item["pending_count"],
+                "آخر تحديث": item["updated_at"],
+            } for item in task_graph_rows],
+            use_container_width=True,
+            hide_index=True,
+        )
+        graph_labels = {
+            item["graph_id"]: f"{item['graph_id'][:12]} · {item['status']} · {item['task_count']} tasks"
+            for item in task_graph_rows
+        }
+        selected_graph_id = st.selectbox(
+            "تفاصيل Task Graph",
+            list(graph_labels),
+            format_func=lambda value: graph_labels.get(value, value[:12]),
+            key="oracle_durable_task_graph",
+        )
+        try:
+            task_detail = task_control_center.get_graph_detail(
+                oracle_scope, selected_graph_id
+            )
+        except Exception as exc:
+            task_detail = None
+            st.error(f"تعذّر تحميل تفاصيل المهام: {type(exc).__name__}")
+
+        if task_detail:
+            selected_graph = task_detail["graph"]
+            task_rows = task_detail["tasks"]
+            st.dataframe(
+                [{
+                    "Task": item["task_key"],
+                    "النوع": item["task_type"],
+                    "الحالة": item["status"],
+                    "المحاولات": f"{item['attempt_count']}/{item['max_attempts']}",
+                    "Retry Safe": item["retry_safe"],
+                    "Worker": item["lease_owner"] or "—",
+                    "رمز الخطأ": item["last_error_code"] or "—",
+                } for item in task_rows],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            action_cols = st.columns(3)
+            if selected_graph["status"] == "active":
+                if action_cols[0].button(
+                    "Pause Graph",
+                    key=f"oracle_task_pause_{selected_graph_id}",
+                ):
+                    try:
+                        task_control_center.transition_graph(
+                            oracle_scope, selected_graph_id, "pause"
+                        )
+                        st.success("تم إيقاف جدولة المهام الجديدة. المهام الجارية قد تكمل عملها.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"تعذّر إيقاف الجدولة: {type(exc).__name__}")
+            elif selected_graph["status"] == "paused":
+                if action_cols[0].button(
+                    "Resume Graph",
+                    key=f"oracle_task_resume_{selected_graph_id}",
+                ):
+                    try:
+                        task_control_center.transition_graph(
+                            oracle_scope, selected_graph_id, "resume"
+                        )
+                        st.success("تم استئناف جدولة المهام.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"تعذّر استئناف الجدولة: {type(exc).__name__}")
+
+            can_cancel = selected_graph["status"] in {"active", "paused"}
+            confirm_cancel = action_cols[1].checkbox(
+                "تأكيد الإلغاء",
+                key=f"oracle_task_cancel_confirm_{selected_graph_id}",
+                disabled=not can_cancel,
+            )
+            if action_cols[2].button(
+                "Cancel Graph",
+                key=f"oracle_task_cancel_{selected_graph_id}",
+                disabled=(not can_cancel or not confirm_cancel),
+            ):
+                try:
+                    task_control_center.transition_graph(
+                        oracle_scope, selected_graph_id, "cancel"
+                    )
+                    st.warning("تم إلغاء الجدولة وإبطال الـLeases. الإجراء الخارجي الجاري يحتاج إيقافًا تعاونيًا.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"تعذّر إلغاء Graph: {type(exc).__name__}")
+
+            if task_rows:
+                task_labels = {
+                    item["task_id"]: f"{item['task_key']} · {item['status']}"
+                    for item in task_rows
+                }
+                selected_task_id = st.selectbox(
+                    "سجل محاولات مهمة",
+                    list(task_labels),
+                    format_func=lambda value: task_labels.get(value, value[:12]),
+                    key=f"oracle_task_attempt_select_{selected_graph_id}",
+                )
+                try:
+                    attempts = task_control_center.list_task_attempts(
+                        oracle_scope, selected_task_id, limit=5
+                    )
+                    if attempts:
+                        st.dataframe(
+                            [{
+                                "المحاولة": item["attempt_number"],
+                                "Worker": item["worker_id"],
+                                "الحالة": item["status"],
+                                "رمز الخطأ": item["error_code"] or "—",
+                                "المدة ms": item["duration_ms"],
+                                "Result Digest": (item["result_digest"] or "")[:12],
+                                "بدأت": item["started_at"],
+                                "انتهت": item["finished_at"] or "—",
+                            } for item in attempts],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        st.info("لا توجد محاولات مسجلة لهذه المهمة.")
+                except Exception as exc:
+                    st.warning(f"تعذّر تحميل محاولات المهمة: {type(exc).__name__}")
+            if queue_failed:
+                st.caption(f"إجمالي المهام الفاشلة أو المحجوبة في النطاق: {queue_failed}")
+    else:
+        st.info("لا توجد Task Graphs في هذا النطاق حتى الآن.")
+
+    st.caption(
+        "المعروض هنا Metadata فقط؛ لا تُعرض Payloads أو Results. لا يوجد Worker production متصل بهذه اللوحة حتى الآن."
     )
 
     st.divider()
