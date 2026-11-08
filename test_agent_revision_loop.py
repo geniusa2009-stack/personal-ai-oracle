@@ -266,3 +266,13 @@ def test_accepted_graph_cannot_enter_revision_loop(monkeypatch, tmp_path):
     agent_task_execution.dispatch_agent_tasks("owner:one", "accepted-worker", max_tasks=4)
     with pytest.raises(agent_task_execution.AgentTaskExecutionError, match="does not require revision"):
         agent_task_execution.create_revision_graph("owner:one", graph.graph_id)
+
+
+def test_root_graph_cannot_claim_reserved_revision_idempotency_namespace(monkeypatch, tmp_path):
+    agent_task_execution_test_setup(monkeypatch, tmp_path)
+    with pytest.raises(agent_tasks.AgentTaskExecutionError, match="reserved revision namespace"):
+        agent_tasks.create_agent_graph(
+            "owner:one",
+            "oracle-agent-revision-" + ("a" * 32) + "-1",
+            "A bounded request.",
+        )
