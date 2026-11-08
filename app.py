@@ -1133,6 +1133,9 @@ with tab_oracle:
     import knowledge_graph
     import workflow_ledger
     import task_control_center
+    import task_handlers
+    import task_worker
+    import uuid
     import deep_research
     import execution_policy
     import model_observability
@@ -1297,8 +1300,78 @@ with tab_oracle:
     st.divider()
     st.markdown("#### 🧵 Durable Task Queue — المهام الدائمة")
     st.caption(
-        "عرض وإدارة حالة الـTask Graphs فقط. اللوحة لا تبدأ Worker ولا تنفّذ مهامًا تلقائيًا."
+        "تشغيل يدوي لمهمة Memory Scan محلية وغير هدّامة فقط. لا توجد مهام تلقائية أو Worker يعمل في الخلفية."
     )
+
+    with st.expander("➕ إنشاء Memory Consolidation Scan", expanded=False):
+        with st.form("oracle_create_memory_scan"):
+            scan_candidate_limit = st.number_input(
+                "عدد الذكريات القصوى للفحص",
+                min_value=2, max_value=500, value=200, step=10,
+                key="oracle_memory_scan_candidate_limit",
+            )
+            scan_max_pair_checks = st.number_input(
+                "أقصى عدد مقارنات",
+                min_value=1, max_value=50000, value=20000, step=1000,
+                key="oracle_memory_scan_pair_limit",
+            )
+            scan_max_proposals = st.number_input(
+                "أقصى عدد اقتراحات",
+                min_value=1, max_value=1000, value=500, step=25,
+                key="oracle_memory_scan_proposal_limit",
+            )
+            create_scan_clicked = st.form_submit_button("إنشاء Scan في الطابور")
+        if create_scan_clicked:
+            try:
+                scan_graph = task_handlers.create_memory_consolidation_scan(
+                    oracle_scope,
+                    idempotency_key=f"memory-scan-{uuid.uuid4().hex}",
+                    candidate_limit=int(scan_candidate_limit),
+                    max_pair_checks=int(scan_max_pair_checks),
+                    max_proposals=int(scan_max_proposals),
+                )
+                st.success(
+                    f"تم إنشاء Memory Scan Graph: {scan_graph.graph_id[:12]} "
+                    "— لم يبدأ التنفيذ بعد."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"تعذّر إنشاء Memory Scan: {type(exc).__name__}")
+
+    if st.button(
+        "شغّل مهمة Memory Scan واحدة من الطابور",
+        key="oracle_run_one_memory_scan",
+    ):
+        try:
+            with st.spinner("يتم تنفيذ Memory Scan محلية واحدة…"):
+                dispatch_result = task_worker.dispatch_once(
+                    oracle_scope,
+                    worker_id=f"control-center-{uuid.uuid4().hex[:8]}",
+                    handlers=task_handlers.build_default_handlers(),
+                    lease_seconds=300,
+                )
+            if dispatch_result is None:
+                st.info("لا توجد Memory Scan جاهزة للتنفيذ حاليًا.")
+            else:
+                st.info(
+                    f"Task: {dispatch_result.task_key} · "
+                    f"الحالة: {dispatch_result.status} · "
+                    f"المحاولة: {dispatch_result.attempt_number}"
+                )
+                scan_summary = task_control_center.get_task_result_summary(
+                    oracle_scope, dispatch_result.task_id
+                )
+                if scan_summary:
+                    st.success(
+                        f"انتهى الفحص: {scan_summary['run_id']} · "
+                        f"تم فحص {scan_summary['scanned_count']} ذكرى · "
+                        f"{scan_summary['proposal_count']} اقتراح"
+                    )
+                    st.json(scan_summary)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"تعذّر تشغيل Memory Scan: {type(exc).__name__}")
+
     try:
         task_graph_rows = task_control_center.list_graph_summaries(oracle_scope, limit=50)
     except Exception as exc:
@@ -1452,7 +1525,7 @@ with tab_oracle:
         st.info("لا توجد Task Graphs في هذا النطاق حتى الآن.")
 
     st.caption(
-        "المعروض هنا Metadata فقط؛ لا تُعرض Payloads أو Results. لا يوجد Worker production متصل بهذه اللوحة حتى الآن."
+        "الـWorker لا يعمل في الخلفية. كل تشغيل يبدأ بضغطة صريحة، والـHandler الوحيد المسجل هنا هو Memory Consolidation Scan المحلي."
     )
 
     st.divider()
