@@ -30,7 +30,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Performance-based router | `model_router.py`, `model_benchmark.py`, `model_observability.py` | Evidence-gated benchmark scorecards available; route decision still follows explicit/category/tier policy | `PARTIALLY_IMPLEMENTED` | `test_model_benchmark.py`, `test_model_observability.py`; 290-test CI | Scorecards are advisory; no automatic route change until real provider data, evaluator comparability, and verified cost signals are available |
 | Measured model benchmarking | `model_benchmark.py`, `model_observability.py`, `ai_executor.py` | Explicit candidate/case runs, privacy-safe outcomes, latency, optional rubric score, evaluator/suite-isolated scorecards and runtime health floor | `IMPLEMENTED_AND_VERIFIED` | `test_model_benchmark.py`, `test_multi_provider.py`; 290-test Ubuntu/macOS CI | Synthetic phrase rubric is a smoke check only; live provider quality, token usage and cost remain unmeasured |
 | Sequential agent tool loop | `agent_orchestrator.py`, `bounded_correction.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py`, `test_bounded_correction.py`; 313-test CI | Planner JSON repair runs before tool execution; tool actions are never replayed by the correction loop |
-| Persistent DAG task engine | Not present as a complete subsystem | DB, queue, checkpoint, tool registry | `PLANNED` | Ledger/checkpoint tests are not task-engine tests | Durable task/step state, dependency graph, retries, cancellation, resume |
+| Persistent DAG task engine | `durable_task_engine.py`, `database.py`, `workflow_checkpoints.py` | SQLite graph/task/dependency/attempt tables; owner-scoped encrypted payloads; lease tokens | `PARTIALLY_IMPLEMENTED` | `test_durable_task_engine.py`; latest full CI pending on this branch | Durable DAG storage, dependency gates, claims, leases, backoff, pause/resume/cancel and attempt history are implemented; worker handlers, Control Center UI, distributed queue and versioned migrations remain |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
 | Deep research | `deep_research.py`, `search.py`, `bounded_correction.py` | Search providers, AI Core, page extraction, deterministic answer/citation validation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py`, `test_bounded_correction.py` | One bounded synthesis repair for structure/citation issues; live-source quality and factual truth remain unverified |
@@ -51,8 +51,8 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Explicit knowledge graph | `knowledge_graph.py`, `hybrid_memory.py` | SQLite scope-bound entity/relation tables, stored relation evidence, bounded graph expansion | `IMPLEMENTED_AND_VERIFIED` | `test_knowledge_graph.py`, `test_hybrid_memory.py`; 267-test Ubuntu/macOS CI | Explicit graph edges now contribute bounded retrieval candidates and provenance; temporal/versioned graph edges remain planned |
 | Automatic graph extraction | Not evidenced as integrated | Claim/entity extraction and provenance | `PLANNED` | Explicit graph write tests only | Evidence-backed entity resolution and relation extraction |
 | Memory consolidation | `memory_consolidation.py`, `database.py`, `memory.py` | Bounded scope-local candidate discovery; duplicate/related/possible-contradiction proposals; review status and source hashes; scan observations | `IMPLEMENTED_AND_VERIFIED` | `test_memory_consolidation.py`; 276-test Ubuntu/macOS CI | Review-only proposals; no auto-merge/delete; source changes, supersession or expiry surface stale proposals; semantic contradiction verification, entity resolution and retention remain out of scope |
-| Workflow metadata ledger | `workflow_ledger.py` | SQLite workflow tables | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_ledger.py` | Link the trace to durable task plans and state transitions |
-| Encrypted workflow checkpoint | `workflow_checkpoints.py` | Fernet key and SQLite | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_checkpoints.py` | Generalize to task resume; review automatic expired-record deletion |
+| Workflow metadata ledger | `workflow_ledger.py`, `durable_task_engine.py` | SQLite workflow and task tables | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_ledger.py` | Link digest-only traces to durable graph/task IDs and worker state transitions |
+| Encrypted workflow checkpoint | `workflow_checkpoints.py`, `durable_task_engine.py` | Fernet key, owner-scope binding and SQLite | `IMPLEMENTED_AND_VERIFIED` | `test_workflow_checkpoints.py`, encrypted task-payload tests | Reusable owner-bound encryption helpers now protect durable task payloads/results; key rotation and versioned migrations remain |
 | Durable task queue | No complete queue identified | Persistent task table, scheduler/worker | `PLANNED` | No queue-specific test suite found | Atomic claims, leases, retries, priorities, cancellation |
 | Model telemetry | `model_observability.py`, `ai_executor.py` | SQLite, execution events | `IMPLEMENTED_AND_VERIFIED` | `test_model_observability.py` | Add token/cost and task-quality correlation where available |
 | Cost intelligence | No integrated cost ledger identified | Provider usage metadata/pricing inputs | `PLANNED` | No cost evaluation tests found | Capture actual usage where providers expose it; label estimates |
@@ -248,3 +248,18 @@ The oracle/phase-03-bounded-self-correction branch adds a shared text-only corre
 - Local shell, browser, file, tool, approval and other side-effecting operations are outside the retry loop.
 
 See docs/architecture/BOUNDED_SELF_CORRECTION.md. Deterministic output validation is not a general proof of semantic correctness or factual truth.
+
+
+## Phase 04 — Durable DAG task engine
+
+The `oracle/phase-04-durable-task-engine` branch introduces a persistent scheduler/state engine without adding automatic execution:
+
+- Graph creation validates task keys, dependency references and cycles; an owner-scoped idempotency key prevents accidental duplicate graph creation.
+- Task payloads and results are encrypted with the owner-scope-bound workflow checkpoint key.
+- Workers explicitly claim a single ready task using a transaction-backed lease, then start, heartbeat and complete/fail it.
+- Dependencies gate task readiness; failed dependencies block descendants.
+- Retry is off by default. Only tasks explicitly declared `retry_safe` may be requeued, and the attempt count/backoff are bounded.
+- Graph pause releases unstarted leases without consuming an execution attempt; already-running tasks remain cooperative. Cancellation changes queue state but does not forcibly undo external effects.
+- The queue does not execute tools, start a worker, or install a background service.
+
+This phase is **partially implemented** until typed worker handlers, Control Center visibility, recovery/integration tests, distributed deployment assumptions and versioned migrations are addressed. See `docs/architecture/DURABLE_TASK_ENGINE.md`.
