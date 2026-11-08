@@ -91,6 +91,10 @@ def _normalize_handlers(
 ) -> dict[str, TaskHandler]:
     if not isinstance(handlers, Mapping):
         raise TaskWorkerError("handlers must be an explicit mapping")
+    if len(handlers) > MAX_REGISTERED_HANDLERS:
+        raise TaskWorkerError(
+            f"handler registry must contain at most {MAX_REGISTERED_HANDLERS} entries"
+        )
     normalized: dict[str, TaskHandler] = {}
     for raw_type, handler in handlers.items():
         if (
