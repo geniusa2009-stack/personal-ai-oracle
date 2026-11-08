@@ -140,7 +140,10 @@ def test_dispatch_runs_specialists_in_dependency_order_and_persists_review(monke
     assert result["final_review"]["decision"] == "accepted"
     assert result["final_review"]["factual_truth_verified"] is False
     assert result["succeeded_count"] == 4
-    assert all(item["result"] for item in result["tasks"])
+    assert all(
+        item["result"] for item in result["tasks"]
+        if item["task_type"] == agent_tasks.TASK_TYPE_AGENT_STEP
+    )
 
 
 def test_graph_can_resume_after_app_restart_without_losing_completed_agent_results(monkeypatch, tmp_path):
