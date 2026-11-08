@@ -329,6 +329,7 @@ The `oracle/phase-07-deletion-approval-enforcement` branch strengthens the Mac e
 - Read-only local operations remain approval-free.
 - File writes, approved development commands and app launches can run without a separate approval only when explicitly configured by the Mac policy and scoped to trusted workspaces/allowlists.
 - Moves can be automatic only when both paths are inside the same trusted workspace and the destination does not exist; overwriting an existing destination falls back to explicit approval.
+- Git checkout/switch/pull commands that can replace working-tree files require explicit approval even when their argv prefixes are allowlisted.
 - Deletion is always routed to the one-time owner approval path, even if a policy file lists `local.delete_path` as auto-allowed.
 - `local_tools._execute` is now the shared policy boundary for direct registered local tool calls; the agent orchestrator passes an exact single-use grant bound to scope, tool ID and payload.
 - The agent's encrypted checkpoint/resume approval flow is retained.
