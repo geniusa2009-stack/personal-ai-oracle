@@ -17,6 +17,7 @@ from db import get_conn
 import workflow_checkpoints
 
 MAX_GRAPH_TASKS = 100
+MAX_TASK_TYPES_PER_CLAIM = 100
 MAX_ATTEMPTS = 5
 MAX_LEASE_SECONDS = 3600
 MIN_LEASE_SECONDS = 5
@@ -506,8 +507,14 @@ def claim_next(
     lease_seconds = _lease_seconds(lease_seconds)
     normalized_types: tuple[str, ...] | None = None
     if task_types is not None:
-        if not isinstance(task_types, (list, tuple)) or not task_types:
-            raise TaskEngineError("task_types must be a non-empty list or tuple")
+        if (
+            not isinstance(task_types, (list, tuple))
+            or not task_types
+            or len(task_types) > MAX_TASK_TYPES_PER_CLAIM
+        ):
+            raise TaskEngineError(
+                f"task_types must contain 1 to {MAX_TASK_TYPES_PER_CLAIM} entries"
+            )
         normalized_types = tuple(
             _label(value, "task_type", 80, _TYPE) for value in task_types
         )
