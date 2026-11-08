@@ -477,3 +477,20 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Pull Request:** [PR #19 — Enforce explicit deletion approval at the Mac execution boundary](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/19). Open, draft; base is PR #18.
 - **Implementation commits:** direct policy enforcement `fa97a3b694e1aaa69dcec1c03f50aecc0e925759`; single-use grants `06617d433eab6f6b56a7b8944c989fe47b7dec13`; orchestrator grant integration `b964d7d13d80cab7748e4201b85d4dee640155f8`; git worktree approval hardening `f72b592b1fe9b4c8a319b95277b406e136b18e55` and regression test `dbcff66e96df29ac12686b71fc8bde2ff7091b77`.
 - **Validated implementation head:** `1db0e133afac9142b0773c5935a0bf70407cff9b`.
+
+
+### Phase 04d — Autonomous planner and specialist-agent DAG
+
+- **Branch:** `oracle/phase-04-autonomous-task-planner-dag`
+- **Base:** `oracle/phase-07-deletion-approval-enforcement` (PR #19).
+- **Dependency:** Stacked on PR #19 → PR #18 → PR #17 → earlier Oracle work.
+- **Files added:** `agent_task_execution.py`, `test_agent_task_execution.py`, `docs/architecture/AUTONOMOUS_AGENT_DAG.md`.
+- **Files updated:** `app.py` (Control Center planning form, explicit bounded dispatch, per-agent output and final-review display), `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Planner contract:** The planner can emit only a strict, bounded DAG using the allowlisted `researcher`, `coder`, and `writer` roles. The application validates task keys, dependencies, payload sizes and schema, and appends a mandatory `final_review` task depending on every specialist step.
+- **Execution:** The existing durable engine gates each task on successful dependencies. The worker registry contains only typed specialist and final-review handlers; there is no generic tool, shell, browser or filesystem fallback. The user explicitly starts batches of at most three tasks from the Control Center.
+- **Persistence/recovery:** Task payloads and each specialist result use the existing owner-scoped encrypted storage. Completed results remain stored across app restarts. Agent tasks permit at most two attempts for expired leases; a crash after a provider call but before result persistence can repeat the provider call and incur duplicate provider cost. Ordinary handler exceptions are not automatically retried.
+- **Review semantics:** A final reviewer evaluates request coverage and internal consistency. `completed` means the graph ran; it is accepted only when `final_review.decision == "accepted"`. The reviewer does not establish factual truth.
+- **Safety boundary:** No executor/local-tool task type, shell/browser/filesystem handler, daemon, LaunchAgent, persistent worker or automatic background dispatch is introduced.
+- **Tests:** Added deterministic mocked planner, role routing, DAG validation, dependency ordering, result persistence, restart-resume, review rejection, failure propagation, scope isolation and dispatch-bound tests. CI is pending; do not treat this milestone as verified until both Ubuntu and macOS jobs pass.
+- **Known limitations:** No automatic revision graph after `needs_revision`; no parallel/distributed worker execution; no live provider, deployed Streamlit or physical-Mac restart validation.
+- **Pull Request:** Pending creation; this branch will be published as a draft stacked PR on PR #19.
