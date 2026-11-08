@@ -257,3 +257,32 @@ def test_worker_registry_and_claim_type_filters_are_bounded(monkeypatch, tmp_pat
             "worker-a",
             task_types=[f"type-{index}" for index in range(engine.MAX_TASK_TYPES_PER_CLAIM + 1)],
         )
+
+
+def test_dispatch_batch_can_be_scoped_to_one_graph(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    first_graph = engine.create_graph(
+        "owner:one", "worker-graph-filter-one", [_spec("first", task_type="text.transform")]
+    )
+    second_graph = engine.create_graph(
+        "owner:one", "worker-graph-filter-two", [_spec("second", task_type="text.transform")]
+    )
+    executed = []
+
+    results = task_worker.dispatch_batch(
+        "owner:one",
+        "worker-selected-graph",
+        {
+            "text.transform": task_worker.TaskHandler(
+                execute=lambda payload, context: executed.append(context.graph_id) or {"ok": True}
+            )
+        },
+        max_tasks=2,
+        graph_id=second_graph.graph_id,
+    )
+
+    assert len(results) == 1
+    assert results[0].task_key == "second"
+    assert executed == [second_graph.graph_id]
+    assert engine.get_graph("owner:one", first_graph.graph_id).status == "active"
+    assert engine.get_graph("owner:one", second_graph.graph_id).status == "completed"
