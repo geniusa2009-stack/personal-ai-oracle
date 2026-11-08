@@ -716,9 +716,7 @@ def fail_task(
     retry_delay_seconds = _int(
         retry_delay_seconds, "retry_delay_seconds", 0, MAX_RETRY_DELAY_SECONDS
     )
-    if not isinstance(error_code, str) or not error_code.strip():
-        raise TaskEngineError("error_code is required")
-    safe_error = re.sub(r"[^A-Za-z0-9_.-]", "_", error_code.strip())[:80]
+    safe_error = _label(error_code, "error_code", 80, _TYPE)
     init_database()
     conn = get_conn()
     try:
