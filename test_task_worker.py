@@ -196,3 +196,46 @@ def test_worker_registry_validation_and_empty_registry(monkeypatch, tmp_path):
             retryable_exceptions=(str,),
         )
     assert task_worker.dispatch_once("owner:one", "worker-a", {}) is None
+
+
+
+def test_dispatch_batch_runs_newly_ready_dependencies_with_a_hard_bound(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = engine.create_graph(
+        "owner:one",
+        "worker-batch",
+        [
+            _spec("root"),
+            engine.TaskSpec(
+                task_key="child",
+                task_type="text.transform",
+                payload={"input": "child"},
+                depends_on=("root",),
+            ),
+        ],
+    )
+    order = []
+
+    def handler(payload, context):
+        order.append(context.task_key)
+        return {"status": "success", "key": context.task_key}
+
+    results = task_worker.dispatch_batch(
+        "owner:one",
+        "worker-batch",
+        {"text.transform": task_worker.TaskHandler(execute=handler)},
+        max_tasks=2,
+    )
+
+    assert [item.task_key for item in results] == ["root", "child"]
+    assert order == ["root", "child"]
+    assert engine.get_graph("owner:one", graph.graph_id).status == "completed"
+
+
+def test_dispatch_batch_rejects_unbounded_or_invalid_limits(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    for value in (0, 101, True, "5"):
+        with pytest.raises(task_worker.TaskWorkerError):
+            task_worker.dispatch_batch(
+                "owner:one", "worker-a", {}, max_tasks=value
+            )
