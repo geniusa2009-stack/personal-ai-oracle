@@ -76,6 +76,37 @@ def _checkpoint_id(value: str | None) -> str:
     return value
 
 
+def encrypt_scoped_payload(scope: str, payload: Any) -> str:
+    """Encrypt a JSON-safe payload and bind it to one owner scope."""
+    scope = _scope(scope)
+    try:
+        raw = json.dumps(
+            {"_owner_scope": scope, "payload": payload},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise CheckpointError("Encrypted payload must contain JSON-safe values.") from exc
+    if len(raw) > MAX_CHECKPOINT_BYTES:
+        raise CheckpointError("Encrypted payload is larger than the configured limit.")
+    return _fernet().encrypt(raw).decode("ascii")
+
+
+def decrypt_scoped_payload(scope: str, ciphertext: str) -> Any:
+    """Decrypt a payload only when its embedded owner scope matches the caller."""
+    scope = _scope(scope)
+    if not isinstance(ciphertext, str) or not ciphertext or len(ciphertext) > MAX_CHECKPOINT_BYTES * 4:
+        raise CheckpointError("Encrypted payload is invalid or oversized.")
+    try:
+        decoded = _fernet().decrypt(ciphertext.encode("ascii"))
+        value = json.loads(decoded.decode("utf-8"))
+    except (InvalidToken, UnicodeError, ValueError, TypeError) as exc:
+        raise CheckpointError("Encrypted payload authentication failed.") from exc
+    if not isinstance(value, dict) or value.get("_owner_scope") != scope or "payload" not in value:
+        raise CheckpointError("Encrypted payload ownership validation failed.")
+    return value["payload"]
+
+
 def save_checkpoint(
     scope: str,
     payload: dict[str, Any],
