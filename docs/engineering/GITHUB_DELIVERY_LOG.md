@@ -458,5 +458,5 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Control Center integration: `66864b5fd92eac04f4646062a72c328d04c54c99`.
   - Architecture documentation: `ede331dc2747942881450a577824dea5707b8831`.
 - **Pull Request:** [PR #18 — Connect durable task queue to explicit Deep Research execution](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/18). Open, draft; base is PR #17.
-- **Published head:** `5bf4f60fd4963d309dc64e330c61144379545482`.
+- **Implementation head before delivery-log refresh:** `402238304b8b7e7fa0ecc1d0b870e76ecc3b9ba9` (includes stable UI idempotency across Streamlit retries).
 - **CI:** Pending on the published head; no passing result is claimed yet.
