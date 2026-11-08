@@ -332,3 +332,32 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** This corrects structure/citation integrity and planner catalogue compliance, not general reasoning quality. No model is allowed to retry a tool call through this correction loop. A repaired answer may still be factually wrong and is subject to existing verification limitations.
 - **Pull Request:** [PR #14 — Add bounded self-correction and loop prevention](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/14)
 - **PR status:** Open, draft; base `oracle/phase-03-model-benchmarking` (PR #13). Published head: `7ada00ce00f94900ec2a2fbb9c44e11b798fad97`. No earlier PR was merged or retargeted.
+
+
+### Phase 04 — Durable DAG task engine
+
+- **Branch:** `oracle/phase-04-durable-task-engine`
+- **Base:** `oracle/phase-03-bounded-self-correction` (PR #14).
+- **Dependency:** Planned PR #15 → PR #14 → PR #13 → PR #12 → PR #11 → PR #10 → PR #9 → PR #8 → PR #7 → PR #6 → PR #5 → PR #4 → PR #3 → PR #2 → PR #1.
+- **Files added:**
+  - `durable_task_engine.py` — scope-bound DAG creation, dependency validation, idempotency, encrypted task/result storage, atomic worker leases, heartbeats, completion/failure, bounded retry, lease reaping, pause/resume/cancel and attempt history.
+  - `test_durable_task_engine.py` — DAG and cycle validation, duplicate graph idempotency, dependency ordering, atomic claims, scope/token validation, encryption, retry safety, lease expiry, failed-dependency propagation, pause/resume/cancel, panic wipe and log redaction.
+  - `docs/architecture/DURABLE_TASK_ENGINE.md`.
+- **Files updated:**
+  - `database.py` — graph/task/dependency/attempt tables and sensitive-table wipe allowlist.
+  - `workflow_checkpoints.py` — owner-scope-bound Fernet encrypt/decrypt helpers reused for task payloads and results.
+  - `test_workflow_checkpoints.py` — wrong-scope, tamper and size-limit tests for encrypted payload helpers.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **State and scheduling:** Graphs are DAG-validated and scope-local. A task becomes claimable only when all dependencies succeeded. Failed/blocked/cancelled prerequisites propagate a blocked state to descendants.
+- **Lease protocol:** Workers explicitly claim, start, heartbeat and complete/fail tasks. Lease tokens are random, hashed at rest and bound to the worker ID and owner scope. Claims use a transactional conditional update.
+- **Retry policy:** No retries by default. A task must explicitly declare `retry_safe=True` before it can have multiple attempts or be requeued after retryable failure/lease expiry. Attempts are capped at five and exponential backoff at 300 seconds. A task paused before entering `running` releases its unstarted lease without consuming an execution attempt.
+- **Cancellation boundary:** Queue cancellation stops further scheduling and invalidates leases; it does not forcibly terminate or undo a side effect already running outside the engine. Worker/executor integration must poll and cooperate with cancellation.
+- **Privacy:** Task payload and result values are encrypted at rest with owner-scope binding. Lease tokens are hashed at rest and redacted from object representations. Free-form error messages are rejected; only compact error codes are accepted. New tables are included in the panic-wipe allowlist.
+- **Validation:** GitHub Actions run `42430710654` passed on code/test head `cd001f0a9f168c251b40de9b7f69d3b43fb85303`.
+  - Ubuntu: **328 passed, 1 warning**.
+  - macOS: **328 passed, 1 warning**.
+  - Compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** This is a queue/state engine, not a production worker. No task handlers, Control Center UI, recurring scheduler, distributed multi-host queue, key rotation, or general versioned migration framework is included. Retry safety remains an explicit caller assertion.
+- **Pull Request:** Pending final documentation CI; planned as draft PR #15 stacked on PR #14.
+- **PR status:** Not yet created; no earlier PR was merged, closed or retargeted.
