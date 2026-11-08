@@ -425,7 +425,11 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **UI scope:** Shows graph/task/attempt metadata and summary counts. Provides Pause/Resume and Cancel controls; Cancel requires an explicit confirmation checkbox.
 - **Privacy:** The UI-facing projection uses an allowlist and never returns task payloads/results/ciphertext. Exception messages are not shown; only compact error codes are displayed.
 - **Execution boundary:** The panel does not create arbitrary task graphs, start workers, run handlers, poll indefinitely, or execute tools. The typed worker adapter remains caller-invoked and still lacks a production handler catalogue/supervisor.
-- **Validation:** CI pending on the current branch head; the queue projection unit tests are present in `test_task_control_center.py`. The Streamlit integration and full suite must pass on Ubuntu and macOS before publication.
+- **Validation:** GitHub Actions run `42431743005` passed on implementation/documentation head `07f549e76420e13b22c3c0aa1641d1dc1fefdb9f`.
+  - Ubuntu: **343 passed, 1 warning**.
+  - macOS: **343 passed, 1 warning**.
+  - Python compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** No auto-refresh/polling, dependency graph visualization, graph creation/editing, production worker health view or process supervision is included.
-- **Pull Request:** Pending CI; planned as draft PR #17 stacked on PR #16.
-- **PR status:** Not yet created; no prior PR was merged, closed or retargeted.
+- **Pull Request:** [PR #17 — Add durable task queue visibility and controls to Oracle Control Center](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/17)
+- **PR status:** Open, draft; base `oracle/phase-04-task-worker-adapter` (PR #16). Published head: `07f549e76420e13b22c3c0aa1641d1dc1fefdb9f`. No prior PR was merged, closed or retargeted.
