@@ -256,6 +256,11 @@ def _dependency_results(
         if not isinstance(result, Mapping):
             raise AgentTaskExecutionError("a dependency result is unavailable")
         if result.get("kind") == "research_report":
+            if (
+                key != "evidence_research"
+                or by_key[key]["task_type"] != TASK_TYPE_AGENT_EVIDENCE_RESEARCH
+            ):
+                raise AgentTaskExecutionError("research result came from an unexpected task type")
             agent_role = "researcher"
             output = _research_result_output(result)
         else:

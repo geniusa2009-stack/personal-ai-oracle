@@ -218,6 +218,11 @@ def test_end_to_end_evidence_agent_revision_persistence_and_control_center(
     # The specialist received the evidence payload and the scope-local memory context.
     writer_call = next(item for item in calls if item["role"] == "writer")
     assert writer_call["memory_injected"] is True
+    initial_review_call = next(
+        item for item in calls
+        if item["role"] == "reviewer" and "specialist_results" in item["content"]
+    )
+    assert '"task_key":"evidence_research"' in initial_review_call["content"]
     writer_payload = json.loads(writer_call["content"])
     assert writer_payload["dependency_results"][0]["task_key"] == "evidence_research"
     assert '"id":"S1"' in writer_payload["dependency_results"][0]["output"]
