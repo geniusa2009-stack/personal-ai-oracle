@@ -210,3 +210,36 @@ def dispatch_once(
             if status in {"cancelled", "failed", "queued", "blocked"}:
                 return result(status, code)
             return result("lease_lost", code)
+
+
+
+def dispatch_batch(
+    scope: str,
+    worker_id: str,
+    handlers: Mapping[str, TaskHandler],
+    *,
+    max_tasks: int = 10,
+    lease_seconds: int = 120,
+) -> list[TaskDispatchResult]:
+    """Process at most max_tasks ready jobs; never sleeps or runs indefinitely."""
+    if (
+        isinstance(max_tasks, bool)
+        or not isinstance(max_tasks, int)
+        or not 1 <= max_tasks <= 100
+    ):
+        raise TaskWorkerError("max_tasks must be between 1 and 100")
+    registry = _normalize_handlers(handlers)
+    if not registry:
+        return []
+    results = []
+    for _ in range(max_tasks):
+        result = dispatch_once(
+            scope,
+            worker_id,
+            registry,
+            lease_seconds=lease_seconds,
+        )
+        if result is None:
+            break
+        results.append(result)
+    return results
