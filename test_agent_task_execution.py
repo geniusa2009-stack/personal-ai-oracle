@@ -253,3 +253,54 @@ def test_dispatch_batch_limit_is_bounded(monkeypatch, tmp_path):
     for invalid in (0, 9, True, "3"):
         with pytest.raises(agent_tasks.AgentTaskExecutionError):
             agent_tasks.dispatch_agent_tasks("owner:one", "worker", max_tasks=invalid)
+
+
+def test_expired_in_progress_agent_task_is_reclaimed_after_process_restart(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = _create(monkeypatch)
+    interrupted = engine.claim_next(
+        "owner:one",
+        "worker-before-crash",
+        task_types=(agent_tasks.TASK_TYPE_AGENT_STEP,),
+        lease_seconds=30,
+    )
+    assert interrupted is not None
+    assert interrupted.task_key == "research"
+    engine.start_task(
+        "owner:one", interrupted.task_id,
+        interrupted.worker_id, interrupted.lease_token,
+    )
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            "UPDATE oracle_durable_tasks SET lease_expires_at=0 WHERE task_id=?",
+            (interrupted.task_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    def fake_chat(_messages, **kwargs):
+        if kwargs["agent_role"] == "reviewer":
+            return json.dumps({
+                "decision": "accepted",
+                "summary": "Recovered graph completed and reviewed.",
+                "issues": [],
+                "completed_requirements": ["All planned specialist tasks"],
+            })
+        return f"Recovered output from {kwargs['agent_role']}."
+
+    monkeypatch.setattr(ai_core, "chat", fake_chat)
+    recovered = agent_tasks.dispatch_agent_tasks(
+        "owner:one", "worker-after-restart", max_tasks=4
+    )
+
+    assert len(recovered) == 4
+    assert recovered[0].task_key == "research"
+    assert recovered[0].attempt_number == 2
+    assert all(item.status == "succeeded" for item in recovered)
+    attempts = engine.list_attempts("owner:one", interrupted.task_id)
+    assert len(attempts) == 2
+    assert {item["status"] for item in attempts} == {"lease_expired", "succeeded"}
+    final = agent_tasks.get_agent_graph_result("owner:one", graph.graph_id)
+    assert final["accepted"] is True
