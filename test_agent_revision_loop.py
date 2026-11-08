@@ -4,6 +4,7 @@ import pytest
 
 import ai_core
 import agent_task_execution as agent_tasks
+agent_task_execution = agent_tasks
 import durable_task_engine as engine
 
 
@@ -128,8 +129,9 @@ def test_revision_loop_reruns_only_affected_agents_and_merges_unchanged_results(
     revision_tasks = engine.list_tasks("owner:one", revision_graph.graph_id, include_payload=True)
     revision_keys = {item["task_key"]: item for item in revision_tasks}
     assert set(revision_keys) == {"r1_draft", "r1_technical_review", "final_review"}
+    assert revision_keys["r1_draft"]["payload"]["dependency_source_keys"] == ["research"]
+    assert revision_keys["r1_technical_review"]["payload"]["dependency_source_keys"] == ["draft"]
     assert revision_keys["r1_technical_review"]["payload"]["revision_dependency_keys"] == ["r1_draft"]
-    assert revision_keys["r1_technical_review"]["depends_on"] == () or revision_keys["r1_technical_review"]["status"] == "queued"
 
     dispatched = agent_tasks.dispatch_agent_tasks(
         "owner:one", "revision-worker", max_tasks=3
