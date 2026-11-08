@@ -1461,6 +1461,8 @@ with tab_oracle:
                 item["task_type"] in {
                     agent_task_execution.TASK_TYPE_AGENT_STEP,
                     agent_task_execution.TASK_TYPE_AGENT_REVIEW,
+                    agent_task_execution.TASK_TYPE_AGENT_REVISION_STEP,
+                    agent_task_execution.TASK_TYPE_AGENT_REVISION_REVIEW,
                 }
                 for item in task_rows
             )
@@ -1510,6 +1512,12 @@ with tab_oracle:
                                 f"{agent_task['task_key']} · {agent_task['result']['agent_role']}"
                             ):
                                 st.markdown(agent_task["result"]["output"])
+                    revision_state = agent_graph_result.get("revision", {})
+                    st.caption(
+                        f"دورة التعديل: {revision_state.get('revision_index', 0)} / "
+                        f"{revision_state.get('max_cycles', agent_task_execution.MAX_REVISION_CYCLES)} · "
+                        f"المتبقي: {revision_state.get('remaining_cycles', 0)}"
+                    )
                     final_review = agent_graph_result.get("final_review")
                     if final_review:
                         if agent_graph_result["accepted"]:
@@ -1524,6 +1532,33 @@ with tab_oracle:
                             for issue in final_review["issues"]:
                                 st.markdown(f"- {issue}")
                         st.caption("المراجعة تقيس اكتمال الطلب والاتساق الداخلي فقط، ولا تثبت صحة الحقائق.")
+                        if revision_state.get("can_create_revision"):
+                            if st.button(
+                                f"إنشاء دورة تعديل {revision_state.get('revision_index', 0) + 1} "
+                                f"من أصل {revision_state.get('max_cycles', agent_task_execution.MAX_REVISION_CYCLES)}",
+                                key=f"oracle_create_agent_revision_{selected_graph_id}",
+                            ):
+                                try:
+                                    with st.spinner("يتم تحليل نقاط النقص واختيار الوكلاء المتأثرين..."):
+                                        revised_graph = agent_task_execution.create_revision_graph(
+                                            oracle_scope, selected_graph_id
+                                        )
+                                    st.success(
+                                        f"تم إنشاء دورة تعديل مرتبطة بالنتائج السابقة: "
+                                        f"{revised_graph.graph_id[:12]}. "
+                                        "لم يبدأ التنفيذ بعد؛ شغّل دفعة المهام صراحةً."
+                                    )
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"تعذّر إنشاء دورة التعديل: {type(exc).__name__}")
+                        elif (
+                            final_review["decision"] in {"needs_revision", "incomplete"}
+                            and revision_state.get("remaining_cycles", 0) == 0
+                        ):
+                            st.warning(
+                                "تم الوصول إلى الحد الأقصى لدورات التعديل. "
+                                "لن ينشئ Oracle دورة أخرى تلقائياً."
+                            )
             action_cols = st.columns(3)
             if selected_graph["status"] == "active":
                 if action_cols[0].button(
