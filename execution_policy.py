@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 from typing import Any
 
@@ -28,6 +29,9 @@ APPROVAL_TOOLS = frozenset({
 })
 MAX_APPROVALS = 100
 DEFAULT_TTL_SECONDS = 15 * 60
+_EXECUTION_GRANT_TTL_SECONDS = 60
+_EXECUTION_GRANTS: dict[str, tuple[str, str, str, float]] = {}
+_EXECUTION_GRANTS_LOCK = threading.Lock()
 
 
 class PolicyError(ValueError):
@@ -135,6 +139,57 @@ def _new_request(conn, scope: str, tool_id: str, digest: str, preview: dict[str,
     return request_id
 
 
+def _issue_execution_grant(tool_id: str, scope: str, payload: dict[str, Any]) -> str:
+    """Create a short-lived, single-use in-process capability for the exact action."""
+    token = secrets.token_urlsafe(32)
+    digest = action_digest(payload)
+    expires = time.monotonic() + _EXECUTION_GRANT_TTL_SECONDS
+    with _EXECUTION_GRANTS_LOCK:
+        expired = [
+            key for key, value in _EXECUTION_GRANTS.items()
+            if value[3] <= time.monotonic()
+        ]
+        for key in expired:
+            _EXECUTION_GRANTS.pop(key, None)
+        if len(_EXECUTION_GRANTS) >= 1000:
+            oldest = next(iter(_EXECUTION_GRANTS), None)
+            if oldest is not None:
+                _EXECUTION_GRANTS.pop(oldest, None)
+        _EXECUTION_GRANTS[token] = (tool_id, scope, digest, expires)
+    return token
+
+
+def consume_execution_grant(
+    token: str,
+    tool_id: str,
+    tool_input: str | dict[str, Any],
+    *,
+    scope: str,
+) -> bool:
+    """Consume a single-use grant bound to one tool, owner scope, and exact payload."""
+    if not isinstance(token, str) or not token:
+        return False
+    try:
+        expected = (tool_id, _scope(scope), action_digest(tool_input))
+    except (PolicyError, TypeError, ValueError):
+        return False
+    with _EXECUTION_GRANTS_LOCK:
+        stored = _EXECUTION_GRANTS.pop(token, None)
+    if stored is None:
+        return False
+    return (
+        stored[3] > time.monotonic()
+        and stored[:3] == expected
+    )
+
+
+def discard_execution_grant(token: str | None) -> None:
+    if not isinstance(token, str) or not token:
+        return
+    with _EXECUTION_GRANTS_LOCK:
+        _EXECUTION_GRANTS.pop(token, None)
+
+
 def authorize_action(tool_id: str, tool_input: str | dict[str, Any], *, scope: str) -> dict[str, Any]:
     """Allow read-only tools, consume a matching one-time grant, or request approval."""
     scope = _scope(scope)
@@ -150,7 +205,11 @@ def authorize_action(tool_id: str, tool_input: str | dict[str, Any], *, scope: s
         import mac_intelligence
         workspace_decision = mac_intelligence.authorize_workspace_action(tool_id, payload)
         if workspace_decision.get("allowed"):
-            return {"allowed": True, "reason": workspace_decision.get("reason", "trusted_workspace")}
+            return {
+                "allowed": True,
+                "reason": workspace_decision.get("reason", "trusted_workspace"),
+                "execution_grant": _issue_execution_grant(tool_id, scope, payload),
+            }
     except Exception:
         # An unavailable policy must never widen permissions; fall through to explicit approval.
         pass
@@ -179,6 +238,7 @@ def authorize_action(tool_id: str, tool_input: str | dict[str, Any], *, scope: s
                     "allowed": True,
                     "reason": "one_time_approval",
                     "approval_id": approved["approval_id"],
+                    "execution_grant": _issue_execution_grant(tool_id, scope, payload),
                 }
         pending = conn.execute(
             """SELECT approval_id FROM oracle_execution_approvals
