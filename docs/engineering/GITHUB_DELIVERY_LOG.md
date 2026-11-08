@@ -433,3 +433,28 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** No auto-refresh/polling, dependency graph visualization, graph creation/editing, production worker health view or process supervision is included.
 - **Pull Request:** [PR #17 — Add durable task queue visibility and controls to Oracle Control Center](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/17)
 - **PR status:** Open, draft; base `oracle/phase-04-task-worker-adapter` (PR #16). Published head: `07f549e76420e13b22c3c0aa1641d1dc1fefdb9f`. No prior PR was merged, closed or retargeted.
+
+
+### Phase 04d — Explicit Deep Research task submission and one-shot dispatch
+
+- **Branch:** `oracle/phase-04-explicit-task-dispatch`
+- **Base:** `oracle/phase-04-control-center-tasks` (PR #17).
+- **Dependency:** Stacked on PR #17 → PR #16 → PR #15 → PR #14 → the earlier Oracle stack.
+- **Files added:**
+  - `task_execution.py` — bounded owner-scoped Deep Research graph creation, strict handler payload validation, allowlisted result projection, and one-shot dispatch.
+  - `test_task_execution.py` — seven deterministic tests covering submission, idempotency, validation, handler dispatch, result projection, failure behavior and no-op dispatch.
+  - `docs/architecture/EXPLICIT_TASK_EXECUTION.md`.
+- **Files updated:**
+  - `app.py` — explicit research-task submission, a manual one-task dispatch action, and a bounded owner-scope result preview in the Task Queue panel.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Execution boundary:** Only `oracle.deep_research` is registered. Each button press dispatches at most one task. No persistent worker, scheduler, auto-polling, shell, filesystem or browser handler is activated.
+- **Retry and cost policy:** Research tasks are non-retryable; provider calls are not silently repeated. Task options are validated against the existing Deep Research limits.
+- **Privacy:** Queue payloads/results remain encrypted at rest. The UI result view exposes a bounded field allowlist for the current owner scope only.
+- **Validation:** Pending GitHub Actions on the final branch head. No local test execution is claimed. The test suite injects a deterministic research function and does not call live providers.
+- **Known limitations:** Live provider behavior, real cost/latency, deployed Streamlit interactions, process supervision, other task handlers, and recurring scheduling remain unverified or not implemented.
+- **Commits:**
+  - Task execution module: `4e755b11af5633ef0c9c9bf32ba718d89d0f58be`.
+  - Deterministic integration tests: `fbb36281910fe829536b1a574a368b9e2b118671`.
+  - Control Center integration: `66864b5fd92eac04f4646062a72c328d04c54c99`.
+  - Architecture documentation: `ede331dc2747942881450a577824dea5707b8831`.
+- **Pull Request:** Pending final CI; no PR has been created yet.
