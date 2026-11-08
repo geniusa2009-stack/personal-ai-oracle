@@ -93,19 +93,48 @@ def test_app_launch_requires_exact_local_allowlist(monkeypatch, tmp_path):
     )["allowed"] is False
 
 
-def test_move_and_delete_always_require_explicit_approval(monkeypatch, tmp_path):
+def test_move_is_auto_allowed_only_inside_same_trusted_workspace_and_delete_always_requires_approval(monkeypatch, tmp_path):
     workspace = tmp_path / "Projects"
+    outside = tmp_path / "Private"
     workspace.mkdir()
+    outside.mkdir()
     policy = _policy(workspace, auto_allow_tools=["local.move_path", "local.delete_path"])
     _write_policy(monkeypatch, tmp_path, policy)
+
     moved = mac_intelligence.authorize_workspace_action(
         "local.move_path", {"source": str(workspace / "a"), "destination": str(workspace / "b")}
+    )
+    outside_move = mac_intelligence.authorize_workspace_action(
+        "local.move_path", {"source": str(workspace / "a"), "destination": str(outside / "b")}
     )
     deleted = mac_intelligence.authorize_workspace_action(
         "local.delete_path", {"path": str(workspace / "old.txt"), "recursive": False}
     )
-    assert moved == {"allowed": False, "reason": "explicit_approval_required"}
+
+    assert moved == {"allowed": True, "reason": "trusted_workspace_move"}
+    assert outside_move == {"allowed": False, "reason": "path_outside_trusted_workspace"}
     assert deleted == {"allowed": False, "reason": "explicit_approval_required"}
+
+
+def test_move_to_existing_destination_requires_explicit_approval(monkeypatch, tmp_path):
+    workspace = tmp_path / "Projects"
+    workspace.mkdir()
+    source = workspace / "source.txt"
+    destination = workspace / "destination.txt"
+    source.write_text("source", encoding="utf-8")
+    destination.write_text("existing", encoding="utf-8")
+    _write_policy(
+        monkeypatch,
+        tmp_path,
+        _policy(workspace, auto_allow_tools=["local.move_path"]),
+    )
+
+    decision = mac_intelligence.authorize_workspace_action(
+        "local.move_path",
+        {"source": str(source), "destination": str(destination)},
+    )
+
+    assert decision == {"allowed": False, "reason": "destination_exists_requires_approval"}
 
 
 def test_remote_mutation_requires_local_policy_and_never_exposes_delete(monkeypatch, tmp_path):
