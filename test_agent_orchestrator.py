@@ -405,3 +405,125 @@ def test_agent_pauses_then_resumes_after_exact_owner_approval(monkeypatch, tmp_p
     assert not resumed.get("approval_pending", False)
     with pytest.raises(workflow_checkpoints.CheckpointError):
         workflow_checkpoints.load_checkpoint("user:oracle-owner", paused["checkpoint_id"])
+
+
+
+def test_planner_repairs_invalid_json_before_any_tool_is_executed(monkeypatch):
+    tool = agent_orchestrator.available_tools()[0]
+    chat = Mock(side_effect=[
+        "this is not JSON",
+        json.dumps({
+            "steps": [{"tool_id": tool["tool_id"], "input": "safe input"}],
+            "clarifying_question": "",
+        }),
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+    tool_executor = Mock()
+    monkeypatch.setattr(features, "run_feature", tool_executor)
+
+    plan = agent_orchestrator._build_next_step(
+        "Use an Oracle tool",
+        2,
+        None,
+        [],
+        set(),
+    )
+
+    assert chat.call_count == 2
+    assert plan["step"]["tool_id"] == tool["tool_id"]
+    assert plan["step"]["input"] == "safe input"
+    tool_executor.assert_not_called()
+
+
+def test_planner_repairs_unknown_tool_id_before_execution(monkeypatch):
+    tool = agent_orchestrator.available_tools()[0]
+    chat = Mock(side_effect=[
+        json.dumps({
+            "steps": [{"tool_id": "local.not_a_real_tool", "input": "anything"}],
+            "clarifying_question": "",
+        }),
+        json.dumps({
+            "steps": [{"tool_id": tool["tool_id"], "input": "safe input"}],
+            "clarifying_question": "",
+        }),
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+
+    plan = agent_orchestrator._build_next_step("Use an available tool", 1, None, [], set())
+
+    assert chat.call_count == 2
+    assert plan["step"]["tool_id"] == tool["tool_id"]
+
+
+def test_planner_stops_on_repeated_invalid_json_without_looping(monkeypatch):
+    chat = Mock(return_value="not JSON")
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+    tool_executor = Mock()
+    monkeypatch.setattr(features, "run_feature", tool_executor)
+
+    with pytest.raises(agent_orchestrator.AgentError, match="invalid_plan_json"):
+        agent_orchestrator._build_next_step("Use a tool", 1, None, [], set())
+
+    assert chat.call_count == 2
+    tool_executor.assert_not_called()
+
+
+def test_planner_does_not_retry_provider_errors(monkeypatch):
+    chat = Mock(return_value="(تعذّر التشغيل: provider unavailable)")
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+
+    with pytest.raises(agent_orchestrator.AgentError, match="provider unavailable"):
+        agent_orchestrator._build_next_step("Use a tool", 1, None, [], set())
+
+    assert chat.call_count == 1
+
+
+def test_planner_treats_completed_tool_call_repetition_as_invalid_plan(monkeypatch):
+    tool = agent_orchestrator.available_tools()[0]
+    signature = tool["tool_id"] + "\\0" + "already used"
+    chat = Mock(side_effect=[
+        json.dumps({
+            "steps": [{"tool_id": tool["tool_id"], "input": "already used"}],
+            "clarifying_question": "",
+        }),
+        _plan(),
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+
+    plan = agent_orchestrator._build_next_step(
+        "Continue the task",
+        1,
+        None,
+        [],
+        {signature},
+    )
+
+    assert chat.call_count == 2
+    assert plan["step"] is None
+
+
+
+def test_planner_repairs_json_object_that_is_missing_steps_field(monkeypatch):
+    tool = agent_orchestrator.available_tools()[0]
+    chat = Mock(side_effect=[
+        json.dumps({"clarifying_question": ""}),
+        json.dumps({
+            "steps": [{"tool_id": tool["tool_id"], "input": "safe input"}],
+            "clarifying_question": "",
+        }),
+    ])
+    monkeypatch.setattr(agent_orchestrator.ai_core, "chat", chat)
+    executor = Mock()
+    monkeypatch.setattr(features, "run_feature", executor)
+
+    plan = agent_orchestrator._build_next_step(
+        "Use a valid Oracle tool",
+        1,
+        None,
+        [],
+        set(),
+    )
+
+    assert chat.call_count == 2
+    assert plan["step"]["tool_id"] == tool["tool_id"]
+    executor.assert_not_called()

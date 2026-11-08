@@ -29,11 +29,12 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Deterministic router | `model_router.py`, `ai_core.py` | Profile and environment config | `IMPLEMENTED_AND_VERIFIED` | `test_ai_core_provider.py`, `test_multi_provider.py` | Add task complexity and capability-aware route policies |
 | Performance-based router | `model_router.py`, `model_benchmark.py`, `model_observability.py` | Evidence-gated benchmark scorecards available; route decision still follows explicit/category/tier policy | `PARTIALLY_IMPLEMENTED` | `test_model_benchmark.py`, `test_model_observability.py`; 290-test CI | Scorecards are advisory; no automatic route change until real provider data, evaluator comparability, and verified cost signals are available |
 | Measured model benchmarking | `model_benchmark.py`, `model_observability.py`, `ai_executor.py` | Explicit candidate/case runs, privacy-safe outcomes, latency, optional rubric score, evaluator/suite-isolated scorecards and runtime health floor | `IMPLEMENTED_AND_VERIFIED` | `test_model_benchmark.py`, `test_multi_provider.py`; 290-test Ubuntu/macOS CI | Synthetic phrase rubric is a smoke check only; live provider quality, token usage and cost remain unmeasured |
-| Sequential agent tool loop | `agent_orchestrator.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py` | Evolve without breaking existing bounded behavior |
+| Sequential agent tool loop | `agent_orchestrator.py`, `bounded_correction.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py`, `test_bounded_correction.py`; 313-test CI | Planner JSON repair runs before tool execution; tool actions are never replayed by the correction loop |
 | Persistent DAG task engine | Not present as a complete subsystem | DB, queue, checkpoint, tool registry | `PLANNED` | Ledger/checkpoint tests are not task-engine tests | Durable task/step state, dependency graph, retries, cancellation, resume |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
-| Deep research | `deep_research.py`, `search.py` | Search providers, AI Core, page extraction | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py` | Live-source evaluation and research workflow e2e tests |
+| Deep research | `deep_research.py`, `search.py`, `bounded_correction.py` | Search providers, AI Core, page extraction, deterministic answer/citation validation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py`, `test_bounded_correction.py` | One bounded synthesis repair for structure/citation issues; live-source quality and factual truth remain unverified |
+| Bounded self-correction | bounded_correction.py, agent_orchestrator.py, deep_research.py | One retry by default, hard cap of two, repeated-output/issue loop prevention, non-retryable provider errors | IMPLEMENTED_AND_VERIFIED | test_bounded_correction.py, test_agent_orchestrator.py, test_deep_research.py; 313-test Ubuntu/macOS CI | Text-only planner/synthesis repair before accepting output; no retries of tool execution, local writes/deletes, browser/search or approvals |
 | Citation integrity assessment | `answer_quality.py`, `deep_research.py` | Source IDs, final answer claims | `IMPLEMENTED_AND_VERIFIED` | `test_answer_quality.py`, `test_deep_research.py` | Maintain explicit non-entailment limitation |
 | Semantic claim verification | `semantic_verifier.py`, `deep_research.py` | Reviewer model, cited evidence excerpts, validated response contract | `IMPLEMENTED_BUT_UNVERIFIED` | `test_semantic_verifier.py`, `test_deep_research.py` | Bounded reviewer-model assessment for cited evidence; requires extracted-page evidence for decisive labels; never proves factual truth; CI for this branch pending |
 | Evidence provenance store | Research source objects only; no complete normalized evidence subsystem verified | Source extraction, DB persistence | `PARTIALLY_IMPLEMENTED` | Deep-research tests | Normalize source metadata and claim/source edges; define persistence policy |
@@ -233,3 +234,17 @@ The `oracle/phase-03-model-benchmarking` branch adds:
 - Ranking is advisory and does not change `ModelRouter` automatically.
 
 See `docs/architecture/MODEL_BENCHMARKING.md`. Cost and token usage are not guessed; the provider adapters must first expose verified usage metadata. Live provider benchmarking has not been executed in CI.
+
+
+## Phase 03b — Bounded self-correction
+
+The oracle/phase-03-bounded-self-correction branch adds a shared text-only correction loop and connects it to agent planning and Deep Research synthesis.
+
+- One retry by default; hard ceiling of two retries.
+- Repeated output fingerprints, repeated validation issue signatures, provider failures and exhausted budgets stop further attempts.
+- Planner JSON/tool-catalogue validation happens before any tool execution.
+- Deep Research synthesis is checked for JSON shape, non-empty answer and allowed inline source citations.
+- Search/page collection is not repeated for a synthesis repair.
+- Local shell, browser, file, tool, approval and other side-effecting operations are outside the retry loop.
+
+See docs/architecture/BOUNDED_SELF_CORRECTION.md. Deterministic output validation is not a general proof of semantic correctness or factual truth.
