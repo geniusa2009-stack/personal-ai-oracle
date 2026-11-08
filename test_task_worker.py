@@ -239,3 +239,21 @@ def test_dispatch_batch_rejects_unbounded_or_invalid_limits(monkeypatch, tmp_pat
             task_worker.dispatch_batch(
                 "owner:one", "worker-a", {}, max_tasks=value
             )
+
+
+
+def test_worker_registry_and_claim_type_filters_are_bounded(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    oversized_registry = {
+        f"type-{index}": task_worker.TaskHandler(execute=lambda *_: {})
+        for index in range(task_worker.MAX_REGISTERED_HANDLERS + 1)
+    }
+    with pytest.raises(task_worker.TaskWorkerError, match="at most"):
+        task_worker.dispatch_once("owner:one", "worker-a", oversized_registry)
+
+    with pytest.raises(engine.TaskEngineError, match="task_types"):
+        engine.claim_next(
+            "owner:one",
+            "worker-a",
+            task_types=[f"type-{index}" for index in range(engine.MAX_TASK_TYPES_PER_CLAIM + 1)],
+        )
