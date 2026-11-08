@@ -967,8 +967,9 @@ def dispatch_agent_tasks(
     worker_id: str,
     *,
     max_tasks: int = 3,
+    graph_id: str | None = None,
 ) -> list[task_worker.TaskDispatchResult]:
-    """Explicitly process a bounded batch; no polling loop or background service."""
+    """Explicitly process a bounded batch, optionally within one selected graph."""
     if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or not 1 <= max_tasks <= 8:
         raise AgentTaskExecutionError("max_tasks must be between 1 and 8")
     return task_worker.dispatch_batch(
@@ -977,6 +978,7 @@ def dispatch_agent_tasks(
         _HANDLERS,
         max_tasks=max_tasks,
         lease_seconds=180,
+        graph_id=graph_id,
     )
 
 
