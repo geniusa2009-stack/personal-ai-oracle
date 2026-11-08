@@ -1507,12 +1507,11 @@ with tab_oracle:
                         f"الفاشل {agent_graph_result['failed_count']} · "
                         f"المحجوب {agent_graph_result['blocked_count']}"
                     )
-                    for agent_task in agent_graph_result["tasks"]:
-                        if agent_task["result"]:
-                            with st.expander(
-                                f"{agent_task['task_key']} · {agent_task['result']['agent_role']}"
-                            ):
-                                st.markdown(agent_task["result"]["output"])
+                    for effective_agent in agent_graph_result["effective_results"]:
+                        with st.expander(
+                            f"{effective_agent['task_key']} · {effective_agent['agent_role']}"
+                        ):
+                            st.markdown(effective_agent["output"])
                     revision_state = agent_graph_result.get("revision", {})
                     st.caption(
                         f"دورة التعديل: {revision_state.get('revision_index', 0)} / "
