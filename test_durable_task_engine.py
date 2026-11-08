@@ -3,11 +3,15 @@ import pytest
 import database
 import db
 import durable_task_engine as engine
+from cryptography.fernet import Fernet
 
 
 def _use_db(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "durable-task-engine.db"))
-    monkeypatch.setenv("ORACLE_CHECKPOINT_ENCRYPTION_KEY", "dGVzdC1rZXktbm90LXJlYWwtZm9yLXByb2Q=")
+    monkeypatch.setenv(
+        "ORACLE_CHECKPOINT_ENCRYPTION_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
 
 
 def _task(key, *, deps=(), payload=None, retry_safe=False, max_attempts=1):
@@ -256,8 +260,14 @@ def test_failed_dependency_blocks_descendants_and_fails_graph(monkeypatch, tmp_p
 def test_pause_resume_and_cancel_graph_control_claims(monkeypatch, tmp_path):
     _use_db(monkeypatch, tmp_path)
     graph = engine.create_graph("owner:one", "pause-cancel", [_task("one"), _task("two")])
+    preleased = _claim("owner:one", "worker-before-pause")
     assert engine.pause_graph("owner:one", graph.graph_id)
     assert engine.claim_next("owner:one", "worker-a") is None
+    assert engine.get_task("owner:one", preleased.task_id)["status"] == "queued"
+    with pytest.raises(engine.TaskEngineError):
+        engine.start_task(
+            "owner:one", preleased.task_id, preleased.worker_id, preleased.lease_token
+        )
     assert engine.resume_graph("owner:one", graph.graph_id)
 
     lease = _claim("owner:one")
