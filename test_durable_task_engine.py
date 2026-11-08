@@ -324,3 +324,26 @@ def test_task_lease_representation_does_not_disclose_payload_or_lease_token(monk
     assert "never-print-this-value" not in rendered
     assert lease.lease_token not in rendered
     assert graph.graph_id in rendered
+
+
+
+def test_task_error_code_rejects_free_form_exception_details(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    engine.create_graph("owner:one", "error-code", [_task("work")])
+    lease = _claim("owner:one")
+    _start(lease)
+
+    with pytest.raises(engine.TaskEngineError, match="error_code"):
+        engine.fail_task(
+            "owner:one", lease.task_id, lease.worker_id, lease.lease_token,
+            error_code="TimeoutError leaked private path /Users/owner/secret",
+            retryable=False,
+        )
+
+    assert engine.get_task("owner:one", lease.task_id)["status"] == "running"
+    failed = engine.fail_task(
+        "owner:one", lease.task_id, lease.worker_id, lease.lease_token,
+        error_code="TimeoutError", retryable=False,
+    )
+    assert failed["status"] == "failed"
+    assert failed["last_error_code"] == "TimeoutError"
