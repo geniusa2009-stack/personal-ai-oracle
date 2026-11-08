@@ -803,13 +803,17 @@ def pause_graph(scope: str, graph_id: str) -> bool:
                 (graph_id, scope),
             ).fetchall()
             for item in leased:
+                # A lease that never reached "running" did not consume an execution
+                # attempt. Remove its reservation row so a resumed task can be
+                # claimed with the same next attempt number.
                 conn.execute(
-                    """UPDATE oracle_task_attempts SET status='cancelled',finished_at=?
+                    """DELETE FROM oracle_task_attempts
                        WHERE task_id=? AND scope=? AND attempt_number=? AND status='leased'""",
-                    (now, item["task_id"], scope, item["attempt_count"]),
+                    (item["task_id"], scope, item["attempt_count"]),
                 )
             conn.execute(
-                """UPDATE oracle_durable_tasks SET status='queued',lease_owner='',
+                """UPDATE oracle_durable_tasks SET status='queued',
+                   attempt_count=MAX(0,attempt_count-1),lease_owner='',
                    lease_token_digest='',lease_expires_at=NULL,updated_at=?
                    WHERE graph_id=? AND scope=? AND status='leased'""",
                 (now, graph_id, scope),
