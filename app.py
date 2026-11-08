@@ -1479,6 +1479,7 @@ with tab_oracle:
                                     oracle_scope,
                                     f"control-center-agent-{uuid.uuid4().hex[:16]}",
                                     max_tasks=3,
+                                    graph_id=selected_graph_id,
                                 )
                             if agent_dispatches:
                                 st.success(
