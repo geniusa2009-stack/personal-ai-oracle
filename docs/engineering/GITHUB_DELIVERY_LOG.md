@@ -494,3 +494,19 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Tests:** Added deterministic mocked planner, role routing, DAG/cycle validation, dependency ordering, encrypted result persistence, app-restart recovery, expired-lease recovery through the agent dispatcher, final-review rejection, failure propagation, scope isolation and dispatch-bound tests. GitHub Actions run `42466838059` passed on code head `c1414e142c574a15354ea3b36782ecb9830dcd8a`: Ubuntu **371 passed, 1 warning**; macOS **371 passed, 1 warning**. Both Python compilation and the full test suite passed. The warning is the existing Starlette/httpx TestClient deprecation.
 - **Known limitations:** No automatic revision graph after `needs_revision`; no parallel/distributed worker execution; no live provider, deployed Streamlit or physical-Mac restart validation.
 - **Pull Request:** [PR #20 — Connect Autonomous Task Planner to durable specialist-agent DAG execution](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/20). Open, draft; base is PR #19.
+
+
+### Phase 04e — Bounded autonomous specialist revision loop
+
+- **Branch:** `oracle/phase-04-bounded-agent-revision-loop`
+- **Base:** `oracle/phase-04-autonomous-task-planner-dag` (PR #20).
+- **Dependency:** Stacked on PR #20 → PR #19 → PR #18 → PR #17 and earlier work.
+- **Files updated:** `agent_task_execution.py` (revision lineage, issue mapping, selective specialist reruns, merged-result review, deterministic revision idempotency and hard cap), `app.py` (explicit revision creation and cycle status), `docs/architecture/AUTONOMOUS_AGENT_DAG.md`, `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Tests added:** `test_agent_revision_loop.py` covers selective reruns, unchanged-result inheritance, revision dependency ordering, merged review, idempotency, owner-scope isolation, invalid planner output, accepted/incomplete graph gates, and the hard two-cycle limit.
+- **Revision contract:** A completed graph with `needs_revision` or `incomplete` can create a new child graph only after an explicit Control Center action. The revision planner maps all bounded review issues to existing source task keys; specialist roles come from persisted results, not model output. Only selected specialists rerun.
+- **Lineage and recovery:** Each revision task stores root/parent graph IDs and revision index in encrypted owner-scoped payloads. The effective result set recursively inherits unchanged outputs and overrides only successfully revised source tasks. The new final reviewer assesses the merged result set. Task state and outputs use the existing durable encrypted graph engine.
+- **Hard limits:** At most two revision cycles per root graph, eight specialist tasks per cycle, and twelve review issues per cycle. Revision graph idempotency keys are deterministic per root/cycle. Repeated requests return the same child graph; a cycle counts once created, even if cancelled.
+- **Execution boundary:** Revision creation does not run agents. The user separately dispatches bounded batches. No daemon, background polling, shell, browser, filesystem, executor or Mac-action handler is registered.
+- **Review boundary:** The final reviewer assesses completion and internal consistency only; it does not establish factual truth. At the cycle cap the UI reports the limit and stops creating further revision graphs.
+- **CI:** Pending for this branch. Do not mark this milestone verified until current-head Ubuntu and macOS jobs pass. Live provider, deployed Streamlit and physical-Mac validation remain separate operational checks.
+- **Pull Request:** Pending creation; this branch will be published as a draft stacked PR on PR #20.
