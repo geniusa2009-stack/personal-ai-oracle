@@ -417,3 +417,477 @@ def list_tasks(
         item for row in rows
         if (item := get_task(scope, row["task_id"], include_payload=include_payload)) is not None
     ]
+
+
+
+def _worker_id(value: Any) -> str:
+    return _label(value, "worker_id", 100, _WORKER)
+
+
+def _lease_seconds(value: Any) -> int:
+    return _int(value, "lease_seconds", MIN_LEASE_SECONDS, MAX_LEASE_SECONDS)
+
+
+def _valid_lease(conn: Any, scope: str, task_id: str, worker_id: str, token: str) -> Any:
+    worker_id = _worker_id(worker_id)
+    if not isinstance(token, str) or not 32 <= len(token) <= 256:
+        raise TaskEngineError("lease_token is invalid")
+    row = conn.execute(
+        """SELECT task_id,graph_id,status,lease_expires_at,lease_token_digest,
+                  lease_owner,attempt_count,retry_safe,max_attempts
+           FROM oracle_durable_tasks WHERE task_id=? AND scope=?""",
+        (task_id, scope),
+    ).fetchone()
+    if row is None:
+        raise TaskEngineError("task was not found in this scope")
+    if (
+        row["status"] not in {"leased", "running"}
+        or row["lease_owner"] != worker_id
+        or not row["lease_token_digest"]
+        or not secrets.compare_digest(row["lease_token_digest"], _token_hash(token))
+        or row["lease_expires_at"] is None
+        or float(row["lease_expires_at"]) <= time.time()
+    ):
+        raise TaskEngineError("task lease is invalid, expired or no longer owned by this worker")
+    graph = conn.execute(
+        "SELECT status FROM oracle_task_graphs WHERE graph_id=? AND scope=?",
+        (row["graph_id"], scope),
+    ).fetchone()
+    if graph is None or graph["status"] == "cancelled":
+        raise TaskEngineError("task graph is no longer active")
+    return row
+
+
+def _reap_graph_expired(conn: Any, scope: str, graph_id: str) -> int:
+    now = time.time()
+    rows = conn.execute(
+        """SELECT task_id,attempt_count,max_attempts,retry_safe
+           FROM oracle_durable_tasks
+           WHERE scope=? AND graph_id=? AND status IN ('leased','running')
+             AND lease_expires_at IS NOT NULL AND lease_expires_at<=?""",
+        (scope, graph_id, now),
+    ).fetchall()
+    count = 0
+    for row in rows:
+        task_id = row["task_id"]
+        attempt = int(row["attempt_count"])
+        conn.execute(
+            """UPDATE oracle_task_attempts SET status='lease_expired',finished_at=?
+               WHERE task_id=? AND scope=? AND attempt_number=?
+                 AND status IN ('leased','running')""",
+            (_now_iso(), task_id, scope, attempt),
+        )
+        retry = bool(row["retry_safe"]) and attempt < int(row["max_attempts"])
+        conn.execute(
+            """UPDATE oracle_durable_tasks SET status=?,available_at=?,last_error_code=?,
+               lease_owner='',lease_token_digest='',lease_expires_at=NULL,updated_at=?
+               WHERE task_id=? AND scope=?""",
+            (
+                "queued" if retry else "failed", now, "lease_expired",
+                _now_iso(), task_id, scope,
+            ),
+        )
+        count += 1
+    _propagate_blocked(conn, scope, graph_id)
+    _refresh_graph(conn, scope, graph_id)
+    return count
+
+
+def claim_next(
+    scope: str,
+    worker_id: str,
+    *,
+    lease_seconds: int = 120,
+) -> TaskLease | None:
+    """Atomically lease one ready task. The queue never executes the task itself."""
+    scope = _scope(scope)
+    worker_id = _worker_id(worker_id)
+    lease_seconds = _lease_seconds(lease_seconds)
+    now = time.time()
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        graphs = conn.execute(
+            """SELECT graph_id FROM oracle_task_graphs
+               WHERE scope=? AND status IN ('active','paused')""",
+            (scope,),
+        ).fetchall()
+        for graph in graphs:
+            _reap_graph_expired(conn, scope, graph["graph_id"])
+        task = conn.execute(
+            """SELECT task.* FROM oracle_durable_tasks AS task
+               JOIN oracle_task_graphs AS graph
+                 ON graph.graph_id=task.graph_id AND graph.scope=task.scope
+               WHERE task.scope=? AND task.status='queued' AND task.available_at<=?
+                 AND task.attempt_count<task.max_attempts AND graph.status='active'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM oracle_task_dependencies AS dep
+                   JOIN oracle_durable_tasks AS parent
+                     ON parent.task_id=dep.depends_on_task_id AND parent.scope=dep.scope
+                   WHERE dep.task_id=task.task_id AND dep.scope=task.scope
+                     AND parent.status<>'succeeded'
+                 )
+               ORDER BY task.created_at,task.task_key LIMIT 1""",
+            (scope, now),
+        ).fetchone()
+        if task is None:
+            for graph in graphs:
+                _refresh_graph(conn, scope, graph["graph_id"])
+            conn.commit()
+            return None
+        token = secrets.token_urlsafe(32)
+        attempt = int(task["attempt_count"]) + 1
+        expires = now + lease_seconds
+        now_iso = _now_iso()
+        cur = conn.execute(
+            """UPDATE oracle_durable_tasks SET status='leased',attempt_count=?,
+               lease_owner=?,lease_token_digest=?,lease_expires_at=?,updated_at=?
+               WHERE task_id=? AND scope=? AND status='queued'""",
+            (attempt, worker_id, _token_hash(token), expires, now_iso, task["task_id"], scope),
+        )
+        if cur.rowcount != 1:
+            raise TaskEngineError("task lease could not be acquired")
+        conn.execute(
+            """INSERT INTO oracle_task_attempts
+               (task_id,scope,attempt_number,worker_id,status,started_at)
+               VALUES(?,?,?,?,'leased',?)""",
+            (task["task_id"], scope, attempt, worker_id, now_iso),
+        )
+        payload = workflow_checkpoints.decrypt_scoped_payload(
+            scope, task["payload_ciphertext"]
+        )
+        if not isinstance(payload, dict):
+            raise TaskEngineError("stored task payload is not an object")
+        conn.execute(
+            "UPDATE oracle_task_graphs SET updated_at=? WHERE graph_id=? AND scope=?",
+            (now_iso, task["graph_id"], scope),
+        )
+        conn.commit()
+        return TaskLease(
+            task_id=task["task_id"], graph_id=task["graph_id"], scope=scope,
+            task_key=task["task_key"], task_type=task["task_type"], payload=payload,
+            worker_id=worker_id, lease_token=token, attempt_number=attempt,
+            max_attempts=int(task["max_attempts"]), retry_safe=bool(task["retry_safe"]),
+            lease_expires_at=expires,
+        )
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def start_task(scope: str, task_id: str, worker_id: str, lease_token: str) -> bool:
+    """Mark a claimed task running before the worker begins its external work."""
+    scope = _scope(scope)
+    task_id = _id(task_id, "task_id")
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = _valid_lease(conn, scope, task_id, worker_id, lease_token)
+        if row["status"] != "leased":
+            raise TaskEngineError("only a leased task can transition to running")
+        now = _now_iso()
+        cur = conn.execute(
+            """UPDATE oracle_durable_tasks SET status='running',updated_at=?
+               WHERE task_id=? AND scope=? AND status='leased'""",
+            (now, task_id, scope),
+        )
+        if cur.rowcount != 1:
+            raise TaskEngineError("task could not transition to running")
+        conn.execute(
+            """UPDATE oracle_task_attempts SET status='running'
+               WHERE task_id=? AND scope=? AND attempt_number=? AND status='leased'""",
+            (task_id, scope, row["attempt_count"]),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def heartbeat(
+    scope: str,
+    task_id: str,
+    worker_id: str,
+    lease_token: str,
+    *,
+    lease_seconds: int = 120,
+) -> bool:
+    """Extend a live lease only for its current owner and secret token."""
+    scope = _scope(scope)
+    task_id = _id(task_id, "task_id")
+    lease_seconds = _lease_seconds(lease_seconds)
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _valid_lease(conn, scope, task_id, worker_id, lease_token)
+        now = time.time()
+        cur = conn.execute(
+            """UPDATE oracle_durable_tasks SET lease_expires_at=?,updated_at=?
+               WHERE task_id=? AND scope=? AND lease_owner=? AND lease_token_digest=?
+                 AND status IN ('leased','running') AND lease_expires_at>?""",
+            (
+                now + lease_seconds, _now_iso(), task_id, scope, worker_id,
+                _token_hash(lease_token), now,
+            ),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def complete_task(
+    scope: str,
+    task_id: str,
+    worker_id: str,
+    lease_token: str,
+    result: Mapping[str, Any],
+) -> bool:
+    """Persist an encrypted task result and finish its current attempt."""
+    scope = _scope(scope)
+    task_id = _id(task_id, "task_id")
+    if not isinstance(result, Mapping):
+        raise TaskEngineError("result must be a mapping")
+    value = dict(result)
+    digest, length = _digest(value)
+    if length > workflow_checkpoints.MAX_CHECKPOINT_BYTES:
+        raise TaskEngineError("task result exceeds the encrypted payload limit")
+    encrypted = workflow_checkpoints.encrypt_scoped_payload(scope, value)
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = _valid_lease(conn, scope, task_id, worker_id, lease_token)
+        if row["status"] != "running":
+            raise TaskEngineError("only a running task can be completed")
+        now = _now_iso()
+        cur = conn.execute(
+            """UPDATE oracle_durable_tasks SET status='succeeded',result_ciphertext=?,
+               result_digest=?,lease_owner='',lease_token_digest='',lease_expires_at=NULL,
+               updated_at=? WHERE task_id=? AND scope=? AND status='running'""",
+            (encrypted, digest, now, task_id, scope),
+        )
+        if cur.rowcount != 1:
+            raise TaskEngineError("task could not transition to succeeded")
+        conn.execute(
+            """UPDATE oracle_task_attempts SET status='succeeded',result_digest=?,
+               result_length=?,finished_at=?,
+               duration_ms=MAX(0,CAST((julianday(?) - julianday(started_at))*86400000 AS INTEGER))
+               WHERE task_id=? AND scope=? AND attempt_number=? AND status='running'""",
+            (digest, length, now, now, task_id, scope, row["attempt_count"]),
+        )
+        _propagate_blocked(conn, scope, row["graph_id"])
+        _refresh_graph(conn, scope, row["graph_id"])
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def fail_task(
+    scope: str,
+    task_id: str,
+    worker_id: str,
+    lease_token: str,
+    *,
+    error_code: str,
+    retryable: bool = False,
+    retry_delay_seconds: int = 2,
+) -> dict[str, Any]:
+    """Record failure; retry is permitted only for explicitly retry-safe tasks."""
+    scope = _scope(scope)
+    task_id = _id(task_id, "task_id")
+    if not isinstance(retryable, bool):
+        raise TaskEngineError("retryable must be a boolean")
+    retry_delay_seconds = _int(
+        retry_delay_seconds, "retry_delay_seconds", 0, MAX_RETRY_DELAY_SECONDS
+    )
+    if not isinstance(error_code, str) or not error_code.strip():
+        raise TaskEngineError("error_code is required")
+    safe_error = re.sub(r"[^A-Za-z0-9_.-]", "_", error_code.strip())[:80]
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = _valid_lease(conn, scope, task_id, worker_id, lease_token)
+        attempt = int(row["attempt_count"])
+        can_retry = retryable and bool(row["retry_safe"]) and attempt < int(row["max_attempts"])
+        status = "queued" if can_retry else "failed"
+        delay = min(retry_delay_seconds * (2 ** max(0, attempt - 1)), MAX_RETRY_DELAY_SECONDS)
+        now = _now_iso()
+        conn.execute(
+            """UPDATE oracle_task_attempts SET status=?,error_code=?,finished_at=?,
+               duration_ms=MAX(0,CAST((julianday(?) - julianday(started_at))*86400000 AS INTEGER))
+               WHERE task_id=? AND scope=? AND attempt_number=?
+                 AND status IN ('leased','running')""",
+            (
+                "retryable_failure" if can_retry else "permanent_failure",
+                safe_error, now, now, task_id, scope, attempt,
+            ),
+        )
+        conn.execute(
+            """UPDATE oracle_durable_tasks SET status=?,available_at=?,last_error_code=?,
+               lease_owner='',lease_token_digest='',lease_expires_at=NULL,updated_at=?
+               WHERE task_id=? AND scope=?""",
+            (status, time.time() + (delay if can_retry else 0), safe_error, now, task_id, scope),
+        )
+        _propagate_blocked(conn, scope, row["graph_id"])
+        _refresh_graph(conn, scope, row["graph_id"])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    task = get_task(scope, task_id)
+    if task is None:
+        raise TaskEngineError("task was not found after failure transition")
+    return task
+
+
+def reap_expired_leases(scope: str) -> int:
+    """Requeue only retry-safe expired work; all other expired work fails closed."""
+    scope = _scope(scope)
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        graphs = conn.execute(
+            """SELECT graph_id FROM oracle_task_graphs WHERE scope=?
+               AND status IN ('active','paused')""",
+            (scope,),
+        ).fetchall()
+        count = 0
+        for graph in graphs:
+            count += _reap_graph_expired(conn, scope, graph["graph_id"])
+        conn.commit()
+        return count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def pause_graph(scope: str, graph_id: str) -> bool:
+    scope = _scope(scope)
+    graph_id = _id(graph_id, "graph_id")
+    init_database()
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """UPDATE oracle_task_graphs SET status='paused',updated_at=?
+               WHERE graph_id=? AND scope=? AND status='active'""",
+            (_now_iso(), graph_id, scope),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def resume_graph(scope: str, graph_id: str) -> bool:
+    scope = _scope(scope)
+    graph_id = _id(graph_id, "graph_id")
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            """UPDATE oracle_task_graphs SET status='active',updated_at=?
+               WHERE graph_id=? AND scope=? AND status='paused'""",
+            (_now_iso(), graph_id, scope),
+        )
+        if cur.rowcount:
+            _propagate_blocked(conn, scope, graph_id)
+            _refresh_graph(conn, scope, graph_id)
+        conn.commit()
+        return cur.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def cancel_graph(scope: str, graph_id: str) -> bool:
+    """Cancel queued and leased tasks; running external effects stop cooperatively."""
+    scope = _scope(scope)
+    graph_id = _id(graph_id, "graph_id")
+    init_database()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        graph = conn.execute(
+            "SELECT status FROM oracle_task_graphs WHERE graph_id=? AND scope=?",
+            (graph_id, scope),
+        ).fetchone()
+        if graph is None or graph["status"] not in {"active", "paused"}:
+            conn.rollback()
+            return False
+        now = _now_iso()
+        conn.execute(
+            """UPDATE oracle_durable_tasks SET status='cancelled',lease_owner='',
+               lease_token_digest='',lease_expires_at=NULL,updated_at=?
+               WHERE graph_id=? AND scope=?
+                 AND status IN ('queued','leased','running','blocked')""",
+            (now, graph_id, scope),
+        )
+        conn.execute(
+            """UPDATE oracle_task_attempts SET status='cancelled',finished_at=?
+               WHERE scope=? AND task_id IN (
+                 SELECT task_id FROM oracle_durable_tasks WHERE graph_id=? AND scope=?
+               ) AND status IN ('leased','running')""",
+            (now, scope, graph_id, scope),
+        )
+        cur = conn.execute(
+            """UPDATE oracle_task_graphs SET status='cancelled',updated_at=?,finished_at=?
+               WHERE graph_id=? AND scope=? AND status IN ('active','paused')""",
+            (now, now, graph_id, scope),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_attempts(scope: str, task_id: str, *, limit: int = MAX_ATTEMPTS) -> list[dict[str, Any]]:
+    scope = _scope(scope)
+    task_id = _id(task_id, "task_id")
+    limit = _int(limit, "limit", 1, MAX_ATTEMPTS)
+    init_database()
+    conn = get_conn()
+    try:
+        owned = conn.execute(
+            "SELECT 1 FROM oracle_durable_tasks WHERE task_id=? AND scope=?",
+            (task_id, scope),
+        ).fetchone()
+        if owned is None:
+            return []
+        rows = conn.execute(
+            """SELECT attempt_number,worker_id,status,error_code,result_digest,
+                      result_length,started_at,finished_at,duration_ms
+               FROM oracle_task_attempts WHERE task_id=? AND scope=?
+               ORDER BY attempt_number DESC LIMIT ?""",
+            (task_id, scope, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
