@@ -271,6 +271,8 @@ def test_pause_resume_and_cancel_graph_control_claims(monkeypatch, tmp_path):
     assert engine.resume_graph("owner:one", graph.graph_id)
 
     lease = _claim("owner:one")
+    assert lease.task_id == preleased.task_id
+    assert lease.attempt_number == 1
     assert engine.cancel_graph("owner:one", graph.graph_id)
     assert engine.claim_next("owner:one", "worker-b") is None
     assert engine.get_graph("owner:one", graph.graph_id).status == "cancelled"
