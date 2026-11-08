@@ -33,6 +33,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Persistent DAG task engine | `durable_task_engine.py`, `database.py`, `workflow_checkpoints.py` | SQLite graph/task/dependency/attempt tables; owner-scoped encrypted payloads; lease tokens | `PARTIALLY_IMPLEMENTED` | `test_durable_task_engine.py`; 338-test Ubuntu/macOS CI | Durable DAG storage, dependency gates, claims, leases, backoff, pause/resume/cancel and attempt history are verified; worker supervision, Control Center UI, distributed queue and versioned migrations remain |
 | Typed task worker adapter | `task_worker.py`, `durable_task_engine.py` | Explicit per-call handler registry, lease heartbeat, cancellation polling, bounded sequential batch | `IMPLEMENTED_AND_VERIFIED` | `test_task_worker.py`; 338-test Ubuntu/macOS CI | Only registered types are claimable; retry still requires task-level `retry_safe`; no production handler catalogue, background worker or Control Center integration yet |
 | Task Queue Control Center | `app.py`, `task_control_center.py` | Scope-local graph/task metadata, attempt history, pause/resume/cancel controls | `IMPLEMENTED_BUT_UNVERIFIED` | `test_task_control_center.py`; app integration CI pending | Metadata-only panel; no task creation, worker execution, automatic polling or dependency graph visualization |
+| Explicit research task submission and one-shot dispatch | `task_execution.py`, `task_worker.py`, `durable_task_engine.py`, `app.py` | Encrypted owner-scoped DAG, Deep Research, explicit UI invocation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_task_execution.py`; offline mocked handler integration; full CI pending | Live provider and deployed Streamlit end-to-end validation; no background worker or automatic retry |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
 | Deep research | `deep_research.py`, `search.py`, `bounded_correction.py` | Search providers, AI Core, page extraction, deterministic answer/citation validation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py`, `test_bounded_correction.py` | One bounded synthesis repair for structure/citation issues; live-source quality and factual truth remain unverified |
@@ -306,3 +307,16 @@ The `oracle/phase-04-control-center-tasks` branch adds a metadata-only Task Queu
 - Keeps UI projections in `task_control_center.py`, which returns explicit metadata allowlists and validates actions.
 
 The panel does not create arbitrary tasks, invoke a worker, poll in the background, or execute tools. It is **not yet a complete operations console**; production worker supervision and handler registration remain future work. See `docs/architecture/TASK_CONTROL_CENTER.md`.
+
+
+## Phase 04d — Explicit Deep Research task submission and dispatch
+
+The `oracle/phase-04-explicit-task-dispatch` branch adds a single typed production handler for `oracle.deep_research`:
+
+- The Control Center can create one encrypted, owner-scoped research task with bounded options and a caller-provided idempotency key.
+- The task is non-retryable by default because provider calls may repeat cost or external requests.
+- The handler validates an exact payload schema and calls the existing Deep Research execution path.
+- The Control Center can explicitly dispatch at most one queued research task per button press; no daemon, polling loop, or persistent worker is started.
+- A bounded, allowlisted result preview exposes answer/findings/citations/evidence summaries only to the matching owner scope; encrypted payloads and raw task objects remain private.
+
+Status: `IMPLEMENTED_BUT_UNVERIFIED` pending branch CI and live-provider/deployed-UI validation. See `docs/architecture/EXPLICIT_TASK_EXECUTION.md`.
