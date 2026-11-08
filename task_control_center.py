@@ -92,3 +92,55 @@ def transition_graph(scope: str, graph_id: str, action: str) -> dict[str, Any]:
     if updated is None:
         raise TaskControlCenterError("graph became unavailable after the action")
     return _graph_summary(updated)
+
+
+
+def get_task_result_summary(scope: str, task_id: str) -> dict[str, Any] | None:
+    """Return an allowlisted result summary for the built-in memory scan task only."""
+    task = task_engine.get_task(scope, task_id, include_result=True)
+    if task is None or task.get("status") != "succeeded":
+        return None
+    if task.get("task_type") != "memory.consolidation.scan":
+        return None
+    result = task.get("result")
+    if not isinstance(result, dict) or result.get("task_kind") != "memory.consolidation.scan":
+        return None
+
+    run_id = result.get("run_id")
+    algorithm = result.get("algorithm_version")
+    status = result.get("status")
+    if (
+        not isinstance(run_id, str)
+        or len(run_id) != 32
+        or any(char not in "0123456789abcdef" for char in run_id)
+        or not isinstance(algorithm, str)
+        or len(algorithm) > 80
+        or status not in {"completed", "partial", "failed"}
+    ):
+        return None
+
+    numeric_fields = ("scanned_count", "comparison_count", "proposal_count")
+    numeric = {}
+    for field in numeric_fields:
+        value = result.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return None
+        numeric[field] = value
+    truncated = result.get("truncated")
+    if not isinstance(truncated, bool):
+        return None
+
+    created_at = result.get("created_at")
+    finished_at = result.get("finished_at")
+    if not isinstance(created_at, str) or not isinstance(finished_at, str):
+        return None
+
+    return {
+        "run_id": run_id,
+        "algorithm_version": algorithm,
+        "status": status,
+        **numeric,
+        "truncated": truncated,
+        "created_at": created_at,
+        "finished_at": finished_at,
+    }
