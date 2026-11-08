@@ -456,7 +456,12 @@ def _validate_command_before_authorization(tool_input: str | dict) -> None:
     _validate_command(command)
 
 
-def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+def _execute(
+    tool_id: str,
+    tool_input: str | dict,
+    *,
+    execution_grant: str | None = None,
+) -> dict[str, Any]:
     """Enforce the owner policy at the local execution boundary, including direct callers."""
     if tool_id not in MUTATING_TOOLS:
         return _execute_unchecked(tool_id, tool_input)
@@ -472,23 +477,33 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
             or os.environ.get("ORACLE_WORKFLOW_SCOPE")
             or "user:oracle-owner"
         ).strip()
-        authorization = execution_policy.authorize_action(
-            tool_id, payload, scope=scope
-        )
-        if not authorization.get("allowed"):
-            if authorization.get("reason") == "human_approval_required":
+        if execution_grant is None:
+            authorization = execution_policy.authorize_action(
+                tool_id, payload, scope=scope
+            )
+            if not authorization.get("allowed"):
+                if authorization.get("reason") == "human_approval_required":
+                    return {
+                        "name": tool_id,
+                        "status": "awaiting_approval",
+                        "result": "Paused before the local action. Approve this exact operation in Oracle Control Center, then retry or resume the task.",
+                        "approval_id": authorization.get("approval_id", ""),
+                        "action_digest": authorization.get("action_digest", ""),
+                        "preview": authorization.get("preview", {}),
+                    }
                 return {
                     "name": tool_id,
-                    "status": "awaiting_approval",
-                    "result": "Paused before the local action. Approve this exact operation in Oracle Control Center, then retry or resume the task.",
-                    "approval_id": authorization.get("approval_id", ""),
-                    "action_digest": authorization.get("action_digest", ""),
-                    "preview": authorization.get("preview", {}),
+                    "status": "blocked",
+                    "result": "The local execution policy did not authorize this operation.",
                 }
+            execution_grant = authorization.get("execution_grant")
+        if not execution_policy.consume_execution_grant(
+            execution_grant or "", tool_id, payload, scope=scope
+        ):
             return {
                 "name": tool_id,
                 "status": "blocked",
-                "result": "The local execution policy did not authorize this operation.",
+                "result": "The local execution grant is missing, expired, already used, or does not match this exact operation.",
             }
         return _execute_unchecked(tool_id, payload)
     except Exception as exc:
@@ -499,9 +514,14 @@ def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
         }
 
 
-def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+def execute(
+    tool_id: str,
+    tool_input: str | dict,
+    *,
+    execution_grant: str | None = None,
+) -> dict[str, Any]:
     """Run a policy-checked local tool and append a content-free audit record."""
-    result = _execute(tool_id, tool_input)
+    result = _execute(tool_id, tool_input, execution_grant=execution_grant)
     _append_audit(tool_id, result)
     return result
 
