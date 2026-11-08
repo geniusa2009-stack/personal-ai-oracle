@@ -132,7 +132,7 @@ def test_dispatch_runs_specialists_in_dependency_order_and_persists_review(monke
     )
 
     assert [item.status for item in dispatched] == ["succeeded"] * 4
-    assert calls == ["researcher", "coder", "writer", "reviewer"]
+    assert calls == ["researcher", "writer", "coder", "reviewer"]
     result = agent_tasks.get_agent_graph_result("owner:one", graph.graph_id)
     assert result is not None
     assert result["status"] == "completed"
