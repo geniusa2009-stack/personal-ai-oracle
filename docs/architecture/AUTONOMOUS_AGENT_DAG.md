@@ -57,7 +57,7 @@ A rejected completed graph can be revised only after an explicit user action in 
 4. Oracle creates a new encrypted DAG linked to the root graph and its immediate parent graph. Each revision task receives its previous output, assigned review issues, prior dependency outputs, and any already-revised dependency output.
 5. Only selected specialists are rerun. Unselected specialist outputs are inherited unchanged when the next final review builds the merged result set.
 6. A new final-review task depends on all selected revision tasks and reviews the merged result set against the original request and previous review issues.
-7. The user explicitly dispatches bounded batches from the Control Center. Pending revision work and completed outputs survive app restarts.
+7. The user explicitly dispatches bounded batches from the Control Center. Dispatch is filtered to the selected graph so a revision action cannot accidentally execute an unrelated queued graph. Pending revision work and completed outputs survive app restarts.
 
 ### Revision limits and lineage
 
