@@ -544,12 +544,17 @@ def _revision_step_handler(
     if not isinstance(issue_items, list) or not 1 <= len(issue_items) <= MAX_REVISION_ISSUES:
         raise AgentTaskExecutionError("revision issue list is invalid")
     issues = []
+    issue_indexes = set()
     for item in issue_items:
         if not isinstance(item, Mapping) or set(item) != {"issue_index", "issue"}:
             raise AgentTaskExecutionError("revision issue item has an invalid shape")
         index = item["issue_index"]
-        if isinstance(index, bool) or not isinstance(index, int) or not 1 <= index <= MAX_REVISION_ISSUES:
-            raise AgentTaskExecutionError("revision issue index is invalid")
+        if (
+            isinstance(index, bool) or not isinstance(index, int)
+            or not 1 <= index <= MAX_REVISION_ISSUES or index in issue_indexes
+        ):
+            raise AgentTaskExecutionError("revision issue index is invalid or duplicated")
+        issue_indexes.add(index)
         issues.append({
             "issue_index": index,
             "issue": _text(item["issue"], "revision issue", 500),
@@ -560,10 +565,16 @@ def _revision_step_handler(
         raise AgentTaskExecutionError("revision source dependencies are invalid")
     if not isinstance(revision_dependency_keys, list) or len(revision_dependency_keys) > MAX_REVISION_TASKS:
         raise AgentTaskExecutionError("revision task dependencies are invalid")
-    if any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in dependency_source_keys):
-        raise AgentTaskExecutionError("revision source dependency key is invalid")
-    if any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in revision_dependency_keys):
-        raise AgentTaskExecutionError("revision dependency task key is invalid")
+    if (
+        any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in dependency_source_keys)
+        or len(set(dependency_source_keys)) != len(dependency_source_keys)
+    ):
+        raise AgentTaskExecutionError("revision source dependency keys are invalid or duplicated")
+    if (
+        any(not isinstance(key, str) or not _TASK_KEY.fullmatch(key) for key in revision_dependency_keys)
+        or len(set(revision_dependency_keys)) != len(revision_dependency_keys)
+    ):
+        raise AgentTaskExecutionError("revision dependency task keys are invalid or duplicated")
     parent_results = _effective_agent_results(context.scope, parent_id)
     previous = parent_results.get(source_key)
     if previous is None or previous["agent_role"] != role:
@@ -844,6 +855,8 @@ def create_revision_graph(scope: str, parent_graph_id: str) -> task_engine.TaskG
         response_format={"type": "json_object"},
         agent_role="planner",
     )
+    if not isinstance(raw_plan, str) or not raw_plan.strip() or len(raw_plan) > 24_000:
+        raise AgentTaskExecutionError("revision planner returned an empty or oversized plan")
     try:
         plan = json.loads(raw_plan)
     except (TypeError, ValueError) as exc:
