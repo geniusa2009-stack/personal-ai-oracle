@@ -172,3 +172,35 @@ def test_policy_status_does_not_enable_unimplemented_screen_or_admin_features(mo
     assert status["status"] == "ready"
     assert status["screen_capture"] == "opted_in_but_not_integrated"
     assert status["admin_operations"] == "policy_flag_only_not_implemented"
+
+
+def test_git_worktree_replacing_commands_require_explicit_approval(monkeypatch, tmp_path):
+    workspace = tmp_path / "Projects"
+    workspace.mkdir()
+    _write_policy(
+        monkeypatch,
+        tmp_path,
+        _policy(
+            workspace,
+            auto_allow_tools=["local.run_command"],
+            auto_run_commands=[
+                ["git", "checkout"],
+                ["git", "switch"],
+                ["git", "pull"],
+            ],
+        ),
+    )
+
+    for command in (
+        ["git", "checkout", "feature-branch"],
+        ["git", "switch", "feature-branch"],
+        ["git", "pull", "origin", "main"],
+    ):
+        decision = mac_intelligence.authorize_workspace_action(
+            "local.run_command",
+            {"command": command, "cwd": str(workspace)},
+        )
+        assert decision == {
+            "allowed": False,
+            "reason": "command_may_replace_workspace_files",
+        }
