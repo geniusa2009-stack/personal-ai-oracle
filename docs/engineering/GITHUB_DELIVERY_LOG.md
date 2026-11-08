@@ -526,8 +526,9 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Added Control Center controls for bounded query/source counts and page extraction/claim-review settings; evidence summaries, limitations and validated HTTP(S) citations are displayed with the graph.
   - Added `test_oracle_e2e.py` for memory context, evidence collection, specialist handoff, reviewer rejection, selective correction, encrypted persistence and Control Center owner-scope projection.
 - **Safety/cost boundaries:** No live provider or live search call is run in CI. The UI defaults to 2 queries and 4 sources; dispatch remains explicit and bounded. Research is non-retryable. This milestone does not yet provide a verified monetary/token budget or a live-provider cost guarantee. No daemon, persistent worker, shell, browser, filesystem, or Mac execution capability is activated.
-- **Validation:** GitHub Actions run `42471409291` passed on implementation head `86f669f5be2e0d19f9812d8dd278c29de775247e`: Ubuntu **381 passed, 1 warning**; macOS **381 passed, 1 warning**. `python -m compileall -q .` and `python -m pytest -q` passed on both platforms. The warning is the existing Starlette/httpx TestClient deprecation. A later delivery-log-only commit triggers its own CI run.
+- **Validation:** GitHub Actions run `42471524130` passed on PR head `da7153d360e7ae11005236d10976c7715a00a159`: Ubuntu **381 passed, 1 warning**; macOS **381 passed, 1 warning**. `python -m compileall -q .` and `python -m pytest -q` passed on both platforms. The warning is the existing Starlette/httpx TestClient deprecation.
 - **Known limitations:** The final reviewer evaluates completeness and internal consistency only; it does not prove factual truth. Live search/provider quality, provider cost/usage reporting, deployed Streamlit behavior and physical-Mac validation remain outstanding.
 - **Pull Request:** [PR #22 — Compose evidence research into the autonomous agent DAG](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/22). Open, draft; base is PR #21.
 - **Verified implementation head:** `86f669f5be2e0d19f9812d8dd278c29de775247e`.
-- **PR head at this documentation update:** recorded by GitHub after commit; `main` remains untouched.
+- **Verified PR head:** `da7153d360e7ae11005236d10976c7715a00a159`.
+- `main` remains untouched.
