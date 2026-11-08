@@ -403,28 +403,8 @@ def _execute_step(
                     "status": "blocked", "input": "",
                     "result": "Remote mutation is disabled until a paired-Mac approval capability is implemented. Run this action in local Mac mode.",
                 }
-            policy_scope = (
-                memory_scope or os.environ.get("ORACLE_MEMORY_SCOPE")
-                or os.environ.get("ORACLE_WORKFLOW_SCOPE") or "user:oracle-owner"
-            )
-            authorization = execution_policy.authorize_action(
-                tool_id, step["input"], scope=policy_scope
-            )
-            if not authorization.get("allowed") and authorization.get("reason") != "human_approval_required":
-                return {
-                    "tool_id": tool_id, "name": step["tool"]["name"],
-                    "status": "blocked", "input": "",
-                    "result": "This local tool is not recognized by the deterministic execution policy.",
-                }
-            if not authorization.get("allowed"):
-                return {
-                    "tool_id": tool_id, "name": step["tool"]["name"],
-                    "status": "awaiting_approval", "input": "",
-                    "result": "Paused before the local action. Review and approve this exact operation in Oracle Control Center.",
-                    "approval_id": authorization.get("approval_id", ""),
-                    "action_digest": authorization.get("action_digest", ""),
-                    "preview": authorization.get("preview", {}),
-                }
+            # local_tools.execute is the authoritative policy boundary for local
+            # mutations, including direct callers outside this orchestrator.
         review = (
             _preflight_local_action(task, step, memory_scope)
             if tool_id.startswith("local.") and not is_cloud_runtime
