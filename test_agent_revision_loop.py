@@ -5,7 +5,6 @@ import pytest
 import ai_core
 import agent_task_execution as agent_tasks
 agent_task_execution = agent_tasks
-agent_task_execution = agent_tasks
 import durable_task_engine as engine
 
 
