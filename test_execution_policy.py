@@ -90,3 +90,50 @@ def test_command_preview_redacts_authorization_header(monkeypatch, tmp_path):
     preview = json.dumps(result["preview"])
     assert "super-secret-token-value" not in preview
     assert "[REDACTED]" in preview
+
+
+def test_authorized_execution_grant_is_exact_scope_bound_and_single_use(monkeypatch, tmp_path):
+    _database(monkeypatch, tmp_path)
+    payload = {"path": "/tmp/granted.txt", "content": "one exact write"}
+    pending = execution_policy.authorize_action(
+        "local.write_file", payload, scope="owner-a"
+    )
+    assert execution_policy.decide_approval(
+        pending["approval_id"], scope="owner-a", approve=True
+    ) is True
+
+    authorized = execution_policy.authorize_action(
+        "local.write_file", payload, scope="owner-a"
+    )
+    grant = authorized["execution_grant"]
+    assert execution_policy.consume_execution_grant(
+        grant, "local.write_file", payload, scope="owner-a"
+    ) is True
+    assert execution_policy.consume_execution_grant(
+        grant, "local.write_file", payload, scope="owner-a"
+    ) is False
+
+
+def test_execution_grant_cannot_be_reused_for_another_payload_or_scope(monkeypatch, tmp_path):
+    _database(monkeypatch, tmp_path)
+    payload = {"path": "/tmp/granted.txt", "content": "one exact write"}
+    pending = execution_policy.authorize_action(
+        "local.write_file", payload, scope="owner-a"
+    )
+    execution_policy.decide_approval(
+        pending["approval_id"], scope="owner-a", approve=True
+    )
+    authorized = execution_policy.authorize_action(
+        "local.write_file", payload, scope="owner-a"
+    )
+    grant = authorized["execution_grant"]
+
+    assert execution_policy.consume_execution_grant(
+        grant, "local.write_file",
+        {"path": "/tmp/other.txt", "content": "one exact write"},
+        scope="owner-a",
+    ) is False
+    # Failed validation consumes the grant, preventing a later replay.
+    assert execution_policy.consume_execution_grant(
+        grant, "local.write_file", payload, scope="owner-a"
+    ) is False

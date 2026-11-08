@@ -1146,7 +1146,7 @@ with tab_oracle:
     ).strip()
     st.markdown("### 🔮 Oracle Control Center")
     st.caption(
-        "لوحة تشغيل وذاكرة وبحث وموافقات صريحة. الإجراءات المحلية الحساسة تتوقف حتى تراجعها بنفسك."
+        "لوحة تشغيل وذاكرة وبحث. القراءة بلا موافقة؛ الكتابة والأوامر المحددة داخل Workspace موثوق قد تعمل تلقائياً؛ الحذف يحتاج موافقة صريحة دائماً."
     )
 
     st.divider()
@@ -1163,7 +1163,7 @@ with tab_oracle:
     ap1.metric("تحتاج موافقتك", len(pending_items))
     ap2.metric("موافقات جاهزة للاستكمال", len(approved_items))
     if not approval_items:
-        st.info("لا توجد إجراءات محلية معلّقة. Oracle سيطلب موافقتك قبل أول كتابة أو حذف أو أمر محلي.")
+        st.info("لا توجد إجراءات محلية معلّقة. الحذف يحتاج موافقة صريحة دائماً؛ أما الكتابة والنقل والأوامر فتخضع لقائمة الأدوات ومساحات العمل الموثوقة.")
     for item in approval_items:
         approval_label = f"{item['tool_id']} · {item['approval_id'][:10]} · {item['status']}"
         with st.expander(approval_label, expanded=item["status"] == "pending"):

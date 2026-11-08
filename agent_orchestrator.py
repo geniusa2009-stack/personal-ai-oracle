@@ -395,9 +395,12 @@ def _execute_step(
 
     if tool_id.startswith(("local.", "web.")):
         is_cloud_runtime = os.environ.get("ORACLE_RUNTIME_MODE", "local").strip().lower() == "cloud"
+        execution_policy_module = None
+        execution_grant = None
+        policy_scope = None
         if tool_id.startswith("local."):
-            import execution_policy
-            if is_cloud_runtime and tool_id in execution_policy.APPROVAL_TOOLS:
+            import execution_policy as execution_policy_module
+            if is_cloud_runtime and tool_id in execution_policy_module.APPROVAL_TOOLS:
                 return {
                     "tool_id": tool_id, "name": step["tool"]["name"],
                     "status": "blocked", "input": "",
@@ -407,7 +410,7 @@ def _execute_step(
                 memory_scope or os.environ.get("ORACLE_MEMORY_SCOPE")
                 or os.environ.get("ORACLE_WORKFLOW_SCOPE") or "user:oracle-owner"
             )
-            authorization = execution_policy.authorize_action(
+            authorization = execution_policy_module.authorize_action(
                 tool_id, step["input"], scope=policy_scope
             )
             if not authorization.get("allowed") and authorization.get("reason") != "human_approval_required":
@@ -425,12 +428,16 @@ def _execute_step(
                     "action_digest": authorization.get("action_digest", ""),
                     "preview": authorization.get("preview", {}),
                 }
+            execution_grant = authorization.get("execution_grant")
+
         review = (
             _preflight_local_action(task, step, memory_scope)
             if tool_id.startswith("local.") and not is_cloud_runtime
             else None
         )
         if review is not None and not review["approved"]:
+            if execution_grant and execution_policy_module is not None:
+                execution_policy_module.discard_execution_grant(execution_grant)
             return {
                 "tool_id": tool_id,
                 "name": step["tool"]["name"],
@@ -453,7 +460,12 @@ def _execute_step(
                         "result": f"Mac agent unavailable or remote task failed: {type(exc).__name__}: {str(exc)[:700]}",
                     }
         elif tool_id.startswith("local."):
-            result = local_tools.execute(tool_id, step["input"])
+            result = local_tools.execute(
+                tool_id,
+                step["input"],
+                execution_grant=execution_grant,
+                execution_scope=policy_scope,
+            )
         else:
             result = web_browser.execute(tool_id, step["input"])
         result["tool_id"] = tool_id

@@ -459,4 +459,21 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Architecture documentation: `ede331dc2747942881450a577824dea5707b8831`.
 - **Pull Request:** [PR #18 — Connect durable task queue to explicit Deep Research execution](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/18). Open, draft; base is PR #17.
 - **Implementation head before delivery-log refresh:** `402238304b8b7e7fa0ecc1d0b870e76ecc3b9ba9` (includes stable UI idempotency across Streamlit retries).
-- **CI:** Pending on the published head; no passing result is claimed yet.
+- **CI:** GitHub Actions run `42461856311` passed on Ubuntu and macOS: **351 passed, 1 warning** on each platform. The warning is the existing Starlette/httpx TestClient deprecation.
+
+
+### Phase 07a — Local execution policy and deletion approval enforcement
+
+- **Branch:** `oracle/phase-07-deletion-approval-enforcement`
+- **Base:** `oracle/phase-04-explicit-task-dispatch` (PR #18).
+- **Dependency:** Stacked on PR #18 → PR #17 → PR #16 → PR #15 → earlier Oracle work.
+- **Files updated:** `execution_policy.py`, `local_tools.py`, `mac_intelligence.py`, `agent_orchestrator.py`, `app.py`, and the related policy/local-tool/orchestrator tests.
+- **Files added:** `docs/architecture/LOCAL_EXECUTION_POLICY.md`.
+- **Behavior:** Registered local tool deletion always requires exact one-time owner approval, including inside trusted workspaces and even if the policy lists deletion as auto-allowed. The local tool execution boundary now checks direct callers, not only agent-orchestrated calls.
+- **Normal operations:** Read-only actions remain approval-free. Writes, allowlisted development commands and app launches may be automatic only under explicit trusted-workspace/local-policy settings. Moves may be automatic only within the same trusted workspace when the destination does not already exist.
+- **Execution grant:** Short-lived single-use grant bound to owner scope, tool ID and exact payload; the orchestrator passes it to the local execution boundary after policy authorization.
+- **Safety boundary:** Application-level direct-tool deletion enforcement is implemented. Arbitrary permitted third-party scripts may have indirect filesystem side effects that cannot be proven safe without filesystem sandboxing; the capability therefore remains partially implemented. No persistent service, privilege escalation or macOS security-setting changes are activated.
+- **Validation:** GitHub Actions run `42462300297` passed on implementation head `1db0e133afac9142b0773c5935a0bf70407cff9b`: Ubuntu **356 passed, 1 warning**; macOS **356 passed, 1 warning**. Python compilation passed on both platforms. The warning is the existing Starlette/httpx TestClient deprecation.
+- **Pull Request:** [PR #19 — Enforce explicit deletion approval at the Mac execution boundary](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/19). Open, draft; base is PR #18.
+- **Implementation commits:** direct policy enforcement `fa97a3b694e1aaa69dcec1c03f50aecc0e925759`; single-use grants `06617d433eab6f6b56a7b8944c989fe47b7dec13`; orchestrator grant integration `b964d7d13d80cab7748e4201b85d4dee640155f8`; git worktree approval hardening `f72b592b1fe9b4c8a319b95277b406e136b18e55` and regression test `dbcff66e96df29ac12686b71fc8bde2ff7091b77`.
+- **Validated implementation head:** `1db0e133afac9142b0773c5935a0bf70407cff9b`.

@@ -93,19 +93,48 @@ def test_app_launch_requires_exact_local_allowlist(monkeypatch, tmp_path):
     )["allowed"] is False
 
 
-def test_move_and_delete_always_require_explicit_approval(monkeypatch, tmp_path):
+def test_move_is_auto_allowed_only_inside_same_trusted_workspace_and_delete_always_requires_approval(monkeypatch, tmp_path):
     workspace = tmp_path / "Projects"
+    outside = tmp_path / "Private"
     workspace.mkdir()
+    outside.mkdir()
     policy = _policy(workspace, auto_allow_tools=["local.move_path", "local.delete_path"])
     _write_policy(monkeypatch, tmp_path, policy)
+
     moved = mac_intelligence.authorize_workspace_action(
         "local.move_path", {"source": str(workspace / "a"), "destination": str(workspace / "b")}
+    )
+    outside_move = mac_intelligence.authorize_workspace_action(
+        "local.move_path", {"source": str(workspace / "a"), "destination": str(outside / "b")}
     )
     deleted = mac_intelligence.authorize_workspace_action(
         "local.delete_path", {"path": str(workspace / "old.txt"), "recursive": False}
     )
-    assert moved == {"allowed": False, "reason": "explicit_approval_required"}
+
+    assert moved == {"allowed": True, "reason": "trusted_workspace_move"}
+    assert outside_move == {"allowed": False, "reason": "path_outside_trusted_workspace"}
     assert deleted == {"allowed": False, "reason": "explicit_approval_required"}
+
+
+def test_move_to_existing_destination_requires_explicit_approval(monkeypatch, tmp_path):
+    workspace = tmp_path / "Projects"
+    workspace.mkdir()
+    source = workspace / "source.txt"
+    destination = workspace / "destination.txt"
+    source.write_text("source", encoding="utf-8")
+    destination.write_text("existing", encoding="utf-8")
+    _write_policy(
+        monkeypatch,
+        tmp_path,
+        _policy(workspace, auto_allow_tools=["local.move_path"]),
+    )
+
+    decision = mac_intelligence.authorize_workspace_action(
+        "local.move_path",
+        {"source": str(source), "destination": str(destination)},
+    )
+
+    assert decision == {"allowed": False, "reason": "destination_exists_requires_approval"}
 
 
 def test_remote_mutation_requires_local_policy_and_never_exposes_delete(monkeypatch, tmp_path):
@@ -143,3 +172,35 @@ def test_policy_status_does_not_enable_unimplemented_screen_or_admin_features(mo
     assert status["status"] == "ready"
     assert status["screen_capture"] == "opted_in_but_not_integrated"
     assert status["admin_operations"] == "policy_flag_only_not_implemented"
+
+
+def test_git_worktree_replacing_commands_require_explicit_approval(monkeypatch, tmp_path):
+    workspace = tmp_path / "Projects"
+    workspace.mkdir()
+    _write_policy(
+        monkeypatch,
+        tmp_path,
+        _policy(
+            workspace,
+            auto_allow_tools=["local.run_command"],
+            auto_run_commands=[
+                ["git", "checkout"],
+                ["git", "switch"],
+                ["git", "pull"],
+            ],
+        ),
+    )
+
+    for command in (
+        ["git", "checkout", "feature-branch"],
+        ["git", "switch", "feature-branch"],
+        ["git", "pull", "origin", "main"],
+    ):
+        decision = mac_intelligence.authorize_workspace_action(
+            "local.run_command",
+            {"command": command, "cwd": str(workspace)},
+        )
+        assert decision == {
+            "allowed": False,
+            "reason": "command_may_replace_workspace_files",
+        }
