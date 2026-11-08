@@ -383,3 +383,24 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** This is a synchronous adapter, not production process supervision. No built-in production task handlers, parallel worker management, recurring scheduler, Control Center task UI or automatic startup service is included.
 - **Pull Request:** Pending latest CI; planned as draft PR #16 stacked on PR #15.
 - **PR status:** Not yet created; no earlier PR was merged, closed or retargeted.
+
+
+### Phase 04b — Explicit typed task worker adapter
+
+- **Branch:** `oracle/phase-04-task-worker-adapter`
+- **Base:** `oracle/phase-04-durable-task-engine` (PR #15).
+- **Dependency:** Planned PR #16 → PR #15 → PR #14 → PR #13 → PR #12 → PR #11 → PR #10 → PR #9 → earlier stack.
+- **Files added:**
+  - `task_worker.py` — explicit task-type handler registry, one-task dispatcher, bounded sequential batch, task execution context, lease heartbeat and cooperative cancellation checks.
+  - `test_task_worker.py` — successful dispatch, unregistered task filtering, retry gating, lease heartbeat, cancellation during handler execution, error redaction, dependency advancement within a bounded batch, and registry/type-filter limits.
+  - `docs/architecture/TASK_WORKER_ADAPTER.md`.
+- **Files updated:**
+  - `durable_task_engine.py` — `claim_next(task_types=...)` uses parameterized filters so this adapter only leases task types registered by its caller; filter count is capped at 100.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **Worker contract:** No handlers are registered globally. Each explicit dispatch call supplies the registry. Unknown task types stay queued. Each dispatch executes one task; a batch is sequential and caller-bounded to 100, with no infinite loop or background process.
+- **Retry contract:** Retry requires a handler-declared retryable exception type **and** the durable task's explicit `retry_safe=True`, plus remaining attempt budget. The handler may heartbeat through context without receiving the lease token.
+- **Security/side-effect boundary:** No default shell/browser/filesystem/app/model handler is included. Tool handlers must use the existing Oracle execution/approval paths. Handler exception messages and raw results are not copied to dispatch metadata.
+- **Validation:** The adapter implementation before the final registry-bound test passed GitHub Actions run `42431158227` with **337 passed, 1 warning** on both Ubuntu and macOS. Current branch head includes additional bounds tests and capability/delivery documentation; final CI pending.
+- **Limitations:** No production handler catalogue, parallel worker scheduler, supervised daemon, recurring scheduler or Control Center UI. Cancellation remains cooperative for work already executing outside the queue.
+- **Pull Request:** Pending final CI; planned as draft PR #16 stacked on PR #15.
+- **PR status:** Not yet created; no prior PR was merged, closed or retargeted.
