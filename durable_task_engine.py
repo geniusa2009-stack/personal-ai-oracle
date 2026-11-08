@@ -532,6 +532,10 @@ def claim_next(
         ).fetchall()
         for graph in graphs:
             _reap_graph_expired(conn, scope, graph["graph_id"])
+        # Reaping may set available_at a few microseconds after the initial
+        # snapshot. Refresh the clock before selecting work so a just-requeued
+        # expired lease can be reclaimed in this same claim operation.
+        now = time.time()
         type_filter = ""
         query_params: list[Any] = [scope, now]
         if normalized_types is not None:

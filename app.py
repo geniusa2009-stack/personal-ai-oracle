@@ -1135,6 +1135,7 @@ with tab_oracle:
     import workflow_ledger
     import task_control_center
     import task_execution
+    import agent_task_execution
     import deep_research
     import execution_policy
     import model_observability
@@ -1336,6 +1337,46 @@ with tab_oracle:
             except Exception as exc:
                 st.error(f"تعذّر إنشاء المهمة: {type(exc).__name__}")
 
+    if "oracle_agent_idempotency_key" not in st.session_state:
+        st.session_state["oracle_agent_idempotency_key"] = uuid.uuid4().hex
+    with st.expander("تخطيط مهمة متعددة الوكلاء (Autonomous Task Planner)", expanded=False):
+        st.caption(
+            "حوّل الطلب إلى DAG من خطوات متخصصة مترابطة. كل خطوة ونتيجتها تُحفظ مشفّرة، "
+            "والمراجع النهائي خطوة مستقلة. لا يتم تشغيل أي مهمة تلقائياً."
+        )
+        with st.form("oracle_create_agent_task_graph"):
+            agent_request = st.text_area(
+                "المهمة المطلوبة من Oracle",
+                max_chars=8000,
+                placeholder="اشرح النتيجة المطلوبة، وسيقوم Planner بتقسيمها إلى خطوات متخصصة...",
+                key="oracle_agent_request",
+            )
+            agent_max_steps = st.slider(
+                "الحد الأقصى لخطوات الوكلاء",
+                min_value=1,
+                max_value=8,
+                value=5,
+                key="oracle_agent_max_steps",
+            )
+            agent_submitted = st.form_submit_button("حلّل الطلب وأنشئ Task DAG")
+        if agent_submitted:
+            try:
+                with st.spinner("Planner بيحلل الطلب ويبني DAG..."):
+                    created_agent_graph = agent_task_execution.create_agent_graph(
+                        oracle_scope,
+                        f"control-center-agent-{st.session_state['oracle_agent_idempotency_key']}",
+                        agent_request,
+                        max_steps=agent_max_steps,
+                    )
+                st.session_state["oracle_agent_idempotency_key"] = uuid.uuid4().hex
+                st.success(
+                    f"تم حفظ Task DAG مشفّر. Graph ID: {created_agent_graph.graph_id[:12]} "
+                    f"· عدد المهام: {created_agent_graph.task_count} (بما فيها المراجعة النهائية)"
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"تعذّر إنشاء Task DAG: {type(exc).__name__}")
+
     try:
         task_graph_rows = task_control_center.list_graph_summaries(oracle_scope, limit=50)
     except Exception as exc:
@@ -1416,6 +1457,73 @@ with tab_oracle:
                 hide_index=True,
             )
 
+            is_agent_graph = any(
+                item["task_type"] in {
+                    agent_task_execution.TASK_TYPE_AGENT_STEP,
+                    agent_task_execution.TASK_TYPE_AGENT_REVIEW,
+                }
+                for item in task_rows
+            )
+            if is_agent_graph:
+                st.markdown("#### 🤖 نتائج الوكلاء والمراجع النهائي")
+                if selected_graph["status"] == "active" and selected_graph["pending_count"] > 0:
+                    if st.button(
+                        "تشغيل حتى 3 خطوات وكلاء جاهزة الآن",
+                        key=f"oracle_dispatch_agent_batch_{selected_graph_id}",
+                    ):
+                        try:
+                            with st.spinner("يتم تشغيل دفعة محدودة حسب الـDependencies..."):
+                                agent_dispatches = agent_task_execution.dispatch_agent_tasks(
+                                    oracle_scope,
+                                    f"control-center-agent-{uuid.uuid4().hex[:16]}",
+                                    max_tasks=3,
+                                )
+                            if agent_dispatches:
+                                st.success(
+                                    "نتيجة الدفعة: " + " · ".join(
+                                        f"{item.task_key}: {item.status}" for item in agent_dispatches
+                                    )
+                                )
+                            else:
+                                st.info("لا توجد خطوة وكلاء جاهزة للتشغيل حالياً.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"تعذّر تشغيل دفعة الوكلاء: {type(exc).__name__}")
+                try:
+                    agent_graph_result = agent_task_execution.get_agent_graph_result(
+                        oracle_scope, selected_graph_id
+                    )
+                except Exception as exc:
+                    agent_graph_result = None
+                    st.warning(f"تعذّر تحميل نتائج الوكلاء: {type(exc).__name__}")
+                if agent_graph_result:
+                    st.caption(
+                        f"تم تنفيذ {agent_graph_result['succeeded_count']} من "
+                        f"{agent_graph_result['task_count']} مهام · "
+                        f"المتبقي {agent_graph_result['pending_count']} · "
+                        f"الفاشل {agent_graph_result['failed_count']} · "
+                        f"المحجوب {agent_graph_result['blocked_count']}"
+                    )
+                    for agent_task in agent_graph_result["tasks"]:
+                        if agent_task["result"]:
+                            with st.expander(
+                                f"{agent_task['task_key']} · {agent_task['result']['agent_role']}"
+                            ):
+                                st.markdown(agent_task["result"]["output"])
+                    final_review = agent_graph_result.get("final_review")
+                    if final_review:
+                        if agent_graph_result["accepted"]:
+                            st.success("المراجع النهائي قبل اكتمال التغطية المطلوبة.")
+                        elif final_review["decision"] == "needs_revision":
+                            st.warning("المراجع النهائي طلب تعديلات؛ لا تعتبر المهمة مقبولة بعد.")
+                        else:
+                            st.warning("المراجع النهائي وجد أن التغطية غير مكتملة.")
+                        st.markdown(final_review["summary"])
+                        if final_review["issues"]:
+                            st.markdown("**نقاط تحتاج معالجة:**")
+                            for issue in final_review["issues"]:
+                                st.markdown(f"- {issue}")
+                        st.caption("المراجعة تقيس اكتمال الطلب والاتساق الداخلي فقط، ولا تثبت صحة الحقائق.")
             action_cols = st.columns(3)
             if selected_graph["status"] == "active":
                 if action_cols[0].button(

@@ -349,3 +349,31 @@ def test_task_error_code_rejects_free_form_exception_details(monkeypatch, tmp_pa
     )
     assert failed["status"] == "failed"
     assert failed["last_error_code"] == "TimeoutError"
+
+
+def test_claim_next_reclaims_expired_retry_safe_lease_in_the_same_call(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = engine.create_graph(
+        "owner:one",
+        "same-call-expired-lease",
+        [_task("recover", retry_safe=True, max_attempts=2)],
+    )
+    first = _claim("owner:one", "worker-before-restart")
+    _start(first)
+    conn = db.get_conn()
+    try:
+        conn.execute(
+            "UPDATE oracle_durable_tasks SET lease_expires_at=0 WHERE task_id=?",
+            (first.task_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    recovered = engine.claim_next("owner:one", "worker-after-restart")
+
+    assert recovered is not None
+    assert recovered.task_id == first.task_id
+    assert recovered.attempt_number == 2
+    assert recovered.lease_token != first.lease_token
+    assert engine.get_graph("owner:one", graph.graph_id).status == "active"
