@@ -226,3 +226,61 @@ def test_same_idempotency_key_cannot_be_reused_for_different_research(monkeypatc
     _create(key="same-key")
     with pytest.raises(engine.TaskIdempotencyConflict):
         _create(key="same-key", query="A different question")
+
+
+def test_result_preview_revalidates_urls_and_summary_allowlists(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = engine.create_graph(
+        "owner:one",
+        "research-result-projection",
+        [engine.TaskSpec(
+            task_key="research",
+            task_type=task_execution.TASK_TYPE_RESEARCH,
+            payload={"query": "safe query"},
+        )],
+    )
+    lease = engine.claim_next("owner:one", "manual-control-center")
+    assert lease is not None
+    engine.start_task("owner:one", lease.task_id, lease.worker_id, lease.lease_token)
+    engine.complete_task(
+        "owner:one",
+        lease.task_id,
+        lease.worker_id,
+        lease.lease_token,
+        {
+            "kind": "research_report",
+            "status": "success",
+            "query": "safe query",
+            "answer": "Safe answer",
+            "key_findings": "not-a-list",
+            "limitations": [],
+            "citations": [
+                {"id": "S0", "title": "Unsafe", "url": "javascript:alert(1)", "domain": "bad"},
+                {"id": "S1", "title": "Safe", "url": "https://example.org", "domain": "example.org"},
+            ],
+            "evidence_summary": {"source_count": 1, "private_secret": "never-render"},
+            "quality_summary": {"truth_verified": False, "private_prompt": "never-render"},
+            "semantic_summary": {
+                "status": "complete",
+                "factual_truth_verified": True,
+                "private_value": "never-render",
+            },
+            "freshness_summary": {
+                "profile": "general",
+                "counts": {"fresh": 1},
+                "private_value": "never-render",
+            },
+            "unexpected_result_field": "never-render",
+        },
+    )
+
+    preview = task_execution.get_research_result("owner:one", lease.task_id)
+
+    assert preview is not None
+    assert preview["key_findings"] == []
+    assert [item["id"] for item in preview["citations"]] == ["S1"]
+    assert preview["semantic_summary"]["factual_truth_verified"] is False
+    assert "private_secret" not in repr(preview)
+    assert "private_prompt" not in repr(preview)
+    assert "unexpected_result_field" not in repr(preview)
+    assert engine.get_graph("owner:one", graph.graph_id).status == "completed"
