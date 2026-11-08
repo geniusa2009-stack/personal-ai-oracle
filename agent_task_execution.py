@@ -108,6 +108,8 @@ def create_agent_graph(
     max_steps: int = 6,
 ) -> task_engine.TaskGraph:
     """Ask the planner for a typed DAG, validate it, then persist it encrypted."""
+    if isinstance(idempotency_key, str) and idempotency_key.startswith("oracle-agent-revision-"):
+        raise AgentTaskExecutionError("idempotency key uses a reserved revision namespace")
     request = _text(request, "request", MAX_REQUEST_CHARS)
     if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= MAX_PLAN_STEPS:
         raise AgentTaskExecutionError(f"max_steps must be between 1 and {MAX_PLAN_STEPS}")
