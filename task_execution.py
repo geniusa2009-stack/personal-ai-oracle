@@ -86,6 +86,36 @@ def _submission_payload(
     }
 
 
+def create_research_task_spec(
+    task_key: str,
+    query: str,
+    *,
+    max_queries: int = 3,
+    max_sources: int = 8,
+    fetch_pages: bool = True,
+    verify_claims: bool = True,
+    freshness_profile: str | None = None,
+) -> durable_task_engine.TaskSpec:
+    """Build one validated research task for composition into a larger DAG."""
+    payload = _submission_payload(
+        query,
+        max_queries=max_queries,
+        max_sources=max_sources,
+        fetch_pages=fetch_pages,
+        verify_claims=verify_claims,
+        freshness_profile=freshness_profile,
+    )
+    if not isinstance(task_key, str) or not task_key.strip() or len(task_key) > 48:
+        raise TaskExecutionError("task_key must contain 1 to 48 characters")
+    return durable_task_engine.TaskSpec(
+        task_key=task_key.strip(),
+        task_type=TASK_TYPE_RESEARCH,
+        payload=payload,
+        max_attempts=1,
+        retry_safe=False,
+    )
+
+
 def create_research_graph(
     scope: str,
     idempotency_key: str,
@@ -98,26 +128,20 @@ def create_research_graph(
     freshness_profile: str | None = None,
 ) -> durable_task_engine.TaskGraph:
     """Persist one encrypted, non-retryable Deep Research task in the owner scope."""
-    payload = _submission_payload(
-        query,
-        max_queries=max_queries,
-        max_sources=max_sources,
-        fetch_pages=fetch_pages,
-        verify_claims=verify_claims,
-        freshness_profile=freshness_profile,
-    )
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
         raise TaskExecutionError("idempotency_key is required")
     return durable_task_engine.create_graph(
         scope,
         idempotency_key,
         [
-            durable_task_engine.TaskSpec(
-                task_key="research",
-                task_type=TASK_TYPE_RESEARCH,
-                payload=payload,
-                max_attempts=1,
-                retry_safe=False,
+            create_research_task_spec(
+                "research",
+                query,
+                max_queries=max_queries,
+                max_sources=max_sources,
+                fetch_pages=fetch_pages,
+                verify_claims=verify_claims,
+                freshness_profile=freshness_profile,
             )
         ],
     )

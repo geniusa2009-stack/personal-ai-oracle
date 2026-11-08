@@ -510,3 +510,25 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Review boundary:** The final reviewer assesses completion and internal consistency only; it does not establish factual truth. At the cycle cap the UI reports the limit and stops creating further revision graphs.
 - **CI:** GitHub Actions run `42470130802` passed on implementation head `a0e41a6039c6c2ca57f9f0c907773ea49a7101be`: Ubuntu **379 passed, 1 warning**; macOS **379 passed, 1 warning**. Python compilation and the full test suite passed on both platforms. The warning is the existing Starlette/httpx TestClient deprecation. Live provider, deployed Streamlit and physical-Mac validation remain separate operational checks.
 - **Pull Request:** [PR #21 — Add bounded autonomous revision loop for specialist-agent DAGs](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/21). Open, draft; base is PR #20.
+
+
+### Phase 04f — Composed evidence-to-agent end-to-end workflow
+
+- **Branch:** `oracle/phase-04-end-to-end-integration`
+- **Base:** `oracle/phase-04-bounded-agent-revision-loop` (PR #21).
+- **Dependency:** Stacked on PR #21 → PR #20 → PR #19 → PR #18 → PR #17.
+- **Implementation:**
+  - Added a reusable validated research-task spec so Deep Research can be composed into a larger DAG without creating a separate graph.
+  - Added optional evidence research to the Autonomous Task Planner. When enabled, an owner-scoped encrypted research task is a prerequisite for each specialist and the final reviewer.
+  - Added a strict bounded projection of the stored research report into dependent agent context. Only the safe report fields already produced by the research task boundary are passed onward.
+  - Added research-result inheritance to revision lineage. Evidence remains available to the post-revision reviewer but is excluded from the revision planner's selectable specialist targets.
+  - Added graph-scoped research handler registration so selecting one integrated graph cannot dispatch research from another graph.
+  - Added Control Center controls for bounded query/source counts and page extraction/claim-review settings; evidence summaries, limitations and validated HTTP(S) citations are displayed with the graph.
+  - Added `test_oracle_e2e.py` for memory context, evidence collection, specialist handoff, reviewer rejection, selective correction, encrypted persistence and Control Center owner-scope projection.
+- **Safety/cost boundaries:** No live provider or live search call is run in CI. The UI defaults to 2 queries and 4 sources; dispatch remains explicit and bounded. Research is non-retryable. This milestone does not yet provide a verified monetary/token budget or a live-provider cost guarantee. No daemon, persistent worker, shell, browser, filesystem, or Mac execution capability is activated.
+- **Validation:** GitHub Actions run `42471524130` passed on PR head `da7153d360e7ae11005236d10976c7715a00a159`: Ubuntu **381 passed, 1 warning**; macOS **381 passed, 1 warning**. `python -m compileall -q .` and `python -m pytest -q` passed on both platforms. The warning is the existing Starlette/httpx TestClient deprecation.
+- **Known limitations:** The final reviewer evaluates completeness and internal consistency only; it does not prove factual truth. Live search/provider quality, provider cost/usage reporting, deployed Streamlit behavior and physical-Mac validation remain outstanding.
+- **Pull Request:** [PR #22 — Compose evidence research into the autonomous agent DAG](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/22). Open, draft; base is PR #21.
+- **Verified implementation head:** `86f669f5be2e0d19f9812d8dd278c29de775247e`.
+- **Verified PR head:** `da7153d360e7ae11005236d10976c7715a00a159`.
+- `main` remains untouched.

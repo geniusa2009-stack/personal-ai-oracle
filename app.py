@@ -1358,6 +1358,28 @@ with tab_oracle:
                 value=5,
                 key="oracle_agent_max_steps",
             )
+            agent_include_evidence = st.checkbox(
+                "اجمع أدلة من البحث قبل تشغيل الوكلاء",
+                value=True,
+                help="يضيف مهمة بحث مشفّرة داخل نفس DAG، وتُمرّر الأدلة للمختصين. التنفيذ لا يبدأ إلا عند تشغيل الدفعة.",
+            )
+            evidence_cols = st.columns(2)
+            agent_research_queries = evidence_cols[0].slider(
+                "حد استعلامات البحث", min_value=1, max_value=4, value=2,
+                disabled=not agent_include_evidence,
+            )
+            agent_research_sources = evidence_cols[1].slider(
+                "حد المصادر", min_value=1, max_value=8, value=4,
+                disabled=not agent_include_evidence,
+            )
+            agent_fetch_pages = st.checkbox(
+                "استخراج نص الصفحات المختارة", value=True,
+                disabled=not agent_include_evidence,
+            )
+            agent_verify_claims = st.checkbox(
+                "تقييم الأدلة والادعاءات", value=True,
+                disabled=not agent_include_evidence,
+            )
             agent_submitted = st.form_submit_button("حلّل الطلب وأنشئ Task DAG")
         if agent_submitted:
             try:
@@ -1367,6 +1389,11 @@ with tab_oracle:
                         f"control-center-agent-{st.session_state['oracle_agent_idempotency_key']}",
                         agent_request,
                         max_steps=agent_max_steps,
+                        include_evidence_research=agent_include_evidence,
+                        research_max_queries=agent_research_queries,
+                        research_max_sources=agent_research_sources,
+                        research_fetch_pages=agent_fetch_pages,
+                        research_verify_claims=agent_verify_claims,
                     )
                 st.session_state["oracle_agent_idempotency_key"] = uuid.uuid4().hex
                 st.success(
@@ -1511,7 +1538,27 @@ with tab_oracle:
                         with st.expander(
                             f"{effective_agent['task_key']} · {effective_agent['agent_role']}"
                         ):
-                            st.markdown(effective_agent["output"])
+                            if effective_agent["task_key"] == "evidence_research":
+                                try:
+                                    evidence_result = json.loads(effective_agent["output"])
+                                except (TypeError, ValueError):
+                                    evidence_result = None
+                                if evidence_result:
+                                    st.markdown(evidence_result.get("answer", ""))
+                                    evidence_summary = evidence_result.get("evidence_summary", {})
+                                    if evidence_summary:
+                                        st.json(evidence_summary)
+                                    for citation in evidence_result.get("citations", []):
+                                        if isinstance(citation, dict) and citation.get("url", "").startswith(("https://", "http://")):
+                                            st.markdown(
+                                                f"- [{citation.get('title') or citation.get('id')}]({citation['url']})"
+                                            )
+                                    if evidence_result.get("limitations"):
+                                        st.caption("حدود البحث: " + " · ".join(evidence_result["limitations"][:4]))
+                                else:
+                                    st.text(effective_agent["output"])
+                            else:
+                                st.markdown(effective_agent["output"])
                     revision_state = agent_graph_result.get("revision", {})
                     st.caption(
                         f"دورة التعديل: {revision_state.get('revision_index', 0)} / "

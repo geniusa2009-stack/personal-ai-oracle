@@ -370,3 +370,15 @@ The `oracle/phase-04-bounded-agent-revision-loop` branch adds selective, lineage
 - Revision agents remain content/reasoning specialists only; no shell, browser, filesystem, executor or Mac action handlers are registered.
 
 Status: `IMPLEMENTED_AND_VERIFIED` by run `42469959196` (379 tests passed on Ubuntu and macOS). Live provider quality/cost, deployed Streamlit interaction, and physical-Mac restart validation remain outstanding. The final reviewer assesses completeness/internal consistency, not factual truth. See `docs/architecture/AUTONOMOUS_AGENT_DAG.md`.
+
+
+## Phase 04f — Composed evidence-to-agent end-to-end workflow
+
+| Increment | Owning modules | Status on this branch | Verified scope | Remaining work |
+|---|---|---|---|---|
+| Evidence research task composition | `task_execution.py`, `agent_task_execution.py` | `IMPLEMENTED_AND_VERIFIED` | A validated Deep Research task can be composed into the same encrypted specialist DAG; research is a prerequisite for every specialist and final review | CI run `42471524130`: 381 passed on Ubuntu/macOS; live search/provider validation |
+| Evidence handoff to specialists | `agent_task_execution.py` | `IMPLEMENTED_AND_VERIFIED` | Only allowlisted bounded report fields are projected to dependent specialists; research evidence is inherited across revision lineage and excluded from revision-target candidates | Live-provider quality and cost validation remain outstanding; strict result-size limits are tested |
+| Control Center evidence projection | `app.py`, `agent_task_execution.py` | `IMPLEMENTED_AND_VERIFIED` | UI can show the persisted evidence answer, evidence summary, limitations and validated HTTP(S) citations alongside specialist outputs | Live Streamlit browser validation remains outstanding |
+| End-to-end regression | `test_oracle_e2e.py` | `IMPLEMENTED_AND_VERIFIED` | Offline test exercises memory context, encrypted graph creation, mocked research, specialist dependency handoff, reviewer rejection, selective revision, merged result projection and owner-scoped Control Center metadata | CI run `42471524130`: 381 passed per platform; live provider run remains a separate opt-in operation |
+
+The composed path remains explicitly dispatched by the user. Research uses bounded query/source settings and a non-retryable task. The final reviewer assesses request coverage and internal consistency, not factual truth. See `docs/testing/ORACLE_END_TO_END.md`.
