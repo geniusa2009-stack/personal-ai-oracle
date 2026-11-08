@@ -116,3 +116,70 @@ def test_control_center_returns_none_for_graph_outside_scope_or_missing(monkeypa
 
     assert control.get_graph_detail("owner:two", graph.graph_id) is None
     assert control.get_graph_detail("owner:one", "0" * 32) is None
+
+
+
+def test_memory_scan_result_summary_is_allowlisted_and_scope_bound(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = _create_graph("owner:one", "scan-result-summary")
+    lease = engine.claim_next("owner:one", "worker-a")
+    assert lease is not None
+    engine.start_task("owner:one", lease.task_id, lease.worker_id, lease.lease_token)
+    engine.complete_task(
+        "owner:one",
+        lease.task_id,
+        lease.worker_id,
+        lease.lease_token,
+        {
+            "task_kind": "memory.consolidation.scan",
+            "run_id": "a" * 32,
+            "algorithm_version": "lexical-review-v1",
+            "status": "partial",
+            "scanned_count": 12,
+            "comparison_count": 50,
+            "proposal_count": 3,
+            "truncated": True,
+            "created_at": "2026-11-08T00:00:00+00:00",
+            "finished_at": "2026-11-08T00:00:01+00:00",
+            "payload": "must-not-leak",
+            "secret": "must-not-leak",
+        },
+    )
+
+    summary = control.get_task_result_summary("owner:one", lease.task_id)
+
+    assert summary == {
+        "run_id": "a" * 32,
+        "algorithm_version": "lexical-review-v1",
+        "status": "partial",
+        "scanned_count": 12,
+        "comparison_count": 50,
+        "proposal_count": 3,
+        "truncated": True,
+        "created_at": "2026-11-08T00:00:00+00:00",
+        "finished_at": "2026-11-08T00:00:01+00:00",
+    }
+    assert control.get_task_result_summary("owner:two", lease.task_id) is None
+    assert "must-not-leak" not in repr(summary)
+
+
+def test_result_summary_is_hidden_for_non_scan_task_and_invalid_shape(monkeypatch, tmp_path):
+    _use_db(monkeypatch, tmp_path)
+    graph = engine.create_graph(
+        "owner:one",
+        "non-scan-result",
+        [
+            engine.TaskSpec(
+                task_key="other",
+                task_type="other.task",
+                payload={},
+            )
+        ],
+    )
+    lease = engine.claim_next("owner:one", "worker-a")
+    engine.start_task("owner:one", lease.task_id, lease.worker_id, lease.lease_token)
+    engine.complete_task(
+        "owner:one", lease.task_id, lease.worker_id, lease.lease_token,
+        {"task_kind": "memory.consolidation.scan", "run_id": "a" * 32},
+    )
+    assert control.get_task_result_summary("owner:one", lease.task_id) is None
