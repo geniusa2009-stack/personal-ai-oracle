@@ -457,4 +457,6 @@ Do not mark a planned milestone complete until its implementation, tests, docume
   - Deterministic integration tests: `fbb36281910fe829536b1a574a368b9e2b118671`.
   - Control Center integration: `66864b5fd92eac04f4646062a72c328d04c54c99`.
   - Architecture documentation: `ede331dc2747942881450a577824dea5707b8831`.
-- **Pull Request:** Pending final CI; no PR has been created yet.
+- **Pull Request:** [PR #18 — Connect durable task queue to explicit Deep Research execution](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/18). Open, draft; base is PR #17.
+- **Published head:** `5bf4f60fd4963d309dc64e330c61144379545482`.
+- **CI:** Pending on the published head; no passing result is claimed yet.
