@@ -400,7 +400,11 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Worker contract:** No handlers are registered globally. Each explicit dispatch call supplies the registry. Unknown task types stay queued. Each dispatch executes one task; a batch is sequential and caller-bounded to 100, with no infinite loop or background process.
 - **Retry contract:** Retry requires a handler-declared retryable exception type **and** the durable task's explicit `retry_safe=True`, plus remaining attempt budget. The handler may heartbeat through context without receiving the lease token.
 - **Security/side-effect boundary:** No default shell/browser/filesystem/app/model handler is included. Tool handlers must use the existing Oracle execution/approval paths. Handler exception messages and raw results are not copied to dispatch metadata.
-- **Validation:** The adapter implementation before the final registry-bound test passed GitHub Actions run `42431158227` with **337 passed, 1 warning** on both Ubuntu and macOS. Current branch head includes additional bounds tests and capability/delivery documentation; final CI pending.
+- **Validation:** GitHub Actions run `42431347897` passed on worker implementation head `872c3a0071bcb92b9807311387bd64984f024079`.
+  - Ubuntu: **338 passed, 1 warning**.
+  - macOS: **338 passed, 1 warning**.
+  - Compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
 - **Limitations:** No production handler catalogue, parallel worker scheduler, supervised daemon, recurring scheduler or Control Center UI. Cancellation remains cooperative for work already executing outside the queue.
 - **Pull Request:** Pending final CI; planned as draft PR #16 stacked on PR #15.
 - **PR status:** Not yet created; no prior PR was merged, closed or retargeted.
