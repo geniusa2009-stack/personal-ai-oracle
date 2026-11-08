@@ -137,7 +137,7 @@ def test_local_command_uses_shell_false(monkeypatch, tmp_path):
 
     assert result["status"] == "success"
     assert run.call_args.kwargs["shell"] is False
-    assert run.call_args.kwargs["cwd"] == str(tmp_path.resolve())
+    assert run.call_args.kwargs["cwd"] == str(workspace.resolve())
 
 
 def test_local_read_rejects_oversized_file(tmp_path):
