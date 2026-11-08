@@ -282,6 +282,8 @@ def test_expired_in_progress_agent_task_is_reclaimed_after_process_restart(monke
         conn.commit()
     finally:
         conn.close()
+    assert engine.reap_expired_leases("owner:one") == 1
+    assert engine.get_task("owner:one", interrupted.task_id)["status"] == "queued"
 
     def fake_chat(_messages, **kwargs):
         if kwargs["agent_role"] == "reviewer":
