@@ -47,9 +47,39 @@ A graph being `completed` means all scheduled tasks, including the reviewer task
 
 The reviewer is not an independent factual verifier. Results explicitly expose `factual_truth_verified: false`; external facts and citations still require source-level verification.
 
+## Bounded autonomous revision loop
+
+A rejected completed graph can be revised only after an explicit user action in the Control Center. Revision does not dispatch work automatically.
+
+1. Oracle reads the persisted final-review issues (or the review summary when the issue list is empty).
+2. A revision planner maps every issue to one or more existing specialist task keys. It may select only source tasks present in the effective result set; the specialist role is derived from the stored source result, never trusted from model output.
+3. The planner returns a strict bounded schema. Unknown task keys, extra fields, duplicate selections, invalid issue indexes, uncovered issues, and invalid dependencies are rejected.
+4. Oracle creates a new encrypted DAG linked to the root graph and its immediate parent graph. Each revision task receives its previous output, assigned review issues, prior dependency outputs, and any already-revised dependency output.
+5. Only selected specialists are rerun. Unselected specialist outputs are inherited unchanged when the next final review builds the merged result set.
+6. A new final-review task depends on all selected revision tasks and reviews the merged result set against the original request and previous review issues.
+7. The user explicitly dispatches bounded batches from the Control Center. Pending revision work and completed outputs survive app restarts.
+
+### Revision limits and lineage
+
+- Maximum revision cycles per root graph: `MAX_REVISION_CYCLES = 2`.
+- Maximum specialist tasks in one revision cycle: 8.
+- Maximum review issues carried into one cycle: 12.
+- Revision graph idempotency keys are deterministic per root graph and cycle. Repeated clicks return the same child graph instead of creating duplicate branches.
+- A stale parent cannot create a parallel branch after a newer revision exists. The next cycle must continue from the latest graph.
+- The hard cap counts created revision graphs, even if a user later cancels one; a cancelled cycle is not silently refunded.
+- Each revision graph persists the root graph ID, immediate parent graph ID, and cycle number inside encrypted owner-scoped task payloads.
+- The final reviewer is still a completeness/internal-consistency reviewer, not an independent fact verifier. It cannot certify factual truth.
+- At the cap, the UI reports that no further automatic revision cycle can be created. The user can still inspect/export the current work or create a new independent task.
+
+### Safety and cost boundaries
+
+- The revision planner and specialists cannot emit or execute tools, shell commands, browser actions, filesystem operations, or Mac actions.
+- Revision creation and execution are separate explicit user actions; there is no autonomous background loop.
+- Provider failures are not automatically retried by the handler. Expired worker leases have the existing bounded retry behavior; a crash after a provider response but before encrypted result persistence can repeat a provider call and incur duplicate cost.
+- A revision planner call can incur provider cost before a revision graph is persisted. A retry after a process interruption may call the planner again; deterministic graph idempotency prevents duplicate persisted cycles.
+
 ## Limits and next work
 
-- The first version does not automatically revise a `needs_revision` graph. A later increment can create a new revision graph from the review issues, with a bounded revision count and explicit user approval.
-- Specialist tasks do not execute Mac tools. Connecting tool execution later requires a separate typed handler catalogue and must preserve the local approval/checkpoint boundary.
-- Planning depends on the configured planner model. If planning or validation fails, no graph is created.
-- Provider calls are mocked in deterministic tests; live provider behavior, real deployment, and restart behavior on a physical Mac remain operational validation items.
+- Revision decisions are model assessments of request coverage and internal consistency; source-level fact verification remains separate.
+- The first implementation uses deterministic mocked provider tests. Live provider behavior, deployed Streamlit interaction, and restart behavior on a physical Mac remain operational validation items.
+- Specialist tasks still do not execute Mac tools. Connecting tool execution later requires a separate typed handler catalogue and must preserve the local approval/checkpoint boundary.
