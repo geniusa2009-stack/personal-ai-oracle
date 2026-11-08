@@ -32,6 +32,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Sequential agent tool loop | `agent_orchestrator.py`, `bounded_correction.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py`, `test_bounded_correction.py`; 313-test CI | Planner JSON repair runs before tool execution; tool actions are never replayed by the correction loop |
 | Persistent DAG task engine | `durable_task_engine.py`, `database.py`, `workflow_checkpoints.py` | SQLite graph/task/dependency/attempt tables; owner-scoped encrypted payloads; lease tokens | `PARTIALLY_IMPLEMENTED` | `test_durable_task_engine.py`; 338-test Ubuntu/macOS CI | Durable DAG storage, dependency gates, claims, leases, backoff, pause/resume/cancel and attempt history are verified; worker supervision, Control Center UI, distributed queue and versioned migrations remain |
 | Typed task worker adapter | `task_worker.py`, `durable_task_engine.py` | Explicit per-call handler registry, lease heartbeat, cancellation polling, bounded sequential batch | `IMPLEMENTED_AND_VERIFIED` | `test_task_worker.py`; 338-test Ubuntu/macOS CI | Only registered types are claimable; retry still requires task-level `retry_safe`; no production handler catalogue, background worker or Control Center integration yet |
+| Task Queue Control Center | `app.py`, `task_control_center.py` | Scope-local graph/task metadata, attempt history, pause/resume/cancel controls | `IMPLEMENTED_BUT_UNVERIFIED` | `test_task_control_center.py`; app integration CI pending | Metadata-only panel; no task creation, worker execution, automatic polling or dependency graph visualization |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
 | Deep research | `deep_research.py`, `search.py`, `bounded_correction.py` | Search providers, AI Core, page extraction, deterministic answer/citation validation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py`, `test_bounded_correction.py` | One bounded synthesis repair for structure/citation issues; live-source quality and factual truth remain unverified |
@@ -292,3 +293,16 @@ The `oracle/phase-04-task-worker-adapter` branch adds a synchronous adapter over
 - Handler exceptions are reduced to a short exception class code; free-form exception messages are not persisted.
 
 The adapter is tested but remains `IMPLEMENTED_BUT_UNVERIFIED` until production handler wiring, a reviewed handler catalogue, Control Center operations and supervised worker lifecycle are completed. See `docs/architecture/TASK_WORKER_ADAPTER.md`.
+
+
+## Phase 04c — Task Queue Control Center panel
+
+The `oracle/phase-04-control-center-tasks` branch adds a metadata-only Task Queue section inside the existing Oracle Control Center:
+
+- Lists graphs in the active owner scope and summarizes succeeded/failed/blocked/pending counts.
+- Shows task keys/types/status, attempt counts, retry-safety flags, worker IDs and compact error codes.
+- Exposes attempt history without payload/result contents.
+- Allows Pause/Resume for eligible graphs and Cancel only after an explicit confirmation checkbox.
+- Keeps UI projections in `task_control_center.py`, which returns explicit metadata allowlists and validates actions.
+
+The panel does not create arbitrary tasks, invoke a worker, poll in the background, or execute tools. It is **not yet a complete operations console**; production worker supervision and handler registration remain future work. See `docs/architecture/TASK_CONTROL_CENTER.md`.

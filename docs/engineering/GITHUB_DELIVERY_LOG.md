@@ -408,3 +408,28 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Limitations:** No production handler catalogue, parallel worker scheduler, supervised daemon, recurring scheduler or Control Center UI. Cancellation remains cooperative for work already executing outside the queue.
 - **Pull Request:** [PR #16 — Add bounded typed worker adapter for durable tasks](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/16)
 - **PR status:** Open, draft; base `oracle/phase-04-durable-task-engine` (PR #15). Published head: `5cdd281decf01e19d5655146d6191b18ada04b63`. No prior PR was merged, closed or retargeted.
+
+
+### Phase 04c — Task Queue Control Center panel
+
+- **Branch:** `oracle/phase-04-control-center-tasks`
+- **Base:** `oracle/phase-04-task-worker-adapter` (planned PR #16).
+- **Dependency:** Planned PR #17 → PR #16 → PR #15 → PR #14 → the earlier stack.
+- **Files added:**
+  - `task_control_center.py` — scope-local graph summary, safe task metadata projection, attempt metadata and restricted graph transition API.
+  - `test_task_control_center.py` — owner-scope isolation, payload/result/ciphertext exclusion, attempt metadata, graph pause/resume/cancel transitions and invalid action coverage.
+  - `docs/architecture/TASK_CONTROL_CENTER.md`.
+- **Files updated:**
+  - `app.py` — adds a Task Queue panel inside the existing Oracle Control Center.
+  - `docs/architecture/CAPABILITY_MATRIX.md`.
+- **UI scope:** Shows graph/task/attempt metadata and summary counts. Provides Pause/Resume and Cancel controls; Cancel requires an explicit confirmation checkbox.
+- **Privacy:** The UI-facing projection uses an allowlist and never returns task payloads/results/ciphertext. Exception messages are not shown; only compact error codes are displayed.
+- **Execution boundary:** The panel does not create arbitrary task graphs, start workers, run handlers, poll indefinitely, or execute tools. The typed worker adapter remains caller-invoked and still lacks a production handler catalogue/supervisor.
+- **Validation:** GitHub Actions run `42431743005` passed on implementation/documentation head `07f549e76420e13b22c3c0aa1641d1dc1fefdb9f`.
+  - Ubuntu: **343 passed, 1 warning**.
+  - macOS: **343 passed, 1 warning**.
+  - Python compile and full pytest passed on both platforms.
+  - Warning: existing Starlette/httpx TestClient deprecation warning.
+- **Limitations:** No auto-refresh/polling, dependency graph visualization, graph creation/editing, production worker health view or process supervision is included.
+- **Pull Request:** [PR #17 — Add durable task queue visibility and controls to Oracle Control Center](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/17)
+- **PR status:** Open, draft; base `oracle/phase-04-task-worker-adapter` (PR #16). Published head: `07f549e76420e13b22c3c0aa1641d1dc1fefdb9f`. No prior PR was merged, closed or retargeted.
