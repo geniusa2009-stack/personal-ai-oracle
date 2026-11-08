@@ -7,7 +7,7 @@ browser, filesystem, model-provider or generic tool-executor fallback.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 import durable_task_engine as task_engine
@@ -58,6 +58,11 @@ class TaskExecutionContext:
     task_type: str
     worker_id: str
     attempt_number: int
+    _heartbeat_callback: Callable[[], bool] = field(repr=False, compare=False)
+
+    def heartbeat(self) -> bool:
+        """Extend the active lease without exposing its secret token to the handler."""
+        return self._heartbeat_callback()
 
     def cancellation_requested(self) -> bool:
         """Poll durable state so handlers can stop cooperatively."""
@@ -159,6 +164,13 @@ def dispatch_once(
         task_type=lease.task_type,
         worker_id=worker_id,
         attempt_number=lease.attempt_number,
+        _heartbeat_callback=lambda: task_engine.heartbeat(
+            scope,
+            lease.task_id,
+            worker_id,
+            lease.lease_token,
+            lease_seconds=lease_seconds,
+        ),
     )
     handler = registry[lease.task_type]
     try:
