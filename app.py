@@ -1301,6 +1301,8 @@ with tab_oracle:
     st.caption(
         "إنشاء مهام البحث وتشغيل مهمة واحدة يتم بطلب صريح منك. لا توجد خدمة خلفية أو Worker دائم."
     )
+    if "oracle_research_idempotency_key" not in st.session_state:
+        st.session_state["oracle_research_idempotency_key"] = uuid.uuid4().hex
     with st.expander("إنشاء مهمة بحث دائمة", expanded=False):
         with st.form("oracle_create_research_task"):
             research_query = st.text_area(
@@ -1321,13 +1323,14 @@ with tab_oracle:
             try:
                 created_graph = task_execution.create_research_graph(
                     oracle_scope,
-                    f"control-center-research-{uuid.uuid4().hex}",
+                    f"control-center-research-{st.session_state['oracle_research_idempotency_key']}",
                     research_query,
                     max_queries=research_max_queries,
                     max_sources=research_max_sources,
                     fetch_pages=research_fetch_pages,
                     verify_claims=research_verify_claims,
                 )
+                st.session_state["oracle_research_idempotency_key"] = uuid.uuid4().hex
                 st.success(f"تم إنشاء مهمة البحث. Graph ID: {created_graph.graph_id[:12]}")
                 st.rerun()
             except Exception as exc:
