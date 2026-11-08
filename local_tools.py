@@ -184,7 +184,7 @@ def _validate_command(command: list[str]) -> None:
 
 
 
-def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+def _execute_unchecked(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
     """Execute a named local capability as the current macOS user."""
     data = _payload(tool_input)
     started = time.monotonic()
@@ -431,8 +431,76 @@ def _append_audit(tool_id: str, result: dict[str, Any]) -> None:
         return
 
 
+MUTATING_TOOLS = frozenset({
+    "local.write_file", "local.move_path", "local.delete_path",
+    "local.run_command", "local.open_app",
+})
+
+
+def _validate_command_before_authorization(tool_input: str | dict) -> None:
+    """Reject malformed or explicitly blocked commands before creating approval requests."""
+    data = _payload(tool_input)
+    command = data.get("command")
+    if (
+        not isinstance(command, list)
+        or not command
+        or any(not isinstance(part, str) for part in command)
+    ):
+        raise ValueError("command must be a non-empty array of strings")
+    command_text = " ".join(command).casefold()
+    blocked = next((marker for marker in BLOCKED_COMMAND_MARKERS if marker in command_text), None)
+    if blocked:
+        raise PermissionError(
+            "This command targets system or age-safety protections and is not available to Oracle."
+        )
+    _validate_command(command)
+
+
+def _execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
+    """Enforce the owner policy at the local execution boundary, including direct callers."""
+    if tool_id not in MUTATING_TOOLS:
+        return _execute_unchecked(tool_id, tool_input)
+
+    try:
+        payload = _payload(tool_input)
+        if tool_id == "local.run_command":
+            _validate_command_before_authorization(payload)
+        import execution_policy
+
+        scope = (
+            os.environ.get("ORACLE_MEMORY_SCOPE")
+            or os.environ.get("ORACLE_WORKFLOW_SCOPE")
+            or "user:oracle-owner"
+        ).strip()
+        authorization = execution_policy.authorize_action(
+            tool_id, payload, scope=scope
+        )
+        if not authorization.get("allowed"):
+            if authorization.get("reason") == "human_approval_required":
+                return {
+                    "name": tool_id,
+                    "status": "awaiting_approval",
+                    "result": "Paused before the local action. Approve this exact operation in Oracle Control Center, then retry or resume the task.",
+                    "approval_id": authorization.get("approval_id", ""),
+                    "action_digest": authorization.get("action_digest", ""),
+                    "preview": authorization.get("preview", {}),
+                }
+            return {
+                "name": tool_id,
+                "status": "blocked",
+                "result": "The local execution policy did not authorize this operation.",
+            }
+        return _execute_unchecked(tool_id, payload)
+    except Exception as exc:
+        return {
+            "name": tool_id,
+            "status": "error",
+            "result": f"{type(exc).__name__}: {exc}",
+        }
+
+
 def execute(tool_id: str, tool_input: str | dict) -> dict[str, Any]:
-    """Run a local tool and append a private audit record without storing file contents."""
+    """Run a policy-checked local tool and append a content-free audit record."""
     result = _execute(tool_id, tool_input)
     _append_audit(tool_id, result)
     return result
