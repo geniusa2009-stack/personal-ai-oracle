@@ -31,7 +31,7 @@ This matrix records evidence-backed status, not product aspirations. A module's 
 | Measured model benchmarking | `model_benchmark.py`, `model_observability.py`, `ai_executor.py` | Explicit candidate/case runs, privacy-safe outcomes, latency, optional rubric score, evaluator/suite-isolated scorecards and runtime health floor | `IMPLEMENTED_AND_VERIFIED` | `test_model_benchmark.py`, `test_multi_provider.py`; 290-test Ubuntu/macOS CI | Synthetic phrase rubric is a smoke check only; live provider quality, token usage and cost remain unmeasured |
 | Sequential agent tool loop | `agent_orchestrator.py`, `bounded_correction.py` | AI Core, feature registry, local/browser/research tools | `IMPLEMENTED_AND_VERIFIED` | `test_agent_orchestrator.py`, `test_bounded_correction.py`; 313-test CI | Planner JSON repair runs before tool execution; tool actions are never replayed by the correction loop |
 | Persistent DAG task engine | `durable_task_engine.py`, `database.py`, `workflow_checkpoints.py` | SQLite graph/task/dependency/attempt tables; owner-scoped encrypted payloads; lease tokens | `PARTIALLY_IMPLEMENTED` | `test_durable_task_engine.py`; 328-test Ubuntu/macOS CI | Durable DAG storage, dependency gates, claims, leases, backoff, pause/resume/cancel and attempt history are implemented; worker supervision, Control Center UI, distributed queue and versioned migrations remain |
-| Typed task worker adapter | `task_worker.py`, `durable_task_engine.py` | Explicit per-call handler registry, lease heartbeat, bounded batch dispatch | `IMPLEMENTED_BUT_UNVERIFIED` | `test_task_worker.py`; current branch CI pending | Only registered task types are claimable and batches are bounded; no production handler registry, background worker or Control Center integration yet |
+| Typed task worker adapter | `task_worker.py`, `durable_task_engine.py` | Explicit per-call handler registry, lease heartbeat, cancellation polling, bounded sequential batch | `IMPLEMENTED_BUT_UNVERIFIED` | `test_task_worker.py`; 337-test Ubuntu/macOS CI on adapter implementation | Only registered types are claimable; retry still requires task-level `retry_safe`; no production handler catalogue, background worker or Control Center integration yet |
 | Specialist agent contracts | `agent_profiles.py`, `agent_orchestrator.py` | Provider layer | `PARTIALLY_IMPLEMENTED` | Role routing and orchestrator tests | Typed agent inputs/outputs and delegated lifecycle |
 | Bounded supervisor/delegation | `agent_orchestrator.py` | Tool catalog, execution policy | `PARTIALLY_IMPLEMENTED` | `test_agent_orchestrator.py` | Multi-agent delegation, depth/concurrency limits, shared task state |
 | Deep research | `deep_research.py`, `search.py`, `bounded_correction.py` | Search providers, AI Core, page extraction, deterministic answer/citation validation | `IMPLEMENTED_BUT_UNVERIFIED` | `test_deep_research.py`, `test_bounded_correction.py` | One bounded synthesis repair for structure/citation issues; live-source quality and factual truth remain unverified |
@@ -278,3 +278,17 @@ The `oracle/phase-04-task-worker-adapter` branch adds a synchronous one-task dis
 - No built-in shell, browser, filesystem, app-launch or generic tool handler is registered. Tool integrations must delegate through existing Oracle execution/approval paths.
 
 This remains partially implemented until a reviewed production handler registry, Control Center visibility, concurrency/process supervision and recovery integration are added. See `docs/architecture/TASK_WORKER_ADAPTER.md`.
+
+
+## Phase 04b — Typed task worker adapter
+
+The `oracle/phase-04-task-worker-adapter` branch adds a synchronous adapter over the durable DAG queue:
+
+- The caller provides an explicit task-type → handler mapping; there are no built-in arbitrary command, file, browser or model handlers.
+- The durable claim query can filter to registered task types. Unsupported types remain queued instead of being claimed and failed.
+- A handler receives a scoped context with `heartbeat()` and `cancellation_requested()`; it never receives the lease token.
+- A single dispatch processes one task. A batch processes a caller-bounded maximum of 100 tasks sequentially; it does not sleep or poll indefinitely.
+- Handler retry classification is combined with the stored task's explicit retry-safe declaration and attempt limit.
+- Handler exceptions are reduced to a short exception class code; free-form exception messages are not persisted.
+
+The adapter is tested but remains `IMPLEMENTED_BUT_UNVERIFIED` until production handler wiring, a reviewed handler catalogue, Control Center operations and supervised worker lifecycle are completed. See `docs/architecture/TASK_WORKER_ADAPTER.md`.
