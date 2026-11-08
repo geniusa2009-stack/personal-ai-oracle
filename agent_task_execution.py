@@ -1059,6 +1059,7 @@ def get_agent_graph_result(scope: str, graph_id: str) -> dict[str, Any] | None:
         })
     history = _revision_history(scope, metadata["root_graph_id"])
     latest_index = history[-1]["revision_index"] if history else 0
+    effective_results = list(_effective_agent_results(scope, graph_id).values())
     decision = final_review.get("decision") if final_review else None
     can_create_revision = bool(
         graph.status == "completed"
@@ -1075,6 +1076,7 @@ def get_agent_graph_result(scope: str, graph_id: str) -> dict[str, Any] | None:
         "blocked_count": graph.blocked_count,
         "pending_count": graph.pending_count,
         "tasks": projected,
+        "effective_results": effective_results,
         "final_review": final_review,
         "accepted": bool(final_review and final_review["decision"] == "accepted"),
         "revision": {
