@@ -8,7 +8,7 @@ import re
 import secrets
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
@@ -40,7 +40,7 @@ class TaskIdempotencyConflict(TaskEngineError):
 class TaskSpec:
     task_key: str
     task_type: str
-    payload: Mapping[str, Any]
+    payload: Mapping[str, Any] = field(repr=False)
     depends_on: tuple[str, ...] = ()
     max_attempts: int = 1
     retry_safe: bool = False
@@ -69,9 +69,9 @@ class TaskLease:
     scope: str
     task_key: str
     task_type: str
-    payload: dict[str, Any]
+    payload: dict[str, Any] = field(repr=False)
     worker_id: str
-    lease_token: str
+    lease_token: str = field(repr=False)
     attempt_number: int
     max_attempts: int
     retry_safe: bool
