@@ -178,7 +178,7 @@ def _prepare(
     return prepared, source_map
 
 
-def verify_claims(
+def _verify_claims(
     claims: Sequence[Mapping[str, Any]],
     sources: Sequence[Mapping[str, Any]],
     *,
@@ -397,3 +397,27 @@ def verify_claims(
         "results": results,
         "limitations": limitations,
     }
+
+
+def verify_claims(claims, sources, *, scope=None, **kwargs):
+    """Optional explicit owner-scoped aggregate telemetry; never infer an owner."""
+    import time
+    import os
+    from collections import Counter
+    import local_ai_telemetry as telemetry
+    started = time.perf_counter()
+    model = os.environ.get('ORACLE_SEMANTIC_VERIFIER', 'model')
+    if model == 'local_nli':
+        from local_nli_verifier import MODEL_ID
+        model = MODEL_ID
+    if scope is not None:
+        telemetry.best_effort(scope, 'verification', 'start', model)
+    try:
+        result = _verify_claims(claims, sources, **kwargs)
+        if scope is not None:
+            telemetry.best_effort(scope, 'verification', 'end', model, counts=Counter(row['status'] for row in result['results']), latency_ms=int(1000*(time.perf_counter()-started)), error=('resource' if any('ResourceUnavailable' in item for item in result.get('limitations', [])) else 'runtime') if result['status'] == 'error' else None)
+        return result
+    except Exception:
+        if scope is not None:
+            telemetry.best_effort(scope, 'verification', 'end', model, error='runtime')
+        raise

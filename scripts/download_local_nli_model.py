@@ -4,9 +4,27 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
+import hashlib
+import json
 
 from local_nli_verifier import MODEL_ID
+
+
+def verify_download(destination: Path, manifest: dict) -> None:
+    """Validate pinned artifacts before writing provenance; no network calls."""
+    hashes = {}
+    for name, expected in manifest['files'].items():
+        path = destination / name
+        if not path.is_file() or path.stat().st_size != expected['bytes']:
+            raise RuntimeError('Downloaded model file size mismatch: ' + name)
+        digest = hashlib.sha256()
+        with path.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+        hashes[name] = digest.hexdigest()
+        if expected['sha256'] and hashes[name] != expected['sha256']:
+            raise RuntimeError('Downloaded model checksum mismatch: ' + name)
+    (destination / 'provenance.json').write_text(json.dumps({**manifest, 'actual_sha256': hashes}, indent=2) + '\n')
 
 
 def main() -> int:
@@ -17,10 +35,13 @@ def main() -> int:
         help="Local model directory (default: models/mdeberta-v3-base-mnli-xnli)",
     )
     args = parser.parse_args()
+    from huggingface_hub import snapshot_download
+    manifest = json.loads((Path(__file__).resolve().parents[1] / 'docs/engineering/local-nli-upstream-manifest.json').read_text())
     destination = Path(args.destination).expanduser()
     destination.mkdir(parents=True, exist_ok=True)
     snapshot_download(
         repo_id=MODEL_ID,
+        revision=manifest["revision"],
         local_dir=str(destination),
         allow_patterns=[
             "config.json",
@@ -32,6 +53,7 @@ def main() -> int:
             "onnx/model_quantized.onnx",
         ],
     )
+    verify_download(destination, manifest)
     print(f"Downloaded quantized NLI model to {destination.resolve()}")
     return 0
 

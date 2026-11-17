@@ -403,3 +403,17 @@ Automated mocked contract checks are TESTED_LOCALLY. Actual model inference and
 8 GB behavior are IMPLEMENTED_BUT_UNVERIFIED; VERIFIED_ON_TARGET_MAC is not claimed.
 Persistent local-AI indexing/result/resource telemetry is NOT_IMPLEMENTED.
 See `docs/engineering/LOCAL_AI_CONTINUATION_REPORT.md` for evidence and remaining gaps.
+
+## Phase 04h — 2026-11-17
+
+- IMPLEMENTED: explicit cold/session evaluation, bounded cooperating-process lock,
+  pressure pre/post checks and fail-closed admission, pinned NLI download validation.
+- IMPLEMENTED: bounded owner-scoped SQLite indexing/verification telemetry and
+  Control Center event display. No raw evidence stored. This supersedes the prior
+  NOT_IMPLEMENTED persistent-telemetry status for these paths only.
+- TESTED_LOCALLY: mocked session reuse/disposal, pressure refusal, process-lock
+  timeout/crash recovery, scoped retention/redaction and synthetic checksum failures.
+- BLOCKED: real G1/G2 inference and expanded install footprint; user explicitly
+  deferred optional installation and model downloads pending isolated setup review.
+- IMPLEMENTED_BUT_UNVERIFIED: inference quality, resource safety threshold and
+  actual 8 GiB model performance. VERIFIED_ON_TARGET_MAC inference is not claimed.

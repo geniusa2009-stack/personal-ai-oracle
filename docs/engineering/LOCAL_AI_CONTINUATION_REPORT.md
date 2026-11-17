@@ -130,3 +130,43 @@ confirmed delivery SHA and new-head CI status after push.
    NOT_IMPLEMENTED; current UI honestly labels it untracked.
 5. Add interprocess resource coordination if measurements show contention, then
    validate the full live orchestration path with explicitly local planner models.
+
+# Phase 04h continuation — 2026-11-17
+
+Audit reconfirmed clean feature branch at `e05e34c`, open Draft PR #23 with unchanged
+base and successful prior CI. Hardware inspection established Darwin arm64/macOS
+26.5.1 with exactly 8 GiB RAM, approximately 7.3 GiB disk available and a 25% memory
+availability snapshot. The earlier unreachable-Ollama observation was sandbox
+network isolation: outside-sandbox `/api/tags` succeeded. The selected embedding
+model is absent; no real G1 embeddings, retrieval quality or inference latency/RAM
+results exist. Project NLI weights and optional packages are absent; real G2 tensor,
+tokenizer and bilingual accuracy results remain BLOCKED. No alternative installed
+model was substituted. No private memory was indexed.
+
+Implemented: explicit cold/session evaluation modes, bounded advisory process/thread
+coordination, OS pressure admission and post-cleanup snapshots; owner-scoped bounded
+persistent metadata through the existing database; Control Center scoped event display;
+pinned NLI upstream revision, sizes/hashes and explicit-download verification.
+Default NLI disposal remains per assessment. Session reuse is an explicit evaluation
+choice, not a new production default. Tests cover lifecycle, scope retention, metadata
+redaction, integrity failures and evaluation outputs. An initial targeted run exposed
+two legacy mocks receiving an unnecessary `scope=None` keyword; the call now adds
+scope only when explicitly supplied, preserving the existing no-scope contract.
+
+User explicitly requested no optional installation and no modification to `.venv`.
+Only existing test tools were used. No new environment was created pending separate
+approval. Python 3.11 was absent in standard installation locations; existing 3.13.5
+is proposed for `.venv-local-ai`. A metadata-only candidate dependency resolution
+found compatible arm64 wheels satisfying direct requirements; it is not an installer
+or real-import verification. Detailed per-wheel sizes/hashes and exact model payloads
+are in `LOCAL_AI_SETUP_PLAN.md` and its JSON manifests. Binary installation footprint
+and actual model compatibility are not measured. Model sizes total 663,275,623 bytes;
+27 candidate package wheels add 51,387,232 bytes. No weights or wheels downloaded.
+
+TESTED_LOCALLY: full suite **408 passed, 1 existing warning**; compilation, pip
+consistency and diff checks pass. TESTED_IN_CI results for this phase are recorded in
+PR #23 after push; the report avoids a documentation-only CI loop. Model downloads,
+real inference, real cold/warm timings, peak inference RSS, session memory recovery
+and threshold calibration remain BLOCKED or IMPLEMENTED_BUT_UNVERIFIED. There is
+no VERIFIED_ON_TARGET_MAC inference claim. The isolated setup approval is the next
+required user action; system Python, global packages and the original venv stay intact.

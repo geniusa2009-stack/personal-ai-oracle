@@ -182,3 +182,50 @@ a pinned revision/checksum policy remains a follow-up, not an implemented guaran
 The upstream NLI card declares MIT; EmbeddingGemma has Google model-specific terms,
 which should be reviewed before distribution. Model selection is unchanged. Upstream
 metadata and model cards are evidence of availability, not proof of local usability.
+
+## Phase 04h — explicit evaluation sessions and scoped telemetry
+
+`python -m scripts.evaluate_local_nli --mode cold` retains the per-case disposal
+behavior. `--mode session` reuses one lazily loaded model for a bounded evaluation
+batch (at most 48 cases and 48 supplied evidence pairs), then clears references.
+Both modes report predictions/mismatches, per-case latency/CPU time, process peak
+RSS, pressure snapshots, file hashes and upstream revision where provenance exists.
+No mode downloads weights or invokes hosted fallback. Missing provenance is unknown,
+not evidence of a revision. Resource pressure can block the whole batch.
+
+`local_model_lifecycle.py` provides a cooperating-process advisory `flock`, a bounded
+10-second lock wait, and before/after pressure snapshots. Kernel locks release on
+process exit/crash; stale PID-file deletion is unnecessary and could split lock
+ownership. A thread lock also bounds same-process waiting. Unknown pressure or less
+than 15% available according to the OS query refuses work. This conservative threshold
+is a policy starting point, not empirically calibrated model headroom. NLI session
+references clear before cleanup/pressure resampling. Native Ollama calls use the same
+coordination path; its default `keep_alive=0` requests unloading. Neither Python GC
+nor an Ollama response guarantees immediate OS memory recovery. Noncooperating
+applications and separately configured persistent Ollama residency remain outside
+this advisory lock. No daemon is created.
+
+`local_ai_telemetry.py` uses the existing Oracle SQLite connection and one metadata
+table, `oracle_local_ai_events`. Indexing records explicit-scope start/end and aggregate
+indexed/skipped/failed counts; semantic verification accepts optional explicit scope
+and research passes its owner scope when available. Stored metadata includes bounded
+model ID, timestamp, duration and allowlisted error category/result counts, never
+raw claims, excerpts, embeddings, exception strings or memory content. Retention is
+200 events per owner scope. Telemetry is best effort and cannot change task results;
+storage failures may leave gaps. The table is included in existing panic-wipe coverage.
+The Control Center queries only its current owner's events and makes no readiness
+claim from configuration, file presence or event existence. Installed, loaded,
+operational and real-model-tested state remain unverified when not observed.
+
+The explicit NLI downloader pins revision
+`8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c`, verifies expected file sizes and known
+upstream LFS SHA-256 values, and writes actual file hashes plus provenance only on
+success. This mechanism is TESTED_LOCALLY using synthetic files; downloaded real
+artifact integrity remains BLOCKED pending approval.
+
+The actual Mac has 8 GiB physical RAM. Ollama responds outside the sandbox, but the
+selected embedding model is absent. No project NLI model or optional packages exist.
+No real inference was run. See `docs/engineering/LOCAL_AI_SETUP_PLAN.md` for Python
+inventory, metadata-only dependency compatibility, exact payload sizes and the
+separate approval-gated isolated setup. Existing `.venv` and system packages are
+unchanged. `.venv-local-ai/` and `models/` are gitignored; neither was populated.

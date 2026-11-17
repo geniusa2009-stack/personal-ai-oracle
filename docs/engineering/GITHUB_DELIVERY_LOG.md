@@ -562,3 +562,14 @@ The warning is the existing Starlette/httpx TestClient deprecation. No weights o
 private memories were downloaded/indexed. Real inference and 8 GB measurements are
 pending; see `LOCAL_AI_CONTINUATION_REPORT.md`. New-head CI evidence is recorded in
 PR #23 after push to avoid a documentation-only CI loop.
+
+## Phase 04h — 2026-11-17
+
+Continued PR #23 on the same feature branch, preserving draft/open state and base.
+Added cold/session evaluation, local workload coordination and pressure admission,
+bounded scoped telemetry/UI, pinned NLI download integrity and an isolated setup
+plan with metadata-only Python/wheel compatibility and exact model download sizes.
+Local validation: **408 passed, 1 existing Starlette/httpx deprecation warning**;
+compile, dependency consistency and whitespace checks passed. New-head CI and SHA
+are recorded in the PR description after confirmed push. No model weights, optional
+packages or new environment were installed; existing `.venv` was not changed.

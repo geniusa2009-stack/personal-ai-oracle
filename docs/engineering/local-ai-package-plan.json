@@ -1,0 +1,224 @@
+{
+  "python": "3.13.5",
+  "platform": "current Darwin arm64 tags",
+  "method": "PyPI JSON metadata only; no wheels downloaded, installed or imported",
+  "packages": {
+    "onnxruntime": {
+      "version": "1.32.0",
+      "file": "onnxruntime-1.32.0-cp313-cp313-macosx_14_0_arm64.whl",
+      "bytes": 22518865,
+      "sha256": "27bf5dad46355a8a435c9c4e1556464d99ca834ea44e0f452909712068b8821b",
+      "requires_python": ">=3.11",
+      "license": "MIT License"
+    },
+    "transformers": {
+      "version": "4.57.6",
+      "file": "transformers-4.57.6-py3-none-any.whl",
+      "bytes": 11993498,
+      "sha256": "4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550",
+      "requires_python": ">=3.9.0",
+      "license": "Apache 2.0 License"
+    },
+    "sentencepiece": {
+      "version": "0.2.3",
+      "file": "sentencepiece-0.2.3-cp313-cp313-macosx_11_0_arm64.whl",
+      "bytes": 1426935,
+      "sha256": "80fe42d6ecd3860ee43327de31687f222af8e93f7d66e248d241cf9a0466eb73",
+      "requires_python": ">=3.10",
+      "license": "Apache-2.0"
+    },
+    "huggingface-hub": {
+      "version": "0.36.2",
+      "file": "huggingface_hub-0.36.2-py3-none-any.whl",
+      "bytes": 566395,
+      "sha256": "48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270",
+      "requires_python": ">=3.8.0",
+      "license": "Apache"
+    },
+    "flatbuffers": {
+      "version": "25.12.19",
+      "file": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+      "bytes": 26661,
+      "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+      "requires_python": null,
+      "license": "Apache 2.0"
+    },
+    "numpy": {
+      "version": "2.5.5",
+      "file": "numpy-2.5.5-cp313-cp313-macosx_14_0_arm64.whl",
+      "bytes": 5508218,
+      "sha256": "e0cf407a83118faf0463ade48a4533982f1737c7c58aac29e08855f7d9ad2977",
+      "requires_python": ">=3.12",
+      "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0"
+    },
+    "packaging": {
+      "version": "26.3",
+      "file": "packaging-26.3-py3-none-any.whl",
+      "bytes": 129956,
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "requires_python": ">=3.9",
+      "license": "Apache-2.0 OR BSD-2-Clause"
+    },
+    "protobuf": {
+      "version": "7.36.2",
+      "file": "protobuf-7.36.2-py3-none-any.whl",
+      "bytes": 179806,
+      "sha256": "bdb3a345d48db958e6ce1f18e508beb0cc981d64f24088427549c866cd039f1e",
+      "requires_python": ">=3.10",
+      "license": "3-Clause BSD License"
+    },
+    "filelock": {
+      "version": "4.2.11",
+      "file": "filelock-4.2.11-py3-none-any.whl",
+      "bytes": 222003,
+      "sha256": "020e229e4bb9d410fc799c07ddf45fa217cba970278f40b30751d94f309b69e2",
+      "requires_python": ">=3.11",
+      "license": "MIT"
+    },
+    "pyyaml": {
+      "version": "6.0.3",
+      "file": "pyyaml-6.0.3-cp313-cp313-macosx_11_0_arm64.whl",
+      "bytes": 173252,
+      "sha256": "2283a07e2c21a2aa78d9c4442724ec1eb15f5e42a723b99cb3d822d48f5f7ad1",
+      "requires_python": ">=3.8",
+      "license": "MIT"
+    },
+    "regex": {
+      "version": "2026.11.15",
+      "file": "regex-2026.11.15-cp313-cp313-macosx_11_0_arm64.whl",
+      "bytes": 294325,
+      "sha256": "150f52dbcaf759d94c73a61dc31ccc60eb8a552acafa43e99e3ed76405173170",
+      "requires_python": ">=3.11",
+      "license": "Apache-2.0 AND CNRI-Python"
+    },
+    "requests": {
+      "version": "2.34.2",
+      "file": "requests-2.34.2-py3-none-any.whl",
+      "bytes": 73075,
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "requires_python": ">=3.10",
+      "license": "Apache-2.0"
+    },
+    "tokenizers": {
+      "version": "0.22.2",
+      "file": "tokenizers-0.22.2-cp39-abi3-macosx_11_0_arm64.whl",
+      "bytes": 2981472,
+      "sha256": "1e418a55456beedca4621dbab65a318981467a2b188e982a23e117f115ce5001",
+      "requires_python": ">=3.9",
+      "license": null
+    },
+    "safetensors": {
+      "version": "0.8.0",
+      "file": "safetensors-0.8.0-cp310-abi3-macosx_11_0_arm64.whl",
+      "bytes": 484562,
+      "sha256": "c80201d22cbf405b80647a60ada77bba06c8fba2da2743ba1e89cdcc39a81f25",
+      "requires_python": ">=3.10",
+      "license": null
+    },
+    "tqdm": {
+      "version": "4.70.1",
+      "file": "tqdm-4.70.1-py3-none-any.whl",
+      "bytes": 80199,
+      "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+      "requires_python": ">=3.8",
+      "license": "MPL-2.0 AND MIT"
+    },
+    "click": {
+      "version": "8.5.1",
+      "file": "click-8.5.1-py3-none-any.whl",
+      "bytes": 126163,
+      "sha256": "8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37",
+      "requires_python": ">=3.10",
+      "license": "BSD-3-Clause"
+    },
+    "fsspec": {
+      "version": "2026.9.0",
+      "file": "fsspec-2026.9.0-py3-none-any.whl",
+      "bytes": 221738,
+      "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+      "requires_python": ">=3.10",
+      "license": "BSD-3-Clause"
+    },
+    "hf-xet": {
+      "version": "1.8.0",
+      "file": "hf_xet-1.8.0-cp38-abi3-macosx_11_0_arm64.whl",
+      "bytes": 3600947,
+      "sha256": "3e8934784425781f0f779b91044df441f3a7af4dab47375d7e3aeaecbb8eecb4",
+      "requires_python": ">=3.8",
+      "license": "Apache-2.0"
+    },
+    "httpx": {
+      "version": "0.28.1",
+      "file": "httpx-0.28.1-py3-none-any.whl",
+      "bytes": 73517,
+      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+      "requires_python": ">=3.8",
+      "license": "BSD-3-Clause"
+    },
+    "typing-extensions": {
+      "version": "4.16.0",
+      "file": "typing_extensions-4.16.0-py3-none-any.whl",
+      "bytes": 45571,
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "requires_python": ">=3.9",
+      "license": "PSF-2.0"
+    },
+    "charset-normalizer": {
+      "version": "3.5.2",
+      "file": "charset_normalizer-3.5.2-py3-none-any.whl",
+      "bytes": 68872,
+      "sha256": "b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685",
+      "requires_python": ">=3.7",
+      "license": "MIT"
+    },
+    "idna": {
+      "version": "3.20",
+      "file": "idna-3.20-py3-none-any.whl",
+      "bytes": 69583,
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "requires_python": ">=3.9",
+      "license": "BSD-3-Clause"
+    },
+    "urllib3": {
+      "version": "2.8.0",
+      "file": "urllib3-2.8.0-py3-none-any.whl",
+      "bytes": 135717,
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "requires_python": ">=3.10",
+      "license": "MIT"
+    },
+    "certifi": {
+      "version": "2026.10.23",
+      "file": "certifi-2026.10.23-py3-none-any.whl",
+      "bytes": 135082,
+      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+      "requires_python": ">=3.7",
+      "license": "MPL-2.0"
+    },
+    "anyio": {
+      "version": "4.16.0",
+      "file": "anyio-4.16.0-py3-none-any.whl",
+      "bytes": 134521,
+      "sha256": "c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026",
+      "requires_python": ">=3.10",
+      "license": "MIT"
+    },
+    "httpcore": {
+      "version": "1.0.9",
+      "file": "httpcore-1.0.9-py3-none-any.whl",
+      "bytes": 78784,
+      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+      "requires_python": ">=3.8",
+      "license": "BSD-3-Clause"
+    },
+    "h11": {
+      "version": "0.16.0",
+      "file": "h11-0.16.0-py3-none-any.whl",
+      "bytes": 37515,
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "requires_python": ">=3.8",
+      "license": "MIT"
+    }
+  },
+  "download_bytes": 51387232
+}

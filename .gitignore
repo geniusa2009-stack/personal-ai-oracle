@@ -24,3 +24,7 @@ env/
 *.sqlite3
 *.db
 data/
+
+# Isolated local-AI validation environment and approved model artifacts
+.venv-local-ai/
+models/

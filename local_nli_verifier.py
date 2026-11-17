@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import math
 import os
-import threading
+from contextlib import contextmanager
+from local_model_lifecycle import workload
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -17,8 +18,6 @@ MODEL_ID = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
 DEFAULT_THRESHOLD = 0.80
 MAX_PAIRS_PER_RUN = 48
 MAX_SEQUENCE_LENGTH = 512
-
-_RUN_LOCK = threading.RLock()
 
 _MODEL_CACHE: dict[str, "LocalNLIModel"] = {}
 
@@ -241,8 +240,15 @@ def judge_payload(payload: dict[str, Any]) -> str:
     Releasing references allows ONNX memory reclamation; RSS reclamation is
     allocator-dependent and must be measured on the target machine.
     """
-    with _RUN_LOCK:
+    with evaluation_session():
+        return _judge_payload(payload)
+
+
+@contextmanager
+def evaluation_session():
+    """Explicit bounded evaluation session; default judge still disposes per run."""
+    with workload():
         try:
-            return _judge_payload(payload)
+            yield _judge_payload
         finally:
             _MODEL_CACHE.clear()

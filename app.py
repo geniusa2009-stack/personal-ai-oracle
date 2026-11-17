@@ -1153,6 +1153,11 @@ with tab_oracle:
     with st.expander("Local AI configuration and file inventory"):
         import local_ai_status
         st.json(local_ai_status.snapshot())
+        import local_ai_telemetry
+        try:
+            st.json(local_ai_telemetry.recent(oracle_scope))
+        except Exception:
+            st.caption("Local AI telemetry is unavailable.")
         st.caption("Configuration and files do not prove operational readiness. Live inference and target-Mac validation are separate checks.")
 
     st.divider()

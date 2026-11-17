@@ -698,7 +698,7 @@ def run_research(
         source["evidence_level"] = metadata.get("evidence_level", "unknown")
     claim_records = evidence_verification.build_claim_candidates(answer, evidence_manifest)
     semantic_report = (
-        semantic_verifier.verify_claims(claim_records, evidence_manifest)
+        semantic_verifier.verify_claims(claim_records, evidence_manifest, **({"scope": memory_scope} if memory_scope is not None else {}))
         if verify_claims
         else {
             "status": "not_performed",

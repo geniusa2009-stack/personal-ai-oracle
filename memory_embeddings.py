@@ -206,6 +206,11 @@ class OllamaEmbeddingClient:
         ])
 
     def _embed(self, texts: Sequence[str]) -> list[list[float]]:
+        from local_model_lifecycle import workload
+        with workload():
+            return self._embed_local(texts)
+
+    def _embed_local(self, texts: Sequence[str]) -> list[list[float]]:
         if not isinstance(texts, Sequence) or isinstance(texts, (str, bytes)) or not texts:
             raise EmbeddingError("texts must be a non-empty sequence")
         normalized = []
@@ -368,7 +373,7 @@ def _memory_documents(scope: str, *, max_records: int) -> list[MemoryDocument]:
     return documents[:max_records]
 
 
-def index_memory_scope(
+def _index_memory_scope(
     scope: str,
     *,
     client: EmbeddingClientProtocol | None = None,
@@ -591,3 +596,21 @@ def retrieve_vector_matches(
         ))
     matches.sort(key=lambda item: item.similarity, reverse=True)
     return matches[:limit]
+
+
+def index_memory_scope(scope: str, **kwargs) -> dict[str, Any]:
+    """Index explicit scope and persist metadata without raw memory content."""
+    import time
+    import local_ai_telemetry as telemetry
+    from local_model_lifecycle import ResourceUnavailable
+    started = time.perf_counter()
+    client = kwargs.get('client')
+    model = getattr(client, 'model_name', '') or os.environ.get('ORACLE_EMBEDDING_MODEL', 'embeddinggemma-2:270m')
+    telemetry.best_effort(scope, 'indexing', 'start', model)
+    try:
+        result = _index_memory_scope(scope, **kwargs)
+        telemetry.best_effort(scope, 'indexing', 'end', model, counts=result, latency_ms=int(1000*(time.perf_counter()-started)), error=('resource' if 'ResourceUnavailable' in result.get('errors', []) else 'runtime') if result.get('failed_count') else None)
+        return result
+    except Exception as exc:
+        telemetry.best_effort(scope, 'indexing', 'end', model, error='resource' if isinstance(exc, ResourceUnavailable) else 'runtime', latency_ms=int(1000*(time.perf_counter()-started)))
+        raise
