@@ -43,8 +43,9 @@ Set these values in your local, untracked environment file (never commit secrets
 ORACLE_MEMORY_EMBEDDINGS_ENABLED=1
 ORACLE_EMBEDDING_PROVIDER=ollama
 ORACLE_EMBEDDING_MODEL=embeddinggemma-2:270m
-ORACLE_EMBEDDING_BASE_URL=http://127.0.0.1:11434/v1
+ORACLE_EMBEDDING_BASE_URL=http://127.0.0.1:11434
 ORACLE_MEMORY_EMBEDDINGS_AUTOINDEX=0
+ORACLE_OLLAMA_EMBED_KEEP_ALIVE=0
 ```
 
 The existing SQLite vector cache and scope-aware retrieval remain in place. Auto-indexing stays off: the owner explicitly chooses which scope to index.
