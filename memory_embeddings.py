@@ -143,26 +143,98 @@ class OpenAICompatibleEmbeddingClient:
         return vectors
 
 
-def embedding_client_from_environment() -> OpenAICompatibleEmbeddingClient | None:
-    """Return None unless embeddings are explicitly enabled and a model is configured."""
+
+class OllamaEmbeddingClient:
+    """Native Ollama /api/embed adapter with bounded, local-only requests."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://127.0.0.1:11434",
+        model_name: str = "embeddinggemma-2:270m",
+        timeout: int = EMBEDDING_TIMEOUT_SECONDS,
+        keep_alive: str = "0",
+    ) -> None:
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise EmbeddingError("embedding model is required")
+        if not isinstance(base_url, str) or not base_url.startswith("http://127.0.0.1"):
+            raise EmbeddingError("local Ollama embedding endpoint must use loopback HTTP")
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 120:
+            raise EmbeddingError("timeout must be from 1 to 120 seconds")
+        if not isinstance(keep_alive, str) or len(keep_alive) > 20:
+            raise EmbeddingError("keep_alive must be a short Ollama duration string")
+        normalized_base = base_url.rstrip("/")
+        if normalized_base.endswith("/api/embed"):
+            self.url = normalized_base
+        elif normalized_base.endswith("/api"):
+            self.url = normalized_base + "/embed"
+        else:
+            self.url = normalized_base + "/api/embed"
+        self.model_name = model_name.strip()[:200]
+        self.timeout = timeout
+        self.keep_alive = keep_alive
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        if not isinstance(texts, Sequence) or isinstance(texts, (str, bytes)) or not texts:
+            raise EmbeddingError("texts must be a non-empty sequence")
+        normalized = []
+        for value in texts:
+            if not isinstance(value, str) or not value.strip():
+                raise EmbeddingError("embedding text items must be non-empty strings")
+            if len(value) > 12000:
+                raise EmbeddingError("embedding text item is too large")
+            normalized.append(value)
+        try:
+            response = requests.post(
+                self.url,
+                json={
+                    "model": self.model_name,
+                    "input": normalized,
+                    "truncate": True,
+                    "keep_alive": self.keep_alive,
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            body = response.json()
+        except requests.RequestException as exc:
+            raise EmbeddingError("local Ollama embedding request failed") from exc
+        except ValueError as exc:
+            raise EmbeddingError("local Ollama returned invalid JSON") from exc
+        raw_vectors = body.get("embeddings") if isinstance(body, Mapping) else None
+        if not isinstance(raw_vectors, list) or len(raw_vectors) != len(normalized):
+            raise EmbeddingError("local Ollama returned an unexpected embedding count")
+        vectors = [_validate_vector(item) for item in raw_vectors]
+        if len({len(item) for item in vectors}) != 1:
+            raise EmbeddingError("local Ollama returned inconsistent embedding dimensions")
+        return vectors
+
+def embedding_client_from_environment() -> EmbeddingClientProtocol | None:
+    """Return a local Ollama client only when explicitly enabled."""
     enabled = os.environ.get("ORACLE_MEMORY_EMBEDDINGS_ENABLED", "0").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
         return None
 
     provider = os.environ.get("ORACLE_EMBEDDING_PROVIDER", "ollama").strip().lower()
-    model_name = os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
-    if not model_name:
-        model_name = os.environ.get("OLLAMA_EMBEDDING_MODEL", "").strip()
-    if not model_name:
-        return None
-
     if provider == "ollama":
+        model_name = (
+            os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
+            or os.environ.get("OLLAMA_EMBEDDING_MODEL", "").strip()
+            or "embeddinggemma-2:270m"
+        )
         base_url = os.environ.get(
             "ORACLE_EMBEDDING_BASE_URL",
-            os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
+            "http://127.0.0.1:11434",
+        ).strip()
+        return OllamaEmbeddingClient(
+            base_url=base_url,
+            model_name=model_name,
+            keep_alive=os.environ.get("ORACLE_OLLAMA_EMBED_KEEP_ALIVE", "0"),
         )
-        api_key = os.environ.get("ORACLE_EMBEDDING_API_KEY", "")
-    elif provider == "openai_compatible":
+    if provider == "openai_compatible":
+        model_name = os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
+        if not model_name:
+            return None
         base_url = os.environ.get(
             "ORACLE_EMBEDDING_BASE_URL",
             os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
@@ -171,13 +243,13 @@ def embedding_client_from_environment() -> OpenAICompatibleEmbeddingClient | Non
             "ORACLE_EMBEDDING_API_KEY",
             os.environ.get("OPENAI_API_KEY", ""),
         )
-    else:
-        raise EmbeddingError("ORACLE_EMBEDDING_PROVIDER must be ollama or openai_compatible")
-
-    return OpenAICompatibleEmbeddingClient(
-        base_url=base_url,
-        model_name=model_name,
-        api_key=api_key,
+        return OpenAICompatibleEmbeddingClient(
+            base_url=base_url,
+            model_name=model_name,
+            api_key=api_key,
+        )
+    raise EmbeddingError(
+        "ORACLE_EMBEDDING_PROVIDER must be ollama or openai_compatible"
     )
 
 
