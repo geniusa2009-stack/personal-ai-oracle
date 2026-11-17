@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol, Sequence
 
 import requests
+from urllib.parse import urlsplit
 
 from database import init_database
 from db import get_conn
@@ -157,7 +158,23 @@ class OllamaEmbeddingClient:
     ) -> None:
         if not isinstance(model_name, str) or not model_name.strip():
             raise EmbeddingError("embedding model is required")
-        if not isinstance(base_url, str) or not base_url.startswith("http://127.0.0.1"):
+        if not isinstance(base_url, str):
+            raise EmbeddingError("local Ollama embedding endpoint must use loopback HTTP")
+        try:
+            parsed_base = urlsplit(base_url)
+            valid_loopback = (
+                parsed_base.scheme == "http"
+                and parsed_base.hostname in {"127.0.0.1", "localhost", "::1"}
+                and parsed_base.username is None
+                and parsed_base.password is None
+                and parsed_base.query == ""
+                and parsed_base.fragment == ""
+                and parsed_base.port in {None, 11434}
+                and parsed_base.path in {"", "/", "/api", "/api/embed"}
+            )
+        except ValueError:
+            valid_loopback = False
+        if not valid_loopback:
             raise EmbeddingError("local Ollama embedding endpoint must use loopback HTTP")
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 120:
             raise EmbeddingError("timeout must be from 1 to 120 seconds")
