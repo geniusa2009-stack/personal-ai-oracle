@@ -1,0 +1,35 @@
+{
+  "model_id": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+  "revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+  "license": "mit",
+  "files": {
+    "added_tokens.json": {
+      "bytes": 23,
+      "sha256": null
+    },
+    "config.json": {
+      "bytes": 1066,
+      "sha256": null
+    },
+    "onnx/model_quantized.onnx": {
+      "bytes": 338679133,
+      "sha256": "27c39e884c14b03cf46cfc5485971b6db70ff330220d93dfe729c63fde43af0e"
+    },
+    "special_tokens_map.json": {
+      "bytes": 286,
+      "sha256": null
+    },
+    "spm.model": {
+      "bytes": 4305025,
+      "sha256": "13c8d666d62a7bc4ac8f040aab68e942c861f93303156cc28f5c7e885d86d6e3"
+    },
+    "tokenizer.json": {
+      "bytes": 16331396,
+      "sha256": "3aca3ce69a0a35aeb144a52c4f1d41c4246b8785f8f398315cc8fb6b24057810"
+    },
+    "tokenizer_config.json": {
+      "bytes": 1256,
+      "sha256": null
+    }
+  }
+}

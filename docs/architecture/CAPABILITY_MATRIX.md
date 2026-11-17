@@ -382,3 +382,52 @@ Status: `IMPLEMENTED_AND_VERIFIED` by run `42469959196` (379 tests passed on Ubu
 | End-to-end regression | `test_oracle_e2e.py` | `IMPLEMENTED_AND_VERIFIED` | Offline test exercises memory context, encrypted graph creation, mocked research, specialist dependency handoff, reviewer rejection, selective revision, merged result projection and owner-scoped Control Center metadata | CI run `42471524130`: 381 passed per platform; live provider run remains a separate opt-in operation |
 
 The composed path remains explicitly dispatched by the user. Research uses bounded query/source settings and a non-retryable task. The final reviewer assesses request coverage and internal consistency, not factual truth. See `docs/testing/ORACLE_END_TO_END.md`.
+
+
+## Phase 04g — Zero-cost local G1/G2 profile
+
+| Increment | Owning modules | Status on this branch | Verified scope | Remaining work |
+|---|---|---|---|---|
+| Local multilingual memory embeddings (G1) | `memory_embeddings.py`, `hybrid_memory.py`, `scripts/index_memory_scope.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicitly enabled native loopback Ollama `/api/embed` adapter; default `embeddinggemma-2:270m`; unload-after-request default; bounded explicit per-scope indexing; existing SQLite content hashes, stale-vector checks, RRF and lexical fallback retained | CI pending; target-Mac RAM/latency measurement and bilingual retrieval benchmark required |
+| Local multilingual semantic verification (G2) | `local_nli_verifier.py`, `semantic_verifier.py`, `scripts/download_local_nli_model.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicit local NLI selection using quantized ONNX mDeBERTa; extracted-page-only decisive labels; threshold and pair-count caps; no silent hosted fallback; factual-truth flag remains false | CI pending; target-Mac peak-memory/latency measurement and human-reviewed Arabic/English calibration set required |
+| Local model regression tests | `test_local_embedding_profile.py`, `test_local_nli_verifier.py`, `test_local_nli_integration.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Deterministic mocked tests cover native Ollama contract, support/contradiction/conflict, snippets, thresholds, local selection and fail-closed pair budget | GitHub Actions must pass on this branch head |
+
+See `docs/architecture/LOCAL_AI_G1_G2.md` for model selection, local setup, memory limits, environment variables and validation boundaries. No model weights are committed or downloaded by CI.
+
+## 2026-11-17 local-AI continuation
+
+Local transport redirect/proxy protection, cross-batch vector dimension validation,
+NLI output validation and per-run session release are IMPLEMENTED. Configuration/file
+inventory and an 18-case bilingual offline evaluation runner are IMPLEMENTED.
+Automated mocked contract checks are TESTED_LOCALLY. Actual model inference and
+8 GB behavior are IMPLEMENTED_BUT_UNVERIFIED; VERIFIED_ON_TARGET_MAC is not claimed.
+Persistent local-AI indexing/result/resource telemetry is NOT_IMPLEMENTED.
+See `docs/engineering/LOCAL_AI_CONTINUATION_REPORT.md` for evidence and remaining gaps.
+
+## Phase 04h — 2026-11-17
+
+- IMPLEMENTED: explicit cold/session evaluation, bounded cooperating-process lock,
+  pressure pre/post checks and fail-closed admission, pinned NLI download validation.
+- IMPLEMENTED: bounded owner-scoped SQLite indexing/verification telemetry and
+  Control Center event display. No raw evidence stored. This supersedes the prior
+  NOT_IMPLEMENTED persistent-telemetry status for these paths only.
+- TESTED_LOCALLY: mocked session reuse/disposal, pressure refusal, process-lock
+  timeout/crash recovery, scoped retention/redaction and synthetic checksum failures.
+- BLOCKED: real G1/G2 inference and expanded install footprint; user explicitly
+  deferred optional installation and model downloads pending isolated setup review.
+- IMPLEMENTED_BUT_UNVERIFIED: inference quality, resource safety threshold and
+  actual 8 GiB model performance. VERIFIED_ON_TARGET_MAC inference is not claimed.
+
+## Approved real-model validation — 2026-11-17
+
+- VERIFIED_ON_TARGET_MAC: G1 native Ollama MLX/nvfp4 inference, finite 768d vectors,
+  3/3 synthetic retrieval rankings, live two-scope isolation/idempotent cache, unload.
+- VERIFIED_ON_TARGET_MAC: pinned quantized mDeBERTa CPU ONNX and local tokenizer on
+  isolated Python 3.13.5; tensor/label contract and cold/session evaluation each
+  matched 18/18 synthetic expected labels. Six per-mode cases are evidence guards.
+- TESTED_LOCALLY: optional dependency imports and consistency, model integrity,
+  actual latency/RSS/pressure snapshots. See LOCAL_AI_REAL_VALIDATION.json.
+- IMPLEMENTED_BUT_UNVERIFIED: real-world accuracy, threshold calibration, long-input
+  performance, pressure-failure recovery and full production orchestration. These
+  limited observations supersede earlier BLOCKED model-install/inference statuses
+  only for the measured synthetic paths. Ordinary CI still does not run models.

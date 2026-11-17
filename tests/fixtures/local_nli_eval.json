@@ -1,0 +1,323 @@
+[
+  {
+    "id": "en-support",
+    "language": "en",
+    "expected": "SUPPORTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "en-contradiction",
+    "language": "en",
+    "expected": "CONTRADICTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is closed on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "en-conflict",
+    "language": "en",
+    "expected": "CONFLICTING_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "extracted_page"
+          },
+          {
+            "source_id": "S2",
+            "excerpt": "The office is closed on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "en-unrelated",
+    "language": "en",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The river is long.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "en-missing",
+    "language": "en",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": []
+      }
+    ]
+  },
+  {
+    "id": "en-snippet",
+    "language": "en",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "The office is open on Monday.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "search_snippet_only"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ar-support",
+    "language": "ar",
+    "expected": "SUPPORTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "المكتب مفتوح يوم الاثنين.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ar-contradiction",
+    "language": "ar",
+    "expected": "CONTRADICTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "المكتب مغلق يوم الاثنين.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ar-conflict",
+    "language": "ar",
+    "expected": "CONFLICTING_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "المكتب مفتوح يوم الاثنين.",
+            "evidence_level": "extracted_page"
+          },
+          {
+            "source_id": "S2",
+            "excerpt": "المكتب مغلق يوم الاثنين.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ar-unrelated",
+    "language": "ar",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "النهر طويل.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "ar-missing",
+    "language": "ar",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": []
+      }
+    ]
+  },
+  {
+    "id": "ar-snippet",
+    "language": "ar",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "المكتب مفتوح يوم الاثنين.",
+            "evidence_level": "search_snippet_only"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-support",
+    "language": "mixed",
+    "expected": "SUPPORTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-contradiction",
+    "language": "mixed",
+    "expected": "CONTRADICTED",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is closed on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-conflict",
+    "language": "mixed",
+    "expected": "CONFLICTING_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "extracted_page"
+          },
+          {
+            "source_id": "S2",
+            "excerpt": "The office is closed on Monday.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-unrelated",
+    "language": "mixed",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The river is long.",
+            "evidence_level": "extracted_page"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed-missing",
+    "language": "mixed",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": []
+      }
+    ]
+  },
+  {
+    "id": "mixed-snippet",
+    "language": "mixed",
+    "expected": "INSUFFICIENT_EVIDENCE",
+    "claims": [
+      {
+        "claim_id": "C1",
+        "claim": "المكتب مفتوح يوم الاثنين.",
+        "evidence": [
+          {
+            "source_id": "S1",
+            "excerpt": "The office is open on Monday.",
+            "evidence_level": "search_snippet_only"
+          }
+        ]
+      }
+    ]
+  }
+]

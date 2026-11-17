@@ -1463,7 +1463,7 @@ SENSITIVE_TABLES = [
     "oracle_workflow_checkpoints", "oracle_task_graphs", "oracle_durable_tasks",
     "oracle_task_dependencies", "oracle_task_attempts", "oracle_model_events",
     "oracle_model_benchmark_runs", "oracle_model_benchmark_results",
-    "wa_processed_messages",
+    "wa_processed_messages", "oracle_local_ai_events",
 ]
 
 

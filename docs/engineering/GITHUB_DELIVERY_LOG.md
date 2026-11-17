@@ -532,3 +532,56 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Verified implementation head:** `86f669f5be2e0d19f9812d8dd278c29de775247e`.
 - **Verified PR head:** `da7153d360e7ae11005236d10976c7715a00a159`.
 - `main` remains untouched.
+
+
+### Phase 04g — Zero-cost local G1/G2 profile (implementation in progress)
+
+- **Branch:** `oracle/phase-04-g1-g2-local-ai`
+- **Base:** `oracle/phase-04-end-to-end-integration` (PR #22); stacked on PR #22 → PR #21 → PR #20 → PR #19 → PR #18 → PR #17. `main` is not modified.
+- **Hardware target:** Apple Silicon, 8 GB unified memory.
+- **G1 model:** Ollama `embeddinggemma-2:270m`, using the native loopback `POST /api/embed` API rather than assuming OpenAI-compatible embedding support. The adapter defaults to unloading the model after each request to reduce memory overlap. Indexing is explicit, scope-required, bounded to 100 records and batches of two by default.
+- **G2 model:** `MoritzLaurer/mDeBERTa-v3-base-mnli-xnli` quantized ONNX model. The local verifier is lazy-loaded, CPU-only, sequential, limited to 48 claim/evidence pairs per run, and requires an explicitly downloaded local model directory.
+- **Files added:** `local_nli_verifier.py`, `requirements-local-ai.txt`, `scripts/download_local_nli_model.py`, `scripts/index_memory_scope.py`, `test_local_nli_verifier.py`, `test_local_nli_integration.py`, `test_local_embedding_profile.py`, `docs/architecture/LOCAL_AI_G1_G2.md`.
+- **Files updated:** `memory_embeddings.py` (native Ollama adapter and loopback validation), `semantic_verifier.py` (explicit local-NLI routing and local evaluation lineage), this capability matrix and this delivery log.
+- **Cost boundary:** No paid API is required for G1/G2. Model downloads require internet access and disk space; local inference consumes the Mac's RAM, CPU and electricity. Optional local dependencies are separate from core requirements and CI.
+- **Safety/failure boundary:** Local mode is opt-in. No silent cloud fallback is permitted when local NLI is selected. Snippet-only evidence cannot yield decisive labels; pair-budget exhaustion returns `UNVERIFIED`; factual truth is never marked verified. No model weights are committed, no background worker is activated, and no production memory scope is indexed by CI.
+- **Validation:** GitHub Actions run `44087191593` passed on PR head `c763d9d0a87ebea38a2f4c5cc6420422aa2a2f16`: Ubuntu **392 passed, 1 warning**; macOS **392 passed, 1 warning**. Both `python -m compileall -q .` and `python -m pytest -q` passed. The warning is the existing Starlette/httpx TestClient deprecation. A second duplicate run `44087231164` passed Ubuntu and was still running on macOS at the time of this update. No local Mac model download, live Ollama call, NLI model execution or hardware benchmark is claimed.
+- **Verified PR head:** `c763d9d0a87ebea38a2f4c5cc6420422aa2a2f16`.
+- **Next validation:** Manually download the two models on the owner's Mac, test a small authorized scope, measure peak memory/latency, and calibrate Arabic/English results against human-reviewed examples before routine enablement.
+- **Pull Request:** [PR #23 — Add zero-cost local G1 memory and G2 evidence verification](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/23). Open, draft; base is PR #22 (`oracle/phase-04-end-to-end-integration`). No PR is merged.
+
+## 2026-11-17 — G1/G2 continuation
+
+Continued existing draft PR #23 on `oracle/phase-04-g1-g2-local-ai` after confirming
+head `6d98dcd`, base PR #22, no comments, and successful original-head Ubuntu/macOS
+CI run `44087449979`. Added local transport hardening, stable cache dimensions,
+NLI validation/session cleanup, honest Control Center inventory and bilingual
+evaluation tooling. Local Python 3.13 arm64 validation: **400 passed, 1 warning**;
+targeted **37 passed**; compilation, dependency consistency and diff checks passed.
+The warning is the existing Starlette/httpx TestClient deprecation. No weights or
+private memories were downloaded/indexed. Real inference and 8 GB measurements are
+pending; see `LOCAL_AI_CONTINUATION_REPORT.md`. New-head CI evidence is recorded in
+PR #23 after push to avoid a documentation-only CI loop.
+
+## Phase 04h — 2026-11-17
+
+Continued PR #23 on the same feature branch, preserving draft/open state and base.
+Added cold/session evaluation, local workload coordination and pressure admission,
+bounded scoped telemetry/UI, pinned NLI download integrity and an isolated setup
+plan with metadata-only Python/wheel compatibility and exact model download sizes.
+Local validation: **408 passed, 1 existing Starlette/httpx deprecation warning**;
+compile, dependency consistency and whitespace checks passed. New-head CI and SHA
+are recorded in the PR description after confirmed push. No model weights, optional
+packages or new environment were installed; existing `.venv` was not changed.
+
+## Approved real inference validation — 2026-11-17
+
+After explicit user approval, created gitignored `.venv-local-ai` with Python 3.13.5;
+installed/import-tested isolated binary requirements; downloaded and verified the
+selected models. G1 native Ollama MLX returned finite 768d vectors, 3/3 synthetic
+retrieval rankings, scope-isolated temporary indexing and unload. G2 CPU ONNX
+contract/tokenizer succeeded; cold and session each matched 18/18 fixture labels.
+Added sanitized actual metrics/provenance and an explicit synthetic G1 command.
+No existing/global packages, private memory, main branch or PR stack were modified.
+Weights, virtualenvs, caches and raw logs are ignored. Local suite: 408 passed with
+one existing warning; new commit/CI evidence is recorded in PR #23 after push.

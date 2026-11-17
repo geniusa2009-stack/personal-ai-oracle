@@ -1,0 +1,640 @@
+{
+  "date": "2026-11-17",
+  "hardware": {
+    "architecture": "arm64",
+    "physical_ram_bytes": 8589934592,
+    "macos": "26.5.1"
+  },
+  "status": "VERIFIED_ON_TARGET_MAC for these synthetic inference paths only",
+  "imports": {
+    "onnxruntime": "1.32.0",
+    "transformers": "4.57.6",
+    "sentencepiece": "0.2.3",
+    "huggingface_hub": "0.36.2",
+    "numpy": "2.5.5",
+    "tokenizers": "0.22.2",
+    "safetensors": "0.8.0",
+    "requests": "2.34.2",
+    "providers": [
+      "CoreMLExecutionProvider",
+      "AzureExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "python": "3.13.5 (v3.13.5:6cb20a219a8, Jun 11 2025, 12:23:45) [Clang 16.0.0 (clang-1600.0.26.6)]"
+  },
+  "model_integrity": {
+    "ollama": {
+      "runner": "mlx",
+      "manifest_sha256": "20c5a2af114e1813484d1611b27a57c33398aee4f59c39359c5a28af9d1547e7",
+      "verified_blobs": 425,
+      "payload_bytes": 378453128,
+      "mismatches": []
+    },
+    "nli_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+    "nli_onnx_sha256": "27c39e884c14b03cf46cfc5485971b6db70ff330220d93dfe729c63fde43af0e",
+    "nli_verification": "all seven sizes and three upstream LFS hashes matched; actual hashes recorded locally"
+  },
+  "g1": {
+    "sampled_ollama_related_peak_rss_bytes": 569425920,
+    "sample_count": 26,
+    "model": "embeddinggemma-2:270m",
+    "dimensions": [
+      768
+    ],
+    "all_finite": true,
+    "rankings": [
+      {
+        "query": "Which group observes galaxies?",
+        "scores": [
+          0.8117341788410306,
+          0.5799718018799291,
+          0.6023624388553015
+        ],
+        "top": 0,
+        "expected": 0
+      },
+      {
+        "query": "Where can I eat soup?",
+        "scores": [
+          0.611032129026351,
+          0.8118161142732441,
+          0.6382295845184972
+        ],
+        "top": 1,
+        "expected": 1
+      },
+      {
+        "query": "أين أستطيع استعارة الكتب؟",
+        "scores": [
+          0.6559909734466096,
+          0.6104264833825567,
+          0.7612374514755224
+        ],
+        "top": 2,
+        "expected": 2
+      }
+    ],
+    "index_result": {
+      "status": "completed",
+      "scope": "synthetic:one",
+      "indexed_count": 3,
+      "skipped_count": 0,
+      "failed_count": 0,
+      "model": "embeddinggemma-2:270m",
+      "errors": []
+    },
+    "repeat_index_result": {
+      "status": "up_to_date",
+      "scope": "synthetic:one",
+      "indexed_count": 0,
+      "skipped_count": 3,
+      "failed_count": 0,
+      "model": "embeddinggemma-2:270m",
+      "errors": []
+    },
+    "other_scope_index_result": {
+      "status": "completed",
+      "scope": "synthetic:two",
+      "indexed_count": 1,
+      "skipped_count": 0,
+      "failed_count": 0,
+      "model": "embeddinggemma-2:270m",
+      "errors": []
+    },
+    "scope_isolated": true,
+    "retrieval_count": 3,
+    "seconds": 6.432261499983724,
+    "cpu_seconds": 0.20938099999999998,
+    "python_peak_rss_bytes": 38207488,
+    "pressure_before": {
+      "free_percent": 29
+    },
+    "pressure_after": {
+      "free_percent": 30
+    },
+    "loaded_after": {
+      "models": []
+    }
+  },
+  "g2_contract": {
+    "input_contract": [
+      {
+        "name": "input_ids",
+        "type": "tensor(int64)",
+        "shape": [
+          "batch_size",
+          "sequence_length"
+        ]
+      },
+      {
+        "name": "attention_mask",
+        "type": "tensor(int64)",
+        "shape": [
+          "batch_size",
+          "sequence_length"
+        ]
+      }
+    ],
+    "output_contract": [
+      {
+        "name": "logits",
+        "type": "tensor(float)",
+        "shape": [
+          "batch_size",
+          3
+        ]
+      }
+    ],
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "labels": {
+      "entailment": 0,
+      "neutral": 1,
+      "contradiction": 2
+    },
+    "load_seconds": 1.9659621670143679,
+    "loaded_rss_bytes": 1012170752,
+    "baseline_rss_bytes": 20201472,
+    "pairs": [
+      {
+        "premise": "The office is open on Monday.",
+        "hypothesis": "The office is open on Monday.",
+        "scores": {
+          "entailment": 0.9661916412676649,
+          "neutral": 0.030793062278094363,
+          "contradiction": 0.0030152964542407425
+        },
+        "seconds": 0.030526166985509917
+      },
+      {
+        "premise": "المكتب مفتوح يوم الاثنين.",
+        "hypothesis": "المكتب مفتوح يوم الاثنين.",
+        "scores": {
+          "entailment": 0.865692874096541,
+          "neutral": 0.12053832493859122,
+          "contradiction": 0.013768800964867826
+        },
+        "seconds": 0.014804833976086229
+      },
+      {
+        "premise": "The office is closed on Monday.",
+        "hypothesis": "The office is open on Monday.",
+        "scores": {
+          "entailment": 0.010999929929650548,
+          "neutral": 0.011509708955338488,
+          "contradiction": 0.9774903611150111
+        },
+        "seconds": 0.01115945799392648
+      }
+    ],
+    "after_disposal_rss_bytes": 552927232,
+    "peak_process_rss_bytes": 1068859392,
+    "pressure_before": {
+      "free_percent": 31
+    },
+    "pressure_after": {
+      "free_percent": 31
+    },
+    "lifecycle": {
+      "before": {
+        "free_percent": 31
+      },
+      "after": {
+        "free_percent": 31
+      }
+    }
+  },
+  "g2_cold": {
+    "mode": "cold",
+    "provenance": {
+      "model_id": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+      "file_sha256": {
+        "config.json": "4e4430c95100d613df80fa01276f231931e1b535557cf62fbb3cc50323e50cca",
+        "tokenizer.json": "3aca3ce69a0a35aeb144a52c4f1d41c4246b8785f8f398315cc8fb6b24057810",
+        "tokenizer_config.json": "df9fd3a4482cc4a866788244824573fab8e74dadd1609d4f0e5997f9e96921dc",
+        "spm.model": "13c8d666d62a7bc4ac8f040aab68e942c861f93303156cc28f5c7e885d86d6e3",
+        "provenance.json": "0a2641828554d19969496afdc08547275727e26ce4a7af882edeeded09d1fb68"
+      },
+      "upstream_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+      "tokenizer_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+      "provenance_status": "recorded manifest; integrity requires explicit downloader validation"
+    },
+    "pressure_before": {
+      "free_percent": 29
+    },
+    "pressure_after": {
+      "free_percent": 30
+    },
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.13.5",
+    "threshold": 0.8,
+    "model": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+    "seconds": 14.10980154099525,
+    "cpu_seconds": 12.205977,
+    "peak_process_rss_bytes": 1329561600,
+    "notes": "Cold mode loads per case; session mode loads at first usable evidence and releases after the bounded batch. Peak is process-wide, not model allocation. Text entailment is not factual truth.",
+    "results": [
+      {
+        "id": "en-support",
+        "language": "en",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 2.3201854999933857,
+        "cpu_seconds": 1.62398,
+        "error": null
+      },
+      {
+        "id": "en-contradiction",
+        "language": "en",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 1.029584458010504,
+        "cpu_seconds": 0.893019,
+        "error": null
+      },
+      {
+        "id": "en-conflict",
+        "language": "en",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 0.8678569159819745,
+        "cpu_seconds": 0.868188,
+        "error": null
+      },
+      {
+        "id": "en-unrelated",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.9352180839923676,
+        "cpu_seconds": 0.8928089999999997,
+        "error": null
+      },
+      {
+        "id": "en-missing",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.025591292011085898,
+        "cpu_seconds": 0.021943000000000268,
+        "error": null
+      },
+      {
+        "id": "en-snippet",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.024781832995358855,
+        "cpu_seconds": 0.021092000000000333,
+        "error": null
+      },
+      {
+        "id": "ar-support",
+        "language": "ar",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 1.1062080830160994,
+        "cpu_seconds": 1.0109849999999998,
+        "error": null
+      },
+      {
+        "id": "ar-contradiction",
+        "language": "ar",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 1.184429375018226,
+        "cpu_seconds": 1.0423469999999995,
+        "error": null
+      },
+      {
+        "id": "ar-conflict",
+        "language": "ar",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 0.8428488749777898,
+        "cpu_seconds": 0.8489519999999997,
+        "error": null
+      },
+      {
+        "id": "ar-unrelated",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 1.0964676660078112,
+        "cpu_seconds": 1.0311650000000006,
+        "error": null
+      },
+      {
+        "id": "ar-missing",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.027735667012166232,
+        "cpu_seconds": 0.024354000000000653,
+        "error": null
+      },
+      {
+        "id": "ar-snippet",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.03077387501252815,
+        "cpu_seconds": 0.026407999999999987,
+        "error": null
+      },
+      {
+        "id": "mixed-support",
+        "language": "mixed",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 0.869588166999165,
+        "cpu_seconds": 0.8474599999999999,
+        "error": null
+      },
+      {
+        "id": "mixed-contradiction",
+        "language": "mixed",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 1.2824125409824774,
+        "cpu_seconds": 1.0534809999999997,
+        "error": null
+      },
+      {
+        "id": "mixed-conflict",
+        "language": "mixed",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 1.2046814580098726,
+        "cpu_seconds": 0.9974989999999995,
+        "error": null
+      },
+      {
+        "id": "mixed-unrelated",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 1.082411667011911,
+        "cpu_seconds": 0.9152489999999993,
+        "error": null
+      },
+      {
+        "id": "mixed-missing",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.028004457999486476,
+        "cpu_seconds": 0.02208399999999955,
+        "error": null
+      },
+      {
+        "id": "mixed-snippet",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.027973791991826147,
+        "cpu_seconds": 0.021526999999998964,
+        "error": null
+      }
+    ]
+  },
+  "g2_session": {
+    "mode": "session",
+    "provenance": {
+      "model_id": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+      "file_sha256": {
+        "config.json": "4e4430c95100d613df80fa01276f231931e1b535557cf62fbb3cc50323e50cca",
+        "tokenizer.json": "3aca3ce69a0a35aeb144a52c4f1d41c4246b8785f8f398315cc8fb6b24057810",
+        "tokenizer_config.json": "df9fd3a4482cc4a866788244824573fab8e74dadd1609d4f0e5997f9e96921dc",
+        "spm.model": "13c8d666d62a7bc4ac8f040aab68e942c861f93303156cc28f5c7e885d86d6e3",
+        "provenance.json": "0a2641828554d19969496afdc08547275727e26ce4a7af882edeeded09d1fb68"
+      },
+      "upstream_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+      "tokenizer_revision": "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c",
+      "provenance_status": "recorded manifest; integrity requires explicit downloader validation"
+    },
+    "pressure_before": {
+      "free_percent": 42
+    },
+    "pressure_after": {
+      "free_percent": 36
+    },
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "python": "3.13.5",
+    "threshold": 0.8,
+    "model": "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+    "seconds": 3.9374100000131875,
+    "cpu_seconds": 2.640162,
+    "peak_process_rss_bytes": 676823040,
+    "notes": "Cold mode loads per case; session mode loads at first usable evidence and releases after the bounded batch. Peak is process-wide, not model allocation. Text entailment is not factual truth.",
+    "results": [
+      {
+        "id": "en-support",
+        "language": "en",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 3.20100945798913,
+        "cpu_seconds": 1.854374,
+        "error": null
+      },
+      {
+        "id": "en-contradiction",
+        "language": "en",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 0.01905895900563337,
+        "cpu_seconds": 0.029225999999999974,
+        "error": null
+      },
+      {
+        "id": "en-conflict",
+        "language": "en",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 0.036209957994287834,
+        "cpu_seconds": 0.054988999999999955,
+        "error": null
+      },
+      {
+        "id": "en-unrelated",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.023176291986601427,
+        "cpu_seconds": 0.03346099999999996,
+        "error": null
+      },
+      {
+        "id": "en-missing",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.0001433329889550805,
+        "cpu_seconds": 9.999999999976694e-05,
+        "error": null
+      },
+      {
+        "id": "en-snippet",
+        "language": "en",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 2.8332986403256655e-05,
+        "cpu_seconds": 5.700000000041783e-05,
+        "error": null
+      },
+      {
+        "id": "ar-support",
+        "language": "ar",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 0.07242437501554377,
+        "cpu_seconds": 0.05916699999999997,
+        "error": null
+      },
+      {
+        "id": "ar-contradiction",
+        "language": "ar",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 0.023607042006915435,
+        "cpu_seconds": 0.04505299999999979,
+        "error": null
+      },
+      {
+        "id": "ar-conflict",
+        "language": "ar",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 0.04727112498949282,
+        "cpu_seconds": 0.07807399999999998,
+        "error": null
+      },
+      {
+        "id": "ar-unrelated",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.028040834004059434,
+        "cpu_seconds": 0.04184100000000024,
+        "error": null
+      },
+      {
+        "id": "ar-missing",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 7.912502042017877e-05,
+        "cpu_seconds": 0.00011199999999966792,
+        "error": null
+      },
+      {
+        "id": "ar-snippet",
+        "language": "ar",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 1.4958000974729657e-05,
+        "cpu_seconds": 2.4000000000246047e-05,
+        "error": null
+      },
+      {
+        "id": "mixed-support",
+        "language": "mixed",
+        "expected": "SUPPORTED",
+        "actual": "SUPPORTED",
+        "matches": true,
+        "seconds": 0.030116874986561015,
+        "cpu_seconds": 0.04451099999999997,
+        "error": null
+      },
+      {
+        "id": "mixed-contradiction",
+        "language": "mixed",
+        "expected": "CONTRADICTED",
+        "actual": "CONTRADICTED",
+        "matches": true,
+        "seconds": 0.02080245898105204,
+        "cpu_seconds": 0.03794599999999981,
+        "error": null
+      },
+      {
+        "id": "mixed-conflict",
+        "language": "mixed",
+        "expected": "CONFLICTING_EVIDENCE",
+        "actual": "CONFLICTING_EVIDENCE",
+        "matches": true,
+        "seconds": 0.03754474999732338,
+        "cpu_seconds": 0.0639059999999998,
+        "error": null
+      },
+      {
+        "id": "mixed-unrelated",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 0.021690667024813592,
+        "cpu_seconds": 0.030920999999999754,
+        "error": null
+      },
+      {
+        "id": "mixed-missing",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 2.7958012651652098e-05,
+        "cpu_seconds": 0.00011200000000011201,
+        "error": null
+      },
+      {
+        "id": "mixed-snippet",
+        "language": "mixed",
+        "expected": "INSUFFICIENT_EVIDENCE",
+        "actual": "INSUFFICIENT_EVIDENCE",
+        "matches": true,
+        "seconds": 1.1124997399747372e-05,
+        "cpu_seconds": 1.100000000020529e-05,
+        "error": null
+      }
+    ]
+  },
+  "limitations": [
+    "Synthetic cases only; 18 cases per mode include six non-inference evidence guards and 15 actual NLI pairs.",
+    "RSS is process resident memory, not total hardware memory or Metal allocation. G1 sampling can miss transient peaks.",
+    "No simultaneous-load test, pressure-injection test, production indexing or production accuracy calibration.",
+    "No optional dependency installation or real-model inference is included in ordinary CI."
+  ]
+}

@@ -513,3 +513,22 @@ def test_ai_core_uses_graph_context_from_hybrid_retrieval_once(monkeypatch, tmp_
     assert "ESP32 soil sensor" in system_content
     assert "Explicit owner evidence" in system_content
     assert "الرسم المعرفي" in system_content
+
+
+def test_index_rejects_dimension_changes_across_batches_and_runs(monkeypatch, tmp_path):
+    _use_test_database(monkeypatch, tmp_path)
+    for content in ('First fact', 'Second fact'):
+        memory.write_memory(content, 'fact', 'owner:dimensions', 'test')
+    class ChangingClient:
+        model_name = 'changing-test-model'
+        calls = 0
+        def embed(self, texts):
+            self.calls += 1
+            return [[1.0, 0.0] if self.calls == 1 else [1.0, 0.0, 0.0]]
+    client = ChangingClient()
+    first = memory_embeddings.index_memory_scope('owner:dimensions', client=client, batch_size=1)
+    assert first['indexed_count'] == 1
+    assert first['failed_count'] == 1
+    again = memory_embeddings.index_memory_scope('owner:dimensions', client=client, batch_size=1)
+    assert again['indexed_count'] == 0
+    assert again['failed_count'] == 1

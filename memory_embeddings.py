@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol, Sequence
 
 import requests
+from urllib.parse import urlsplit
 
 from database import init_database
 from db import get_conn
@@ -143,26 +144,137 @@ class OpenAICompatibleEmbeddingClient:
         return vectors
 
 
-def embedding_client_from_environment() -> OpenAICompatibleEmbeddingClient | None:
-    """Return None unless embeddings are explicitly enabled and a model is configured."""
+
+class OllamaEmbeddingClient:
+    """Native Ollama /api/embed adapter with bounded, local-only requests."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str = "http://127.0.0.1:11434",
+        model_name: str = "embeddinggemma-2:270m",
+        timeout: int = EMBEDDING_TIMEOUT_SECONDS,
+        keep_alive: str = "0",
+    ) -> None:
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise EmbeddingError("embedding model is required")
+        if not isinstance(base_url, str):
+            raise EmbeddingError("local Ollama embedding endpoint must use loopback HTTP")
+        try:
+            parsed_base = urlsplit(base_url)
+            valid_loopback = (
+                parsed_base.scheme == "http"
+                and parsed_base.hostname in {"127.0.0.1", "localhost", "::1"}
+                and parsed_base.username is None
+                and parsed_base.password is None
+                and parsed_base.query == ""
+                and parsed_base.fragment == ""
+                and parsed_base.port in {None, 11434}
+                and parsed_base.path in {"", "/", "/api", "/api/embed"}
+            )
+        except ValueError:
+            valid_loopback = False
+        if not valid_loopback:
+            raise EmbeddingError("local Ollama embedding endpoint must use loopback HTTP")
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 120:
+            raise EmbeddingError("timeout must be from 1 to 120 seconds")
+        if not isinstance(keep_alive, str) or len(keep_alive) > 20:
+            raise EmbeddingError("keep_alive must be a short Ollama duration string")
+        normalized_base = base_url.rstrip("/")
+        if normalized_base.endswith("/api/embed"):
+            self.url = normalized_base
+        elif normalized_base.endswith("/api"):
+            self.url = normalized_base + "/embed"
+        else:
+            self.url = normalized_base + "/api/embed"
+        self.model_name = model_name.strip()[:200]
+        self.timeout = timeout
+        self.keep_alive = keep_alive
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embed unprefixed text for compatibility with generic embedding clients."""
+        return self._embed(texts)
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        """Use EmbeddingGemma's asymmetric retrieval document instruction."""
+        return self._embed([f"title: none | text: {value}" for value in texts])
+
+    def embed_query(self, texts: Sequence[str]) -> list[list[float]]:
+        """Use EmbeddingGemma's asymmetric retrieval query instruction."""
+        return self._embed([
+            f"task: search result | query: {value}" for value in texts
+        ])
+
+    def _embed(self, texts: Sequence[str]) -> list[list[float]]:
+        from local_model_lifecycle import workload
+        with workload():
+            return self._embed_local(texts)
+
+    def _embed_local(self, texts: Sequence[str]) -> list[list[float]]:
+        if not isinstance(texts, Sequence) or isinstance(texts, (str, bytes)) or not texts:
+            raise EmbeddingError("texts must be a non-empty sequence")
+        normalized = []
+        for value in texts:
+            if not isinstance(value, str) or not value.strip():
+                raise EmbeddingError("embedding text items must be non-empty strings")
+            if len(value) > 12000:
+                raise EmbeddingError("embedding text item is too large")
+            normalized.append(value)
+        try:
+            response = requests.post(
+                self.url,
+                allow_redirects=False,
+                proxies={"http": "", "https": ""},
+                json={
+                    "model": self.model_name,
+                    "input": normalized,
+                    "truncate": True,
+                    "keep_alive": self.keep_alive,
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            if 300 <= response.status_code < 400:
+                raise EmbeddingError("local Ollama redirects are forbidden")
+            body = response.json()
+        except requests.RequestException as exc:
+            raise EmbeddingError("local Ollama embedding request failed") from exc
+        except ValueError as exc:
+            raise EmbeddingError("local Ollama returned invalid JSON") from exc
+        raw_vectors = body.get("embeddings") if isinstance(body, Mapping) else None
+        if not isinstance(raw_vectors, list) or len(raw_vectors) != len(normalized):
+            raise EmbeddingError("local Ollama returned an unexpected embedding count")
+        vectors = [_validate_vector(item) for item in raw_vectors]
+        if len({len(item) for item in vectors}) != 1:
+            raise EmbeddingError("local Ollama returned inconsistent embedding dimensions")
+        return vectors
+
+def embedding_client_from_environment() -> EmbeddingClientProtocol | None:
+    """Return a local Ollama client only when explicitly enabled."""
     enabled = os.environ.get("ORACLE_MEMORY_EMBEDDINGS_ENABLED", "0").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
         return None
 
     provider = os.environ.get("ORACLE_EMBEDDING_PROVIDER", "ollama").strip().lower()
-    model_name = os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
-    if not model_name:
-        model_name = os.environ.get("OLLAMA_EMBEDDING_MODEL", "").strip()
-    if not model_name:
-        return None
-
     if provider == "ollama":
+        model_name = (
+            os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
+            or os.environ.get("OLLAMA_EMBEDDING_MODEL", "").strip()
+            or "embeddinggemma-2:270m"
+        )
         base_url = os.environ.get(
             "ORACLE_EMBEDDING_BASE_URL",
-            os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
+            "http://127.0.0.1:11434",
+        ).strip()
+        return OllamaEmbeddingClient(
+            base_url=base_url,
+            model_name=model_name,
+            keep_alive=os.environ.get("ORACLE_OLLAMA_EMBED_KEEP_ALIVE", "0"),
         )
-        api_key = os.environ.get("ORACLE_EMBEDDING_API_KEY", "")
-    elif provider == "openai_compatible":
+    if provider == "openai_compatible":
+        model_name = os.environ.get("ORACLE_EMBEDDING_MODEL", "").strip()
+        if not model_name:
+            return None
         base_url = os.environ.get(
             "ORACLE_EMBEDDING_BASE_URL",
             os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
@@ -171,13 +283,13 @@ def embedding_client_from_environment() -> OpenAICompatibleEmbeddingClient | Non
             "ORACLE_EMBEDDING_API_KEY",
             os.environ.get("OPENAI_API_KEY", ""),
         )
-    else:
-        raise EmbeddingError("ORACLE_EMBEDDING_PROVIDER must be ollama or openai_compatible")
-
-    return OpenAICompatibleEmbeddingClient(
-        base_url=base_url,
-        model_name=model_name,
-        api_key=api_key,
+        return OpenAICompatibleEmbeddingClient(
+            base_url=base_url,
+            model_name=model_name,
+            api_key=api_key,
+        )
+    raise EmbeddingError(
+        "ORACLE_EMBEDDING_PROVIDER must be ollama or openai_compatible"
     )
 
 
@@ -261,7 +373,7 @@ def _memory_documents(scope: str, *, max_records: int) -> list[MemoryDocument]:
     return documents[:max_records]
 
 
-def index_memory_scope(
+def _index_memory_scope(
     scope: str,
     *,
     client: EmbeddingClientProtocol | None = None,
@@ -307,7 +419,7 @@ def index_memory_scope(
     conn = get_conn()
     try:
         existing_rows = conn.execute(
-            """SELECT memory_type, record_id, content_hash
+            """SELECT memory_type, record_id, content_hash, dimensions
                FROM memory_embeddings
                WHERE scope = ? AND embedding_model = ?""",
             (scope.strip(), model_name),
@@ -316,6 +428,11 @@ def index_memory_scope(
             (row["memory_type"], int(row["record_id"])): row["content_hash"]
             for row in existing_rows
         }
+
+        known_dimensions = {int(row["dimensions"]) for row in existing_rows}
+        if len(known_dimensions) > 1:
+            raise EmbeddingError("scope/model cache contains inconsistent dimensions; use a distinct model identity")
+        expected_dimension = next(iter(known_dimensions), None)
 
         pending = []
         skipped = 0
@@ -335,13 +452,18 @@ def index_memory_scope(
         for offset in range(0, len(pending), batch_size):
             batch = pending[offset:offset + batch_size]
             try:
-                vectors = selected_client.embed([item.content for item, _ in batch])
+                document_embedder = getattr(selected_client, "embed_documents", selected_client.embed)
+                vectors = document_embedder([item.content for item, _ in batch])
                 if not isinstance(vectors, list) or len(vectors) != len(batch):
                     raise EmbeddingError("embedding client returned an unexpected vector count")
                 validated = [_validate_vector(vector) for vector in vectors]
                 dimensions = {len(vector) for vector in validated}
                 if len(dimensions) != 1:
                     raise EmbeddingError("embedding client returned inconsistent dimensions")
+                dimension = next(iter(dimensions))
+                if expected_dimension is not None and dimension != expected_dimension:
+                    raise EmbeddingError("embedding model dimensions changed")
+                expected_dimension = dimension
             except Exception as exc:
                 failed += len(batch)
                 errors.append(type(exc).__name__)
@@ -443,7 +565,8 @@ def retrieve_vector_matches(
     if not rows:
         return []
 
-    query_vectors = selected_client.embed([query.strip()])
+    query_embedder = getattr(selected_client, "embed_query", selected_client.embed)
+    query_vectors = query_embedder([query.strip()])
     if len(query_vectors) != 1:
         raise EmbeddingError("embedding client returned an unexpected query vector count")
     query_vector = _validate_vector(query_vectors[0])
@@ -473,3 +596,21 @@ def retrieve_vector_matches(
         ))
     matches.sort(key=lambda item: item.similarity, reverse=True)
     return matches[:limit]
+
+
+def index_memory_scope(scope: str, **kwargs) -> dict[str, Any]:
+    """Index explicit scope and persist metadata without raw memory content."""
+    import time
+    import local_ai_telemetry as telemetry
+    from local_model_lifecycle import ResourceUnavailable
+    started = time.perf_counter()
+    client = kwargs.get('client')
+    model = getattr(client, 'model_name', '') or os.environ.get('ORACLE_EMBEDDING_MODEL', 'embeddinggemma-2:270m')
+    telemetry.best_effort(scope, 'indexing', 'start', model)
+    try:
+        result = _index_memory_scope(scope, **kwargs)
+        telemetry.best_effort(scope, 'indexing', 'end', model, counts=result, latency_ms=int(1000*(time.perf_counter()-started)), error=('resource' if 'ResourceUnavailable' in result.get('errors', []) else 'runtime') if result.get('failed_count') else None)
+        return result
+    except Exception as exc:
+        telemetry.best_effort(scope, 'indexing', 'end', model, error='resource' if isinstance(exc, ResourceUnavailable) else 'runtime', latency_ms=int(1000*(time.perf_counter()-started)))
+        raise
