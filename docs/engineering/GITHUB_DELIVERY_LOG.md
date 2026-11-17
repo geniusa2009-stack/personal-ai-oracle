@@ -532,3 +532,19 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Verified implementation head:** `86f669f5be2e0d19f9812d8dd278c29de775247e`.
 - **Verified PR head:** `da7153d360e7ae11005236d10976c7715a00a159`.
 - `main` remains untouched.
+
+
+### Phase 04g — Zero-cost local G1/G2 profile (implementation in progress)
+
+- **Branch:** `oracle/phase-04-g1-g2-local-ai`
+- **Base:** `oracle/phase-04-end-to-end-integration` (PR #22); stacked on PR #22 → PR #21 → PR #20 → PR #19 → PR #18 → PR #17. `main` is not modified.
+- **Hardware target:** Apple Silicon, 8 GB unified memory.
+- **G1 model:** Ollama `embeddinggemma-2:270m`, using the native loopback `POST /api/embed` API rather than assuming OpenAI-compatible embedding support. The adapter defaults to unloading the model after each request to reduce memory overlap. Indexing is explicit, scope-required, bounded to 100 records and batches of two by default.
+- **G2 model:** `MoritzLaurer/mDeBERTa-v3-base-mnli-xnli` quantized ONNX model. The local verifier is lazy-loaded, CPU-only, sequential, limited to 48 claim/evidence pairs per run, and requires an explicitly downloaded local model directory.
+- **Files added:** `local_nli_verifier.py`, `requirements-local-ai.txt`, `scripts/download_local_nli_model.py`, `scripts/index_memory_scope.py`, `test_local_nli_verifier.py`, `test_local_nli_integration.py`, `test_local_embedding_profile.py`, `docs/architecture/LOCAL_AI_G1_G2.md`.
+- **Files updated:** `memory_embeddings.py` (native Ollama adapter and loopback validation), `semantic_verifier.py` (explicit local-NLI routing and local evaluation lineage), this capability matrix and this delivery log.
+- **Cost boundary:** No paid API is required for G1/G2. Model downloads require internet access and disk space; local inference consumes the Mac's RAM, CPU and electricity. Optional local dependencies are separate from core requirements and CI.
+- **Safety/failure boundary:** Local mode is opt-in. No silent cloud fallback is permitted when local NLI is selected. Snippet-only evidence cannot yield decisive labels; pair-budget exhaustion returns `UNVERIFIED`; factual truth is never marked verified. No model weights are committed, no background worker is activated, and no production memory scope is indexed by CI.
+- **Validation:** Implementation and deterministic tests have been committed to this branch. GitHub Actions result for the final branch head is pending; no local Mac model download, live Ollama call, NLI model execution or hardware benchmark is claimed.
+- **Next validation:** Require full Ubuntu/macOS CI, then manually download the two models on the owner's Mac, test a small authorized scope, measure peak memory/latency, and calibrate Arabic/English results against human-reviewed examples before routine enablement.
+- **PR:** To be created after final branch-head inspection; draft only. No PR is merged.
