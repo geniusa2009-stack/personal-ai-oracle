@@ -170,8 +170,10 @@ def judge_payload(payload: dict[str, Any]) -> str:
         contradicted: list[str] = []
         top_support = 0.0
         top_contradiction = 0.0
-        exhausted = False
+        exhausted = pair_count >= MAX_PAIRS_PER_RUN
         for item in evidence:
+            if exhausted:
+                break
             if not isinstance(item, Mapping):
                 continue
             # A local NLI score on snippets is not enough for a decisive label.
@@ -195,7 +197,12 @@ def judge_payload(payload: dict[str, Any]) -> str:
             if contradiction >= threshold:
                 contradicted.append(source_id)
 
-        if supported and contradicted:
+        if exhausted:
+            # A truncated comparison set must never be presented as a complete verdict.
+            status = "UNVERIFIED"
+            supported = []
+            contradicted = []
+        elif supported and contradicted:
             status = "CONFLICTING_EVIDENCE"
         elif supported:
             status = "SUPPORTED"
