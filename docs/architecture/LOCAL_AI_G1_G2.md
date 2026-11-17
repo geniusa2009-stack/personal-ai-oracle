@@ -88,6 +88,7 @@ With `ORACLE_SEMANTIC_VERIFIER=local_nli`, a missing model or runtime error leav
 
 - Embeddings are enabled only by explicit environment configuration.
 - The selected model ID is part of the SQLite vector-cache key, so changing models does not silently reinterpret old vectors.
+- Document indexing uses EmbeddingGemma 2's `title: none | text: ...` instruction; query retrieval uses `task: search result | query: ...`. This asymmetric prefix pair is required for the model's intended retrieval quality.
 - Existing content hashes, stale-record rejection, scope filters, and lexical/graph fallback remain authoritative.
 - The indexing script requires an explicit scope and has conservative record/batch defaults.
 - The local endpoint is loopback-only by default; do not expose Ollama to a public network.
