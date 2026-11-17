@@ -216,6 +216,7 @@ def judge_payload(payload: dict[str, Any]) -> str:
             "supported_source_ids": supported,
             "contradicting_source_ids": contradicted,
             "reason": reason,
+            "evaluation_kind": "local_nli_assessment",
         })
 
     return json.dumps({"results": results}, ensure_ascii=False, separators=(",", ":"))
