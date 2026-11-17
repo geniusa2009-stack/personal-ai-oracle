@@ -123,3 +123,45 @@ def test_local_nli_marks_claim_unverified_when_pair_budget_is_exhausted(monkeypa
     assert result["results"][0]["status"] == "SUPPORTED"
     assert result["results"][1]["status"] == "UNVERIFIED"
     assert len(model.calls) == 1
+
+
+def test_invalid_logits_fail_closed():
+    import pytest
+    for values in ([float("nan"), 0, 1], [float("inf"), 0, 1], [0, 1], [0, 1, 2, 3]):
+        with pytest.raises(local_nli_verifier.LocalNLIError):
+            local_nli_verifier._softmax(values)
+
+
+def test_invalid_label_positions_rejected():
+    import pytest
+    with pytest.raises(local_nli_verifier.LocalNLIError):
+        local_nli_verifier._label_indices({"id2label": {"-1": "entailment", "1": "neutral", "2": "contradiction"}})
+
+
+def test_runtime_references_released_after_success_and_failure(monkeypatch):
+    import pytest
+    for fail in (False, True):
+        local_nli_verifier._MODEL_CACHE["test"] = object()
+        def run(payload):
+            if fail:
+                raise local_nli_verifier.LocalNLIError("failure")
+            return "{}"
+        monkeypatch.setattr(local_nli_verifier, "_judge_payload", run)
+        if fail:
+            with pytest.raises(local_nli_verifier.LocalNLIError):
+                local_nli_verifier.judge_payload({})
+        else:
+            assert local_nli_verifier.judge_payload({}) == "{}"
+        assert not local_nli_verifier._MODEL_CACHE
+
+
+def test_bilingual_fixture_snippets_and_missing_evidence_never_load_model(monkeypatch):
+    from pathlib import Path
+    cases = json.loads(Path('tests/fixtures/local_nli_eval.json').read_text())
+    def forbidden():
+        raise AssertionError('no usable evidence must not load a model')
+    monkeypatch.setattr(local_nli_verifier, '_model', forbidden)
+    for case in cases:
+        if case['id'].endswith(('-missing', '-snippet')):
+            result = json.loads(local_nli_verifier.judge_payload({'claims': case['claims']}))
+            assert result['results'][0]['status'] == case['expected']

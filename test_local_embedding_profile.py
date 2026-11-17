@@ -2,6 +2,7 @@ import memory_embeddings
 
 
 class FakeResponse:
+    status_code = 200
     def raise_for_status(self):
         return None
 
@@ -33,7 +34,9 @@ def test_ollama_local_embedding_profile_uses_embeddinggemma_270m(monkeypatch):
 def test_ollama_embedding_adapter_validates_and_orders_local_vectors(monkeypatch):
     calls = []
 
-    def fake_post(url, *, json, timeout):
+    def fake_post(url, *, json, timeout, allow_redirects, proxies):
+        assert allow_redirects is False
+        assert proxies == {"http": "", "https": ""}
         calls.append((url, json, timeout))
         return FakeResponse()
 
@@ -63,7 +66,9 @@ def test_embeddinggemma_uses_distinct_retrieval_query_and_document_prefixes(monk
         def json(self):
             return {"embeddings": [[1.0, 0.0, 0.0]]}
 
-    def fake_post(url, *, json, timeout):
+    def fake_post(url, *, json, timeout, allow_redirects, proxies):
+        assert allow_redirects is False
+        assert proxies == {"http": "", "https": ""}
         captured.append(json["input"])
         return PrefixResponse()
 
@@ -79,3 +84,14 @@ def test_embeddinggemma_uses_distinct_retrieval_query_and_document_prefixes(monk
         ["title: none | text: A saved memory"],
         ["task: search result | query: What did I save?"],
     ]
+
+
+def test_local_redirect_is_rejected_before_reading_body(monkeypatch):
+    import pytest
+    class Redirect(FakeResponse):
+        status_code = 307
+        def json(self):
+            raise AssertionError("redirect body must not be used")
+    monkeypatch.setattr(memory_embeddings.requests, "post", lambda *a, **k: Redirect())
+    with pytest.raises(memory_embeddings.EmbeddingError, match="redirects"):
+        memory_embeddings.OllamaEmbeddingClient().embed(["private memory"])

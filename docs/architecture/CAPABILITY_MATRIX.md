@@ -393,3 +393,13 @@ The composed path remains explicitly dispatched by the user. Research uses bound
 | Local model regression tests | `test_local_embedding_profile.py`, `test_local_nli_verifier.py`, `test_local_nli_integration.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Deterministic mocked tests cover native Ollama contract, support/contradiction/conflict, snippets, thresholds, local selection and fail-closed pair budget | GitHub Actions must pass on this branch head |
 
 See `docs/architecture/LOCAL_AI_G1_G2.md` for model selection, local setup, memory limits, environment variables and validation boundaries. No model weights are committed or downloaded by CI.
+
+## 2026-11-17 local-AI continuation
+
+Local transport redirect/proxy protection, cross-batch vector dimension validation,
+NLI output validation and per-run session release are IMPLEMENTED. Configuration/file
+inventory and an 18-case bilingual offline evaluation runner are IMPLEMENTED.
+Automated mocked contract checks are TESTED_LOCALLY. Actual model inference and
+8 GB behavior are IMPLEMENTED_BUT_UNVERIFIED; VERIFIED_ON_TARGET_MAC is not claimed.
+Persistent local-AI indexing/result/resource telemetry is NOT_IMPLEMENTED.
+See `docs/engineering/LOCAL_AI_CONTINUATION_REPORT.md` for evidence and remaining gaps.

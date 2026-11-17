@@ -1150,6 +1150,11 @@ with tab_oracle:
         "لوحة تشغيل وذاكرة وبحث. القراءة بلا موافقة؛ الكتابة والأوامر المحددة داخل Workspace موثوق قد تعمل تلقائياً؛ الحذف يحتاج موافقة صريحة دائماً."
     )
 
+    with st.expander("Local AI configuration and file inventory"):
+        import local_ai_status
+        st.json(local_ai_status.snapshot())
+        st.caption("Configuration and files do not prove operational readiness. Live inference and target-Mac validation are separate checks.")
+
     st.divider()
     st.markdown("#### 🛡️ صندوق موافقات التنفيذ المحلي")
     try:

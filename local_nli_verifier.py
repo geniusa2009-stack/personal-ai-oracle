@@ -7,7 +7,9 @@ hosted LLM/API. NLI scores measure textual entailment, not factual truth.
 from __future__ import annotations
 
 import json
+import math
 import os
+import threading
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -15,6 +17,8 @@ MODEL_ID = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
 DEFAULT_THRESHOLD = 0.80
 MAX_PAIRS_PER_RUN = 48
 MAX_SEQUENCE_LENGTH = 512
+
+_RUN_LOCK = threading.RLock()
 
 _MODEL_CACHE: dict[str, "LocalNLIModel"] = {}
 
@@ -24,10 +28,10 @@ class LocalNLIError(RuntimeError):
 
 
 def _softmax(values: list[float]) -> list[float]:
-    if not values:
-        raise LocalNLIError("NLI model returned empty logits")
+    if len(values) != 3 or not all(math.isfinite(value) for value in values):
+        raise LocalNLIError("NLI model must return three finite logits")
     maximum = max(values)
-    exps = [__import__("math").exp(value - maximum) for value in values]
+    exps = [math.exp(value - maximum) for value in values]
     total = sum(exps)
     if not total:
         raise LocalNLIError("NLI model returned invalid logits")
@@ -51,7 +55,7 @@ def _label_indices(config: Mapping[str, Any]) -> dict[str, int]:
             labels["contradiction"] = position
         elif "neutral" in normalized:
             labels["neutral"] = position
-    if set(labels) != {"entailment", "contradiction", "neutral"}:
+    if set(labels) != {"entailment", "contradiction", "neutral"} or set(labels.values()) != {0, 1, 2}:
         raise LocalNLIError("NLI config does not expose the three expected labels")
     return labels
 
@@ -145,7 +149,7 @@ def _threshold() -> float:
     return value
 
 
-def judge_payload(payload: dict[str, Any]) -> str:
+def _judge_payload(payload: dict[str, Any]) -> str:
     """Return the existing semantic_verifier JSON contract using local NLI."""
     claims = payload.get("claims")
     if not isinstance(claims, list):
@@ -229,3 +233,16 @@ def judge_payload(payload: dict[str, Any]) -> str:
         })
 
     return json.dumps({"results": results}, ensure_ascii=False, separators=(",", ":"))
+
+
+def judge_payload(payload: dict[str, Any]) -> str:
+    """Serialize bounded runs and release runtime references even after failure.
+
+    Releasing references allows ONNX memory reclamation; RSS reclamation is
+    allocator-dependent and must be measured on the target machine.
+    """
+    with _RUN_LOCK:
+        try:
+            return _judge_payload(payload)
+        finally:
+            _MODEL_CACHE.clear()

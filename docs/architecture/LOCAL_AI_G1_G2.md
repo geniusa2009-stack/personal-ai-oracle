@@ -33,7 +33,7 @@ Install Ollama for macOS from its official download page, open the app when you 
 ollama pull embeddinggemma-2:270m
 ```
 
-Ollama's OpenAI-compatible embeddings endpoint is used by the existing `OpenAICompatibleEmbeddingClient`; no API key is required for the local loopback endpoint.
+The native `OllamaEmbeddingClient` uses `/api/embed`; no API key is required. Redirects and environment HTTP proxies are disabled for this local transport.
 
 ### 2. Configure G1
 
@@ -122,3 +122,63 @@ No live model download, real Ollama request, production data reindex, hosted API
 - Google EmbeddingGemma 2 documentation and license: https://ai.google.dev/gemma/docs/embeddinggemma
 - NLI model card, labels, languages, and license: https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-mnli-xnli
 - Quantized ONNX file: https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-mnli-xnli/tree/main/onnx
+
+## Continuation audit — 2026-11-17
+
+The native Ollama transport rejects redirects and bypasses environment HTTP proxies.
+This prevents a local endpoint response from redirecting private embedding inputs to
+another host. The explicit hosted embedding adapter remains a separate opt-in path.
+NLI runs are serialized within the process and release cached session/tokenizer
+references in a `finally` block. This permits memory reclamation but does not prove
+that an allocator immediately returns RSS to macOS. Separate processes can still
+compete for memory; avoid concurrent indexing and verification.
+
+NLI rejects non-finite logits, output lengths other than three, and invalid label
+indices. Missing runtime or model files continue to fail closed through the existing
+semantic-verifier contract. No approval, scope, or deletion policy was changed.
+
+The Control Center now displays a read-only configuration/file inventory. It does
+not probe a service, load weights, inspect private memories, or claim readiness.
+Installed tokenizer/runtime, operational inference, index history, last verification,
+and resource-failure history remain unverified or untracked. Persistent telemetry
+for those fields is NOT_IMPLEMENTED.
+
+### Reproducible bilingual evaluation
+
+`tests/fixtures/local_nli_eval.json` contains 18 synthetic cases split equally among
+English, Arabic, and cross-language evidence. Each group includes support,
+contradiction, conflict, unrelated evidence, missing evidence, and snippet-only
+input. Expected labels are author-specified and need human review before calibration.
+After explicitly preparing model files and the optional runtime, run:
+
+```bash
+python -m scripts.evaluate_local_nli
+```
+
+The command never downloads weights. It prints actual/expected labels, errors,
+per-case cold-load-plus-inference latency, CPU time, platform and process peak RSS.
+A nonzero exit indicates errors or mismatches. Inspect per-case false support,
+missed support, and UNVERIFIED cases; do not treat a small synthetic set as a
+production benchmark. Actual accuracy, threshold calibration, warm inference,
+memory-pressure recovery and browser interaction remain IMPLEMENTED_BUT_UNVERIFIED.
+
+### 8 GB planning envelope (estimates, not measurements)
+
+Reserve roughly 3–4 GB for macOS, 0.5–1 GB for Python/Streamlit, 0.1–0.3 GB for
+SQLite/cache, 0.5–1 GB for Ollama embedding inference, and 1–2 GB for quantized NLI
+including tokenizer and temporary tensors. A browser can consume another 0.5–1.5 GB.
+These uncertain ranges can exceed 8 GB; execute embedding and NLI work sequentially,
+keep `keep_alive=0`, and close unrelated browser tabs. Session release is process-local;
+it is not an interprocess memory scheduler. Stop on memory pressure rather than
+increasing pair/batch limits. Only about 7.3 GiB disk was available during this audit;
+no model weights were downloaded. The Ollama loopback service was unreachable.
+
+The existing optional dependency ranges were not changed. Python 3.11 remains the
+CI reference. Optional ONNX/Transformers compatibility on this Python 3.13 Mac,
+actual ONNX tensor metadata, tokenizer loading, and peak model RAM still require
+installation and live inference. Model provenance currently follows upstream main;
+a pinned revision/checksum policy remains a follow-up, not an implemented guarantee.
+
+The upstream NLI card declares MIT; EmbeddingGemma has Google model-specific terms,
+which should be reviewed before distribution. Model selection is unchanged. Upstream
+metadata and model cards are evidence of availability, not proof of local usability.

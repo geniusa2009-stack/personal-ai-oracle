@@ -549,3 +549,16 @@ Do not mark a planned milestone complete until its implementation, tests, docume
 - **Verified PR head:** `c763d9d0a87ebea38a2f4c5cc6420422aa2a2f16`.
 - **Next validation:** Manually download the two models on the owner's Mac, test a small authorized scope, measure peak memory/latency, and calibrate Arabic/English results against human-reviewed examples before routine enablement.
 - **Pull Request:** [PR #23 — Add zero-cost local G1 memory and G2 evidence verification](https://github.com/geniusa2009-stack/personal-ai-oracle/pull/23). Open, draft; base is PR #22 (`oracle/phase-04-end-to-end-integration`). No PR is merged.
+
+## 2026-11-17 — G1/G2 continuation
+
+Continued existing draft PR #23 on `oracle/phase-04-g1-g2-local-ai` after confirming
+head `6d98dcd`, base PR #22, no comments, and successful original-head Ubuntu/macOS
+CI run `44087449979`. Added local transport hardening, stable cache dimensions,
+NLI validation/session cleanup, honest Control Center inventory and bilingual
+evaluation tooling. Local Python 3.13 arm64 validation: **400 passed, 1 warning**;
+targeted **37 passed**; compilation, dependency consistency and diff checks passed.
+The warning is the existing Starlette/httpx TestClient deprecation. No weights or
+private memories were downloaded/indexed. Real inference and 8 GB measurements are
+pending; see `LOCAL_AI_CONTINUATION_REPORT.md`. New-head CI evidence is recorded in
+PR #23 after push to avoid a documentation-only CI loop.

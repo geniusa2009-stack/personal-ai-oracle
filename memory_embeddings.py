@@ -218,6 +218,8 @@ class OllamaEmbeddingClient:
         try:
             response = requests.post(
                 self.url,
+                allow_redirects=False,
+                proxies={"http": "", "https": ""},
                 json={
                     "model": self.model_name,
                     "input": normalized,
@@ -227,6 +229,8 @@ class OllamaEmbeddingClient:
                 timeout=self.timeout,
             )
             response.raise_for_status()
+            if 300 <= response.status_code < 400:
+                raise EmbeddingError("local Ollama redirects are forbidden")
             body = response.json()
         except requests.RequestException as exc:
             raise EmbeddingError("local Ollama embedding request failed") from exc
@@ -410,7 +414,7 @@ def index_memory_scope(
     conn = get_conn()
     try:
         existing_rows = conn.execute(
-            """SELECT memory_type, record_id, content_hash
+            """SELECT memory_type, record_id, content_hash, dimensions
                FROM memory_embeddings
                WHERE scope = ? AND embedding_model = ?""",
             (scope.strip(), model_name),
@@ -419,6 +423,11 @@ def index_memory_scope(
             (row["memory_type"], int(row["record_id"])): row["content_hash"]
             for row in existing_rows
         }
+
+        known_dimensions = {int(row["dimensions"]) for row in existing_rows}
+        if len(known_dimensions) > 1:
+            raise EmbeddingError("scope/model cache contains inconsistent dimensions; use a distinct model identity")
+        expected_dimension = next(iter(known_dimensions), None)
 
         pending = []
         skipped = 0
@@ -446,6 +455,10 @@ def index_memory_scope(
                 dimensions = {len(vector) for vector in validated}
                 if len(dimensions) != 1:
                     raise EmbeddingError("embedding client returned inconsistent dimensions")
+                dimension = next(iter(dimensions))
+                if expected_dimension is not None and dimension != expected_dimension:
+                    raise EmbeddingError("embedding model dimensions changed")
+                expected_dimension = dimension
             except Exception as exc:
                 failed += len(batch)
                 errors.append(type(exc).__name__)
