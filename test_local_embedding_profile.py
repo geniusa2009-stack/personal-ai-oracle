@@ -53,3 +53,29 @@ def test_ollama_embedding_adapter_validates_and_orders_local_vectors(monkeypatch
         "truncate": True,
         "keep_alive": "0",
     }
+
+
+
+def test_embeddinggemma_uses_distinct_retrieval_query_and_document_prefixes(monkeypatch):
+    captured = []
+
+    class PrefixResponse(FakeResponse):
+        def json(self):
+            return {"embeddings": [[1.0, 0.0, 0.0]]}
+
+    def fake_post(url, *, json, timeout):
+        captured.append(json["input"])
+        return PrefixResponse()
+
+    monkeypatch.setattr(memory_embeddings.requests, "post", fake_post)
+    client = memory_embeddings.OllamaEmbeddingClient(
+        model_name="embeddinggemma-2:270m"
+    )
+
+    client.embed_documents(["A saved memory"])
+    client.embed_query(["What did I save?"])
+
+    assert captured == [
+        ["title: none | text: A saved memory"],
+        ["task: search result | query: What did I save?"],
+    ]
