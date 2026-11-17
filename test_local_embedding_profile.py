@@ -33,7 +33,7 @@ def test_ollama_local_embedding_profile_uses_embeddinggemma_270m(monkeypatch):
 def test_ollama_embedding_adapter_validates_and_orders_local_vectors(monkeypatch):
     calls = []
 
-    def fake_post(url, *, headers, json, timeout):
+    def fake_post(url, *, json, timeout):
         calls.append((url, json, timeout))
         return FakeResponse()
 
