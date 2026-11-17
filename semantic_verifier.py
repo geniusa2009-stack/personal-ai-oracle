@@ -8,6 +8,7 @@ Source excerpts are untrusted data and are never treated as instructions.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable, Mapping, Sequence
 
 import ai_core
@@ -97,6 +98,19 @@ def _model_judge(payload: dict[str, Any]) -> str:
         task_type="reasoning",
         response_format={"type": "json_object"},
         agent_role="reviewer",
+    )
+
+
+def _configured_judge() -> Callable[[dict[str, Any]], str]:
+    """Select an explicit local verifier without silently falling back to cloud."""
+    mode = os.environ.get("ORACLE_SEMANTIC_VERIFIER", "model").strip().lower()
+    if mode == "local_nli":
+        from local_nli_verifier import judge_payload
+        return judge_payload
+    if mode in {"model", "hosted"}:
+        return _model_judge
+    raise SemanticVerificationError(
+        "ORACLE_SEMANTIC_VERIFIER must be model, hosted, or local_nli"
     )
 
 
@@ -235,7 +249,7 @@ def verify_claims(
             "claims": eligible,
         }
         try:
-            raw = (judge or _model_judge)(payload)
+            raw = (judge or _configured_judge())(payload)
             parsed = json.loads(raw) if isinstance(raw, str) else raw
             if not isinstance(parsed, dict) or not isinstance(parsed.get("results"), list):
                 raise SemanticVerificationError("verifier response must contain a results array")
@@ -320,12 +334,19 @@ def verify_claims(
                 reason = row.get("reason", "")
                 if not isinstance(reason, str):
                     reason = ""
+                evaluation_kind = row.get("evaluation_kind")
+                if evaluation_kind not in {
+                    "model_assisted_evidence_assessment",
+                    "local_nli_assessment",
+                }:
+                    evaluation_kind = "model_assisted_evidence_assessment"
                 result_by_id[claim_id] = _result(
                     item,
                     status,
                     support_ids,
                     contradiction_ids,
                     reason or "No explanation was provided.",
+                    evaluation_kind=evaluation_kind,
                 )
         except Exception as exc:
             evaluation_error = type(exc).__name__
@@ -348,7 +369,7 @@ def verify_claims(
         results.append(result)
 
     checked = sum(
-        item["evaluation_kind"] == "model_assisted_evidence_assessment"
+        item["evaluation_kind"] in {"model_assisted_evidence_assessment", "local_nli_assessment"}
         and item["status"] in {"SUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED", "CONFLICTING_EVIDENCE"}
         for item in results
     )
