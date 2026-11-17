@@ -94,3 +94,32 @@ def test_local_nli_threshold_is_bounded(monkeypatch):
         pass
     else:
         raise AssertionError("Expected threshold validation")
+
+
+
+def test_local_nli_marks_claim_unverified_when_pair_budget_is_exhausted(monkeypatch):
+    model = FakeNLI([
+        {"entailment": 0.93, "contradiction": 0.02, "neutral": 0.05},
+    ])
+    monkeypatch.setattr(local_nli_verifier, "_model", lambda: model)
+    monkeypatch.setattr(local_nli_verifier, "MAX_PAIRS_PER_RUN", 1)
+    payload = {
+        "claims": [
+            {
+                "claim_id": "C1",
+                "claim": "Claim one",
+                "evidence": [_evidence("S1", "Evidence one")],
+            },
+            {
+                "claim_id": "C2",
+                "claim": "Claim two",
+                "evidence": [_evidence("S2", "Evidence two")],
+            },
+        ]
+    }
+
+    result = json.loads(local_nli_verifier.judge_payload(payload))
+
+    assert result["results"][0]["status"] == "SUPPORTED"
+    assert result["results"][1]["status"] == "UNVERIFIED"
+    assert len(model.calls) == 1
