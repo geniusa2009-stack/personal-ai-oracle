@@ -170,3 +170,49 @@ real inference, real cold/warm timings, peak inference RSS, session memory recov
 and threshold calibration remain BLOCKED or IMPLEMENTED_BUT_UNVERIFIED. There is
 no VERIFIED_ON_TARGET_MAC inference claim. The isolated setup approval is the next
 required user action; system Python, global packages and the original venv stay intact.
+
+# Approved isolated setup and real inference — 2026-11-17
+
+User explicitly approved isolated dependencies, both downloads and sequential
+synthetic validation. `.venv-local-ai` was created using existing Python 3.13.5;
+27 binary packages installed without source builds, import checks and pip check
+passed. Existing `.venv` and global packages were not modified. Actual installed
+packages match the candidate version pins; pip selected alternate compatible wheels
+for charset-normalizer/protobuf, recorded in the ignored installer report. Isolated
+environment disk usage ~289 MiB. Model artifacts/cache/logs remain ignored.
+
+Sources/licenses: official Ollama registry/Google EmbeddingGemma 2 Apache-2.0 card;
+pinned MoritzLaurer model card MIT. Ollama chose a 378 MB MLX/nvfp4 variant rather
+than the 304 MB GGUF manifest previously measured. All 425 referenced installed
+blobs passed size/SHA-256 validation. NLI pinned revision and all seven sizes/three
+LFS hashes matched. ONNX SHA-256: 27c39e884c14b03cf46cfc5485971b6db70ff330220d93dfe729c63fde43af0e.
+
+VERIFIED_ON_TARGET_MAC for measured synthetic paths:
+- G1: real finite 768d embeddings, correct top ranking 3/3 including Arabic,
+  explicit temporary two-owner index isolation, stable dimensions and idempotent
+  reindex. 6.432 s total wall; sampled Ollama process RSS peak 569,425,920 bytes;
+  Python RSS peak 38,207,488; pressure availability 29%→30%; no model loaded afterward.
+- G2: local tokenizer and quantized ONNX CPU inference succeed. Dynamic int64 input_ids
+  and attention_mask; [batch,3] float logits; expected labels. Load 1.966 s,
+  representative short pairs 11–31 ms. Peak contract-process RSS 1,068,859,392 bytes;
+  RSS after disposal 552,927,232. No guarantee of immediate RSS return.
+- Cold/session fixture: 18/18 expected results each (six per language group), no
+  mismatches/errors. Six per mode are missing/snippet guards; 15 actual NLI pairs
+  per mode. Cold: 14.110 s / 12.206 CPU s / peak 1,329,561,600 bytes. Session:
+  3.937 s / 2.640 CPU s / peak 676,823,040 bytes. Pressure 29%→30% cold and 42%→36%
+  session; different snapshots preclude a controlled memory-efficiency conclusion.
+
+The first NLI contract attempt stopped before model load because sandbox policy
+blocked `ps`; authorized outside-sandbox rerun succeeded. This was not a Python,
+ONNX or tokenizer compatibility failure. Expected Transformers warning: generative
+PyTorch/TensorFlow/Flax backends absent, while tokenizer/ONNX inference succeeded.
+ORT import initially warned it could not persist a telemetry ID in sandbox; runtime
+telemetry is now explicitly disabled at model initialization. No runtime inference
+errors occurred. Baseline suite remains 408 passing with existing deprecation warning.
+
+No private data was indexed. Full results with no private paths/content are in
+LOCAL_AI_REAL_VALIDATION.json. Actual model measurements are local, not CI. Peak
+RSS is not total hardware footprint and sampled G1 RSS can miss spikes. Models ran
+sequentially. Production calibration, long-input/memory-pressure stress tests and
+full end-to-end local planning remain IMPLEMENTED_BUT_UNVERIFIED. No new approval
+is needed for the already authorized work; no unsafe compatibility workaround was used.

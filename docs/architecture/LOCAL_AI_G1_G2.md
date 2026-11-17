@@ -229,3 +229,62 @@ No real inference was run. See `docs/engineering/LOCAL_AI_SETUP_PLAN.md` for Pyt
 inventory, metadata-only dependency compatibility, exact payload sizes and the
 separate approval-gated isolated setup. Existing `.venv` and system packages are
 unchanged. `.venv-local-ai/` and `models/` are gitignored; neither was populated.
+
+## Approved real inference validation — 2026-11-17
+
+VERIFIED_ON_TARGET_MAC, limited to the synthetic tests below: both selected models
+completed inference on Darwin arm64/macOS 26.5.1, 8 GiB RAM, Python 3.13.5. Approved
+binary packages were installed only in `.venv-local-ai`; the existing `.venv` and
+global Python packages were not changed. Optional import checks and `pip check`
+passed before inference. No PyTorch or TensorFlow is required for the tested path.
+ORT telemetry is explicitly disabled when initializing the offline NLI model.
+
+Licenses verified from upstream: EmbeddingGemma 2 is **Apache-2.0** (Google model
+card: https://ai.google.dev/gemma/docs/embeddinggemma/model_card_2), and the pinned
+mDeBERTa card declares **MIT**. This supersedes the earlier generic Gemma-terms
+caution for this specific EmbeddingGemma 2 release.
+
+Ollama selected the MLX/nvfp4 artifact, not the previously measured GGUF registry
+variant. Reported model size: 378,346,995 bytes. All 425 installed manifest-referenced
+blobs matched their SHA-256 and size; total referenced bytes 378,453,128. Upstream
+artifact digest: `3963be2b16735897054a438b91f1bc64bf454df624967280be2a2d41874131aa`.
+NLI downloaded at the pinned revision; all seven sizes and three upstream LFS
+SHA-256 values matched, including the ONNX checksum recorded in the setup manifest.
+Small non-LFS file hashes were recorded locally; they were not independently
+compared with upstream SHA-256 values.
+
+G1 real results: finite 768-dimensional vectors; three out of three English/Arabic
+queries ranked the intended synthetic document first. Temporary SQLite indexed
+three records in synthetic:one and one in synthetic:two; reindex skipped all three
+unchanged records and retrieval excluded the other scope. Latest run: 6.432 s wall,
+0.209 s Python CPU; sampled aggregate Ollama-related RSS peak 569,425,920 bytes,
+Python peak RSS 38,207,488 bytes. Pressure availability 29% before / 30% after.
+`/api/ps` returned no loaded models after keep_alive=0. Sampling is not a bound on
+Metal allocations or instantaneous peak physical memory. Reproduce with the
+explicit synthetic-only command `python -m scripts.validate_local_g1`.
+
+G2 real contract: CPUExecutionProvider, int64 input_ids and attention_mask shaped
+[batch_size, sequence_length], float logits shaped [batch_size, 3]; labels
+entailment=0, neutral=1, contradiction=2. Load 1.966 s; representative short pair
+latencies 11–31 ms. Contract-probe RSS: loaded 1,012,170,752 bytes, peak
+1,068,859,392 bytes, after reference disposal 552,927,232 bytes. Reference cleanup
+therefore did not immediately return all resident memory.
+
+At threshold 0.80, cold and session modes each matched all 18 author-specified
+fixture labels: six English, six Arabic, six mixed. Each mode executes 15 real
+NLI pairs; six missing/snippet cases are evidence guards, not model predictions.
+No mismatches, false decisive positives or runtime errors appeared in this tiny
+fixture. This is not population accuracy or threshold calibration.
+
+Cold evaluation: 14.110 s wall, 12.206 s CPU, peak process RSS 1,329,561,600 bytes;
+pressure 29%→30%. Session: 3.937 s wall, 2.640 s CPU, peak RSS 676,823,040 bytes;
+pressure 42%→36%. These are single runs in distinct processes with different OS
+conditions, not controlled evidence that session mode always uses less memory.
+G1 completed/unloaded before G2. No concurrent model inference was performed.
+
+The isolated environment occupies about 289 MiB; project NLI files about 343 MiB.
+Disk free after setup was about 5.2 GiB. Generated logs, pip reports, weights and
+caches remain ignored. The committed `docs/engineering/LOCAL_AI_REAL_VALIDATION.json`
+contains only sanitized synthetic measurements. No private memories were indexed.
+Long documents, memory-pressure failure injection, repeated production workloads,
+real-world bilingual accuracy and full local orchestration remain unverified.

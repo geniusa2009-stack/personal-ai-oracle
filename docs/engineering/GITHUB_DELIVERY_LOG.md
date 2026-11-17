@@ -573,3 +573,15 @@ Local validation: **408 passed, 1 existing Starlette/httpx deprecation warning**
 compile, dependency consistency and whitespace checks passed. New-head CI and SHA
 are recorded in the PR description after confirmed push. No model weights, optional
 packages or new environment were installed; existing `.venv` was not changed.
+
+## Approved real inference validation — 2026-11-17
+
+After explicit user approval, created gitignored `.venv-local-ai` with Python 3.13.5;
+installed/import-tested isolated binary requirements; downloaded and verified the
+selected models. G1 native Ollama MLX returned finite 768d vectors, 3/3 synthetic
+retrieval rankings, scope-isolated temporary indexing and unload. G2 CPU ONNX
+contract/tokenizer succeeded; cold and session each matched 18/18 fixture labels.
+Added sanitized actual metrics/provenance and an explicit synthetic G1 command.
+No existing/global packages, private memory, main branch or PR stack were modified.
+Weights, virtualenvs, caches and raw logs are ignored. Local suite: 408 passed with
+one existing warning; new commit/CI evidence is recorded in PR #23 after push.

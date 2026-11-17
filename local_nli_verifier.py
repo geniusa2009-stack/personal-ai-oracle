@@ -79,6 +79,7 @@ class LocalNLIModel:
             ) from exc
 
         try:
+            ort.disable_telemetry_events()
             config = json.loads(config_path.read_text(encoding="utf-8"))
             self.labels = _label_indices(config)
             self.tokenizer = AutoTokenizer.from_pretrained(

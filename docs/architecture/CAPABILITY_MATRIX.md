@@ -417,3 +417,17 @@ See `docs/engineering/LOCAL_AI_CONTINUATION_REPORT.md` for evidence and remainin
   deferred optional installation and model downloads pending isolated setup review.
 - IMPLEMENTED_BUT_UNVERIFIED: inference quality, resource safety threshold and
   actual 8 GiB model performance. VERIFIED_ON_TARGET_MAC inference is not claimed.
+
+## Approved real-model validation — 2026-11-17
+
+- VERIFIED_ON_TARGET_MAC: G1 native Ollama MLX/nvfp4 inference, finite 768d vectors,
+  3/3 synthetic retrieval rankings, live two-scope isolation/idempotent cache, unload.
+- VERIFIED_ON_TARGET_MAC: pinned quantized mDeBERTa CPU ONNX and local tokenizer on
+  isolated Python 3.13.5; tensor/label contract and cold/session evaluation each
+  matched 18/18 synthetic expected labels. Six per-mode cases are evidence guards.
+- TESTED_LOCALLY: optional dependency imports and consistency, model integrity,
+  actual latency/RSS/pressure snapshots. See LOCAL_AI_REAL_VALIDATION.json.
+- IMPLEMENTED_BUT_UNVERIFIED: real-world accuracy, threshold calibration, long-input
+  performance, pressure-failure recovery and full production orchestration. These
+  limited observations supersede earlier BLOCKED model-install/inference statuses
+  only for the measured synthetic paths. Ordinary CI still does not run models.

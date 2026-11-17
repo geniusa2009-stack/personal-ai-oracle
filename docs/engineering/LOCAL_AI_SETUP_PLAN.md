@@ -99,3 +99,13 @@ copies; that is a planning allowance, not a measured install footprint.
 Approval covers creating the isolated environment, installing its packages and
 these specific model downloads/tests only. It does not cover private indexing,
 system software, daemons, cloud inference or unrelated file access.
+
+## Approved/executed status — 2026-11-17
+
+The user subsequently approved this isolated setup. `.venv-local-ai` now exists with
+27 installed binary packages and successful imports/pip check on Python 3.13.5.
+Both models were downloaded with integrity verification; real sequential synthetic
+G1/G2 inference succeeded on the actual 8 GiB Mac. Ollama selected its ~378 MB MLX
+variant rather than the ~304 MB GGUF metadata variant; see the real validation
+report for actual identity and measurements. Existing `.venv` and global packages
+remain unchanged. The initial approval-pending paragraphs above are historical.
