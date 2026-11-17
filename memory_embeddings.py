@@ -192,6 +192,20 @@ class OllamaEmbeddingClient:
         self.keep_alive = keep_alive
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embed unprefixed text for compatibility with generic embedding clients."""
+        return self._embed(texts)
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        """Use EmbeddingGemma's asymmetric retrieval document instruction."""
+        return self._embed([f"title: none | text: {value}" for value in texts])
+
+    def embed_query(self, texts: Sequence[str]) -> list[list[float]]:
+        """Use EmbeddingGemma's asymmetric retrieval query instruction."""
+        return self._embed([
+            f"task: search result | query: {value}" for value in texts
+        ])
+
+    def _embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not isinstance(texts, Sequence) or isinstance(texts, (str, bytes)) or not texts:
             raise EmbeddingError("texts must be a non-empty sequence")
         normalized = []
@@ -424,7 +438,8 @@ def index_memory_scope(
         for offset in range(0, len(pending), batch_size):
             batch = pending[offset:offset + batch_size]
             try:
-                vectors = selected_client.embed([item.content for item, _ in batch])
+                document_embedder = getattr(selected_client, "embed_documents", selected_client.embed)
+                vectors = document_embedder([item.content for item, _ in batch])
                 if not isinstance(vectors, list) or len(vectors) != len(batch):
                     raise EmbeddingError("embedding client returned an unexpected vector count")
                 validated = [_validate_vector(vector) for vector in vectors]
@@ -532,7 +547,8 @@ def retrieve_vector_matches(
     if not rows:
         return []
 
-    query_vectors = selected_client.embed([query.strip()])
+    query_embedder = getattr(selected_client, "embed_query", selected_client.embed)
+    query_vectors = query_embedder([query.strip()])
     if len(query_vectors) != 1:
         raise EmbeddingError("embedding client returned an unexpected query vector count")
     query_vector = _validate_vector(query_vectors[0])
