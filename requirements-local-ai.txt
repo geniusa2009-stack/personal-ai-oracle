@@ -3,6 +3,6 @@
 # Install into the project's virtual environment when ready:
 #   python -m pip install -r requirements-local-ai.txt
 onnxruntime>=1.19,<2
-transformers>=4.45,<6
+transformers>=4.45,<5
 sentencepiece>=0.2,<1
 huggingface_hub>=0.25,<2
