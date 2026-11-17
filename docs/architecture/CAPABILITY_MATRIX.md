@@ -382,3 +382,14 @@ Status: `IMPLEMENTED_AND_VERIFIED` by run `42469959196` (379 tests passed on Ubu
 | End-to-end regression | `test_oracle_e2e.py` | `IMPLEMENTED_AND_VERIFIED` | Offline test exercises memory context, encrypted graph creation, mocked research, specialist dependency handoff, reviewer rejection, selective revision, merged result projection and owner-scoped Control Center metadata | CI run `42471524130`: 381 passed per platform; live provider run remains a separate opt-in operation |
 
 The composed path remains explicitly dispatched by the user. Research uses bounded query/source settings and a non-retryable task. The final reviewer assesses request coverage and internal consistency, not factual truth. See `docs/testing/ORACLE_END_TO_END.md`.
+
+
+## Phase 04g — Zero-cost local G1/G2 profile
+
+| Increment | Owning modules | Status on this branch | Verified scope | Remaining work |
+|---|---|---|---|---|
+| Local multilingual memory embeddings (G1) | `memory_embeddings.py`, `hybrid_memory.py`, `scripts/index_memory_scope.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicitly enabled native loopback Ollama `/api/embed` adapter; default `embeddinggemma-2:270m`; unload-after-request default; bounded explicit per-scope indexing; existing SQLite content hashes, stale-vector checks, RRF and lexical fallback retained | CI pending; target-Mac RAM/latency measurement and bilingual retrieval benchmark required |
+| Local multilingual semantic verification (G2) | `local_nli_verifier.py`, `semantic_verifier.py`, `scripts/download_local_nli_model.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Explicit local NLI selection using quantized ONNX mDeBERTa; extracted-page-only decisive labels; threshold and pair-count caps; no silent hosted fallback; factual-truth flag remains false | CI pending; target-Mac peak-memory/latency measurement and human-reviewed Arabic/English calibration set required |
+| Local model regression tests | `test_local_embedding_profile.py`, `test_local_nli_verifier.py`, `test_local_nli_integration.py` | `IMPLEMENTED_BUT_UNVERIFIED` | Deterministic mocked tests cover native Ollama contract, support/contradiction/conflict, snippets, thresholds, local selection and fail-closed pair budget | GitHub Actions must pass on this branch head |
+
+See `docs/architecture/LOCAL_AI_G1_G2.md` for model selection, local setup, memory limits, environment variables and validation boundaries. No model weights are committed or downloaded by CI.
