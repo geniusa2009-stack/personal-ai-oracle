@@ -150,7 +150,7 @@ def judge_payload(payload: dict[str, Any]) -> str:
     claims = payload.get("claims")
     if not isinstance(claims, list):
         raise LocalNLIError("NLI payload claims must be a list")
-    model = _model()
+    model: LocalNLIModel | None = None
     threshold = _threshold()
     pair_count = 0
     results = []
@@ -186,6 +186,8 @@ def judge_payload(payload: dict[str, Any]) -> str:
             if pair_count >= MAX_PAIRS_PER_RUN:
                 exhausted = True
                 break
+            if model is None:
+                model = _model()
             pair_count += 1
             scores = model.score(excerpt[:7000], claim_text[:700])
             entailment = scores.get("entailment", 0.0)
